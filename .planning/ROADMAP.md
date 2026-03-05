@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Storage Foundation** - SQLite database with schema, FTS5, and incremental-index tracking
 - [x] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
 - [x] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results (completed 2026-03-05)
-- [ ] **Phase 4: CLI + MCP + Knowledge** - CLI tool, MCP server, manual knowledge injection, relationship graph queries
+- [x] **Phase 4: CLI + MCP + Knowledge** - CLI tool, manual knowledge injection, relationship graph queries (completed 2026-03-05)
 
 ## Phase Details
 
@@ -61,7 +61,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: FTS5 text search and structured entity/dependency queries
+- [x] 03-01: FTS5 text search and structured entity/dependency queries
 
 ### Phase 4: CLI + MCP + Knowledge
 **Goal**: The knowledge base is usable as both a standalone CLI tool and an MCP server that any Claude Code session can query, with the ability to manually teach it new facts
@@ -76,8 +76,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: CLI with commander (index, search, learn, status commands)
-- [ ] 04-02: MCP server and knowledge injection
+- [x] 04-01: CLI scaffolding with commander.js (index, search, deps, status commands)
+- [x] 04-02: Knowledge injection (learn, learned, forget, docs commands)
 
 ## Progress
 
@@ -88,5 +88,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Storage Foundation | 1/1 | Complete | 2026-03-05 |
 | 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
-| 3. Search | 0/1 | Complete    | 2026-03-05 |
-| 4. CLI + MCP + Knowledge | 0/2 | Not started | - |
+| 3. Search | 1/1 | Complete | 2026-03-05 |
+| 4. CLI + Knowledge | 2/2 | Complete | 2026-03-05 |
