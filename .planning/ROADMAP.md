@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Storage Foundation** - SQLite database with schema, FTS5, and incremental-index tracking
 - [x] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
-- [ ] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results
+- [x] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results (completed 2026-03-05)
 - [ ] **Phase 4: CLI + MCP + Knowledge** - CLI tool, MCP server, manual knowledge injection, relationship graph queries
 
 ## Phase Details
@@ -88,5 +88,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Storage Foundation | 1/1 | Complete | 2026-03-05 |
 | 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
-| 3. Search | 0/1 | Not started | - |
+| 3. Search | 0/1 | Complete    | 2026-03-05 |
 | 4. CLI + MCP + Knowledge | 0/2 | Not started | - |
