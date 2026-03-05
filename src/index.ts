@@ -11,3 +11,6 @@ export type {
   EntityType,
   RelationshipType,
 } from './types/entities.js';
+export { tokenizeForFts } from './db/tokenizer.js';
+export { indexEntity, removeEntity, search } from './db/fts.js';
+export type { SearchResult } from './db/fts.js';
