@@ -47,3 +47,7 @@ export type {
   DependencyNode,
   DependencyOptions,
 } from './search/index.js';
+
+// Knowledge (Plan 04-02)
+export { learnFact, listFacts, forgetFact } from './knowledge/store.js';
+export type { LearnedFact } from './knowledge/types.js';

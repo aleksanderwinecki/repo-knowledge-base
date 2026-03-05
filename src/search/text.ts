@@ -100,7 +100,7 @@ function executeFtsQuery(
 function hydrateResult(db: Database.Database, match: FtsMatch): TextSearchResult | null {
   const entityType = match.entity_type as EntityType;
 
-  switch (entityType) {
+  switch (entityType as string) {
     case 'repo':
       return hydrateRepo(db, match);
     case 'module':
@@ -109,6 +109,8 @@ function hydrateResult(db: Database.Database, match: FtsMatch): TextSearchResult
       return hydrateEvent(db, match);
     case 'service':
       return hydrateService(db, match);
+    case 'learned_fact':
+      return hydrateLearnedFact(db, match);
     default:
       return null;
   }
@@ -218,6 +220,29 @@ function hydrateService(db: Database.Database, match: FtsMatch): TextSearchResul
     snippet: row.description ?? row.name,
     repoName: row.repo_name,
     repoPath: row.repo_path,
+    filePath: null,
+    relevance: match.relevance,
+  };
+}
+
+function hydrateLearnedFact(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+  const row = db
+    .prepare('SELECT id, content, repo FROM learned_facts WHERE id = ?')
+    .get(match.entity_id) as {
+    id: number;
+    content: string;
+    repo: string | null;
+  } | undefined;
+
+  if (!row) return null;
+
+  return {
+    entityType: 'learned_fact' as EntityType, // Cast — FTS stores this string
+    entityId: match.entity_id,
+    name: row.content.length > 100 ? row.content.substring(0, 100) + '...' : row.content,
+    snippet: row.content,
+    repoName: row.repo ?? 'user-knowledge',
+    repoPath: '',
     filePath: null,
     relevance: match.relevance,
   };

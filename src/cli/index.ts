@@ -10,6 +10,10 @@ import { registerIndex } from './commands/index-cmd.js';
 import { registerSearch } from './commands/search.js';
 import { registerDeps } from './commands/deps.js';
 import { registerStatus } from './commands/status.js';
+import { registerLearn } from './commands/learn.js';
+import { registerLearned } from './commands/learned.js';
+import { registerForget } from './commands/forget.js';
+import { registerDocs } from './commands/docs.js';
 
 const program = new Command();
 program
@@ -21,5 +25,9 @@ registerIndex(program);
 registerSearch(program);
 registerDeps(program);
 registerStatus(program);
+registerLearn(program);
+registerLearned(program);
+registerForget(program);
+registerDocs(program);
 
 program.parse();

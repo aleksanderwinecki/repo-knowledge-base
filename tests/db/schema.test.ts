@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
+import { SCHEMA_VERSION } from '../../src/db/schema.js';
 import type Database from 'better-sqlite3';
 import os from 'os';
 import path from 'path';
@@ -165,14 +166,14 @@ describe('schema', () => {
 
   it('schema version is set', () => {
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(1);
+    expect(version).toBe(SCHEMA_VERSION);
   });
 
   it('idempotent initialization', () => {
     // Opening a second connection to the same db should not throw
     const db2 = openDatabase(dbPath);
     const version = db2.pragma('user_version', { simple: true });
-    expect(version).toBe(1);
+    expect(version).toBe(SCHEMA_VERSION);
     closeDatabase(db2);
   });
 });

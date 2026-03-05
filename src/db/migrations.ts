@@ -27,8 +27,9 @@ export function runMigrations(
     if (fromVersion < 1) {
       migrateToV1(db);
     }
-    // Future migrations:
-    // if (fromVersion < 2) { migrateToV2(db); }
+    if (fromVersion < 2) {
+      migrateToV2(db);
+    }
   });
 
   migrate();
@@ -105,5 +106,19 @@ function migrateToV1(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_type, source_id);
     CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_edges_relationship ON edges(relationship_type);
+  `);
+}
+
+/**
+ * V2: Add learned_facts table for manual knowledge injection.
+ */
+function migrateToV2(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS learned_facts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      repo TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 }
