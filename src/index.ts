@@ -34,3 +34,16 @@ export { detectEventRelationships } from './indexer/events.js';
 export type { EventRelationship } from './indexer/events.js';
 export { indexAllRepos, indexSingleRepo } from './indexer/pipeline.js';
 export type { IndexResult, IndexOptions, IndexStats } from './indexer/pipeline.js';
+
+// Search (Plan 03-01)
+export { searchText, findEntity, queryDependencies } from './search/index.js';
+export type {
+  TextSearchResult,
+  TextSearchOptions,
+  EntityCard,
+  EntityRelationship,
+  EntityFilters,
+  DependencyResult,
+  DependencyNode,
+  DependencyOptions,
+} from './search/index.js';
