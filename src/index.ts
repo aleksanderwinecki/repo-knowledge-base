@@ -17,10 +17,20 @@ export { tokenizeForFts } from './db/tokenizer.js';
 export { indexEntity, removeEntity, search } from './db/fts.js';
 export type { SearchResult } from './db/fts.js';
 
-// Indexer
+// Indexer - Infrastructure (Plan 01)
 export { discoverRepos } from './indexer/scanner.js';
 export { extractMetadata } from './indexer/metadata.js';
 export type { RepoMetadata } from './indexer/metadata.js';
 export { getCurrentCommit, getChangedFiles, isCommitReachable } from './indexer/git.js';
 export { persistRepoData, clearRepoEntities, clearRepoFiles } from './indexer/writer.js';
 export type { RepoData, ModuleData, EventData, EdgeData } from './indexer/writer.js';
+
+// Indexer - Extractors (Plan 02)
+export { extractElixirModules } from './indexer/elixir.js';
+export type { ElixirModule } from './indexer/elixir.js';
+export { extractProtoDefinitions } from './indexer/proto.js';
+export type { ProtoDefinition, ProtoMessage, ProtoService, ProtoField, ProtoRpc } from './indexer/proto.js';
+export { detectEventRelationships } from './indexer/events.js';
+export type { EventRelationship } from './indexer/events.js';
+export { indexAllRepos, indexSingleRepo } from './indexer/pipeline.js';
+export type { IndexResult, IndexOptions, IndexStats } from './indexer/pipeline.js';
