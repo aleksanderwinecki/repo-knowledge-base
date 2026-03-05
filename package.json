@@ -5,16 +5,26 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "kb": "dist/cli/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": ["knowledge-base", "sqlite", "codebase", "ai"],
+  "keywords": [
+    "knowledge-base",
+    "sqlite",
+    "codebase",
+    "ai"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "better-sqlite3": "^12.0.0"
+    "@commander-js/extra-typings": "^14.0.0",
+    "better-sqlite3": "^12.0.0",
+    "commander": "^14.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
