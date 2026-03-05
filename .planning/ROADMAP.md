@@ -12,8 +12,8 @@ Four phases deliver a working knowledge base in 1.5 days: lay down the SQLite st
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Storage Foundation** - SQLite database with schema, FTS5, and incremental-index tracking
-- [ ] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
+- [x] **Phase 1: Storage Foundation** - SQLite database with schema, FTS5, and incremental-index tracking
+- [x] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
 - [ ] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results
 - [ ] **Phase 4: CLI + MCP + Knowledge** - CLI tool, MCP server, manual knowledge injection, relationship graph queries
 
@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 Plans:
-- [ ] 01-01: Project scaffolding and SQLite schema
+- [x] 01-01: Project scaffolding and SQLite schema
 
 ### Phase 2: Indexing Pipeline
 **Goal**: All repos under a root directory are scanned and their metadata, modules, proto definitions, and event relationships are extracted into the database
@@ -46,8 +46,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 02-01: Repo scanner and metadata extractor
-- [ ] 02-02: Elixir module, proto, and Kafka extractors with incremental indexing
+- [x] 02-01: Repo scanner and metadata extractor
+- [x] 02-02: Elixir module, proto, and Kafka extractors with incremental indexing
 
 ### Phase 3: Search
 **Goal**: Users can find any indexed knowledge through text search, structured entity queries, and dependency lookups -- with useful context in results
@@ -86,7 +86,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Storage Foundation | 0/1 | Not started | - |
-| 2. Indexing Pipeline | 0/2 | Not started | - |
+| 1. Storage Foundation | 1/1 | Complete | 2026-03-05 |
+| 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
 | 3. Search | 0/1 | Not started | - |
 | 4. CLI + MCP + Knowledge | 0/2 | Not started | - |
