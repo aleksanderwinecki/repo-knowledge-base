@@ -8,6 +8,8 @@ export interface ElixirModule {
   moduledoc: string | null;
   functions: string[];
   tableName: string | null;
+  schemaFields: { name: string; type: string }[];
+  associations: { kind: string; name: string; target: string }[];
 }
 
 /** Max file size to process (500KB) */
@@ -80,6 +82,7 @@ export function parseElixirFile(
     const moduledoc = extractModuledoc(moduleContent);
     const functions = extractPublicFunctions(moduleContent);
     const tableName = extractSchemaTable(moduleContent);
+    const { schemaFields, associations } = extractSchemaDetails(moduleContent);
     const type = tableName ? 'schema' : classifyModule(name);
 
     modules.push({
@@ -89,6 +92,8 @@ export function parseElixirFile(
       moduledoc,
       functions,
       tableName,
+      schemaFields,
+      associations,
     });
   }
 
@@ -147,6 +152,55 @@ function extractPublicFunctions(content: string): string[] {
   }
 
   return Array.from(functionSet).sort();
+}
+
+/**
+ * Extract Ecto schema fields and associations from a schema block.
+ * Only matches `schema "table" do` blocks -- skips embedded_schema.
+ * Uses line-by-line extraction to avoid nested do...end pitfalls.
+ */
+function extractSchemaDetails(
+  moduleContent: string,
+): { schemaFields: { name: string; type: string }[]; associations: { kind: string; name: string; target: string }[] } {
+  const empty = { schemaFields: [], associations: [] };
+
+  // Match schema "table_name" do ... but NOT embedded_schema do
+  const schemaStart = moduleContent.match(/\bschema\s+"(\w+)"\s+do\b/);
+  if (!schemaStart) return empty;
+
+  // Extract lines after the schema do declaration
+  const startIdx = schemaStart.index! + schemaStart[0].length;
+  const lines = moduleContent.slice(startIdx).split('\n');
+
+  const schemaFields: { name: string; type: string }[] = [];
+  const associations: { kind: string; name: string; target: string }[] = [];
+
+  const fieldRe = /field[( ]+:(\w+),\s*:?(\w[\w.]*)/;
+  const assocRe = /(belongs_to|has_many|has_one|many_to_many)[( ]+:(\w+),\s*(\w[\w.]*)/;
+
+  // Track nesting depth to stop at the schema block's closing `end`
+  let depth = 1;
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Track nested do...end blocks
+    if (/\bdo\b/.test(trimmed)) depth++;
+    if (/^\s*end\b/.test(line) || trimmed === 'end') depth--;
+    if (depth <= 0) break;
+
+    const fieldMatch = trimmed.match(fieldRe);
+    if (fieldMatch) {
+      schemaFields.push({ name: fieldMatch[1], type: fieldMatch[2] });
+      continue;
+    }
+
+    const assocMatch = trimmed.match(assocRe);
+    if (assocMatch) {
+      associations.push({ kind: assocMatch[1], name: assocMatch[2], target: assocMatch[3] });
+    }
+  }
+
+  return { schemaFields, associations };
 }
 
 /**
