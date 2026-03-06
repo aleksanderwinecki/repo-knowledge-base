@@ -24,11 +24,14 @@ export function runMigrations(
   toVersion: number,
 ): void {
   const migrate = db.transaction(() => {
-    if (fromVersion < 1) {
+    if (fromVersion < 1 && toVersion >= 1) {
       migrateToV1(db);
     }
-    if (fromVersion < 2) {
+    if (fromVersion < 2 && toVersion >= 2) {
       migrateToV2(db);
+    }
+    if (fromVersion < 3 && toVersion >= 3) {
+      migrateToV3(db);
     }
   });
 
@@ -120,5 +123,23 @@ function migrateToV2(db: Database.Database): void {
       repo TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
+}
+
+/**
+ * V3: Add branch-aware and enriched metadata columns.
+ * - repos.default_branch: resolved default branch (main/master/null)
+ * - modules.table_name, modules.schema_fields: Ecto schema metadata
+ * - services.service_type: service classification (grpc, http, etc.)
+ * - events.domain, events.owner_team: event catalog metadata
+ */
+function migrateToV3(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE repos ADD COLUMN default_branch TEXT;
+    ALTER TABLE modules ADD COLUMN table_name TEXT;
+    ALTER TABLE modules ADD COLUMN schema_fields TEXT;
+    ALTER TABLE services ADD COLUMN service_type TEXT;
+    ALTER TABLE events ADD COLUMN domain TEXT;
+    ALTER TABLE events ADD COLUMN owner_team TEXT;
   `);
 }

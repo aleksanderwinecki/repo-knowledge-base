@@ -3,7 +3,7 @@ import { getCurrentVersion, setVersion, runMigrations } from './migrations.js';
 import { initializeFts } from './fts.js';
 
 /** Current schema version — increment when adding migrations */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Initialize the database schema.
