@@ -13,6 +13,7 @@ import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
 import { persistRepoData, persistSurgicalData } from './writer.js';
 import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
+import { enrichFromEventCatalog } from './catalog.js';
 
 /** Options for the indexing pipeline */
 export interface IndexOptions {
@@ -93,6 +94,17 @@ export function indexAllRepos(
   console.log(
     `\nIndexing complete: ${results.length} repos (${success} indexed, ${skipped} skipped, ${errors} errors)`,
   );
+
+  // Event Catalog enrichment: run after all repos indexed (EXT-05)
+  // Only on full index runs when at least one repo was actually indexed
+  if (success > 0) {
+    try {
+      enrichFromEventCatalog(db, options.rootDir);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`Event Catalog enrichment failed: ${errorMsg}`);
+    }
+  }
 
   return results;
 }
