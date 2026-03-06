@@ -45,9 +45,9 @@
 ### MCP Server
 
 - [ ] **MCP-01**: MCP server exposing search, deps, entity lookup, and learn/forget as tools
-- [ ] **MCP-02**: MCP responses are concise (<4KB), well-structured summaries suitable for LLM consumption
-- [ ] **MCP-03**: Auto-sync: server detects stale indexes and re-indexes repos with new commits when queried
-- [ ] **MCP-04**: Data hygiene: server can identify and clean outdated/wrong facts (e.g., repos that no longer exist, stale learned facts)
+- [x] **MCP-02**: MCP responses are concise (<4KB), well-structured summaries suitable for LLM consumption
+- [x] **MCP-03**: Auto-sync: server detects stale indexes and re-indexes repos with new commits when queried
+- [x] **MCP-04**: Data hygiene: server can identify and clean outdated/wrong facts (e.g., repos that no longer exist, stale learned facts)
 - [ ] **MCP-05**: Installable via claude_desktop_config.json or Claude Code MCP settings with zero manual config beyond initial setup
 
 ## v2 Requirements
@@ -109,9 +109,9 @@
 | KNOW-02 | Phase 4 | Pending |
 | KNOW-03 | Phase 4 | Pending |
 | MCP-01 | Phase 5 | Pending |
-| MCP-02 | Phase 5 | Pending |
-| MCP-03 | Phase 5 | Pending |
-| MCP-04 | Phase 5 | Pending |
+| MCP-02 | Phase 5 | Complete |
+| MCP-03 | Phase 5 | Complete |
+| MCP-04 | Phase 5 | Complete |
 | MCP-05 | Phase 5 | Pending |
 
 **Coverage:**
