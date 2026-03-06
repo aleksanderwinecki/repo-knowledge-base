@@ -22,6 +22,7 @@ function makeMetadata(overrides: Partial<RepoMetadata> = {}): RepoMetadata {
     techStack: ['elixir', 'phoenix'],
     keyFiles: ['README.md', 'mix.exs', 'lib/'],
     currentCommit: 'abc123def456abc123def456abc123def456abc1',
+    defaultBranch: null,
     ...overrides,
   };
 }
@@ -110,6 +111,16 @@ describe('persistRepoData', () => {
     const results = search(db, 'booking created');
     const eventResults = results.filter(r => r.entityType === 'event');
     expect(eventResults.length).toBeGreaterThan(0);
+  });
+
+  it('persists default_branch via upsertRepo', () => {
+    const metadata = makeMetadata({ defaultBranch: 'main' });
+    persistRepoData(db, { metadata });
+
+    const row = db.prepare('SELECT default_branch FROM repos WHERE name = ?').get('test-repo') as {
+      default_branch: string | null;
+    };
+    expect(row.default_branch).toBe('main');
   });
 
   it('persists edges', () => {

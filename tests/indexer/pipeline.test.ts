@@ -284,4 +284,107 @@ describe('indexAllRepos', () => {
     const results = indexAllRepos(db, { force: true, rootDir: emptyDir });
     expect(results).toHaveLength(0);
   });
+
+  it('skips repo with no main or master branch', () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = path.join(rootDir, 'no-default-branch');
+    fs.mkdirSync(repoDir, { recursive: true });
+
+    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git checkout -b develop', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(repoDir, 'mix.exs'), 'defmodule Dev.MixProject do\nend');
+    execSync('git add -A && git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
+
+    const results = indexAllRepos(db, { force: true, rootDir });
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('skipped');
+    expect(results[0].skipReason).toContain('no main or master branch');
+  });
+
+  it('indexes from main branch content, not feature branch', () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = createGitRepo('branch-test', {
+      'mix.exs': 'defmodule BranchTest.MixProject do\nend',
+      'lib/main_mod.ex': 'defmodule MainMod do\nend',
+    });
+
+    // Rename default branch to main (createGitRepo might use master)
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+
+    // Create feature branch with additional module
+    execSync('git checkout -b feature/new', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(repoDir, 'lib', 'feature_mod.ex'), 'defmodule FeatureMod do\nend');
+    execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Index while on feature branch
+    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir });
+
+    // Should only have the main-branch module
+    expect(stats.modules).toBe(1);
+
+    const modules = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
+      .all('branch-test') as { name: string }[];
+    expect(modules).toHaveLength(1);
+    expect(modules[0].name).toBe('MainMod');
+  });
+
+  it('populates default_branch in repos table', () => {
+    const repoDir = createGitRepo('branch-col-test', {
+      'mix.exs': 'defmodule BranchCol.MixProject do\nend',
+    });
+
+    // Ensure it has a main branch
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const row = db.prepare('SELECT default_branch FROM repos WHERE name = ?').get('branch-col-test') as {
+      default_branch: string | null;
+    };
+    expect(row.default_branch).toBe('main');
+  });
+
+  it('handles detached HEAD state', () => {
+    const repoDir = createGitRepo('detached-head', {
+      'mix.exs': 'defmodule Detached.MixProject do\nend',
+      'lib/mod.ex': 'defmodule DetachedMod do\nend',
+    });
+
+    // Ensure main branch exists
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+
+    // Detach HEAD
+    const sha = execSync('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf-8' }).trim();
+    execSync(`git checkout ${sha}`, { cwd: repoDir, stdio: 'pipe' });
+
+    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    expect(stats.modules).toBe(1);
+  });
+
+  it('skip check compares against branch commit, not HEAD', () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = createGitRepo('skip-branch-check', {
+      'mix.exs': 'defmodule SkipBranch.MixProject do\nend',
+    });
+
+    // Ensure main branch
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+
+    // First index
+    indexAllRepos(db, { force: true, rootDir });
+
+    // Create feature branch with new commit (HEAD changes but main doesn't)
+    execSync('git checkout -b feature/x', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(repoDir, 'new.txt'), 'feature');
+    execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Re-index without force -- should skip because main hasn't changed
+    const results = indexAllRepos(db, { force: false, rootDir });
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('skipped');
+    expect(results[0].skipReason).toBe('no new commits');
+  });
 });
