@@ -3,7 +3,7 @@ import path from 'path';
 import { discoverRepos } from './scanner.js';
 import { extractMetadata } from './metadata.js';
 import type { RepoMetadata } from './metadata.js';
-import { getCurrentCommit, getChangedFiles, isCommitReachable } from './git.js';
+import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable } from './git.js';
 import { extractElixirModules } from './elixir.js';
 import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
@@ -38,6 +38,7 @@ export interface IndexResult {
 /**
  * Index all repos under the root directory.
  * Returns results per repo with error isolation (IDX-07).
+ * Resolves default branch (main/master) for each repo before indexing.
  */
 export function indexAllRepos(
   db: Database.Database,
@@ -50,9 +51,17 @@ export function indexAllRepos(
     const repoName = path.basename(repoPath);
 
     try {
+      // Resolve default branch (main or master)
+      const branch = resolveDefaultBranch(repoPath);
+      if (!branch) {
+        console.warn(`Skipping ${repoName}: no main or master branch`);
+        results.push({ repo: repoName, status: 'skipped', skipReason: 'no main or master branch' });
+        continue;
+      }
+
       // Check if we can skip (incremental indexing)
       if (!options.force) {
-        const skipResult = checkSkip(db, repoPath, repoName);
+        const skipResult = checkSkip(db, repoPath, repoName, branch);
         if (skipResult) {
           results.push(skipResult);
           continue;
@@ -60,7 +69,7 @@ export function indexAllRepos(
       }
 
       // Index the repo
-      const stats = indexSingleRepo(db, repoPath, options);
+      const stats = indexSingleRepo(db, repoPath, options, branch);
       console.log(
         `Indexing ${repoName}... done (${stats.modules} modules, ${stats.protos} protos)`,
       );
@@ -85,12 +94,14 @@ export function indexAllRepos(
 }
 
 /**
- * Check if a repo can be skipped (commit unchanged).
+ * Check if a repo can be skipped (branch commit unchanged).
+ * Compares against the default branch tip, not HEAD.
  */
 function checkSkip(
   db: Database.Database,
   repoPath: string,
   repoName: string,
+  branch: string,
 ): IndexResult | null {
   const row = db
     .prepare('SELECT last_indexed_commit FROM repos WHERE name = ?')
@@ -98,10 +109,10 @@ function checkSkip(
 
   if (!row?.last_indexed_commit) return null; // New repo, can't skip
 
-  const currentCommit = getCurrentCommit(repoPath);
-  if (!currentCommit) return null; // Can't determine commit, re-index
+  const branchCommit = getBranchCommit(repoPath, branch);
+  if (!branchCommit) return null; // Can't determine commit, re-index
 
-  if (row.last_indexed_commit === currentCommit) {
+  if (row.last_indexed_commit === branchCommit) {
     return {
       repo: repoName,
       status: 'skipped',
@@ -113,15 +124,25 @@ function checkSkip(
 }
 
 /**
- * Index a single repo. Runs all extractors and persists results.
+ * Index a single repo from its default branch. Runs all extractors and persists results.
+ * If branch is not provided, resolves it (used when called directly, not via indexAllRepos).
  */
 export function indexSingleRepo(
   db: Database.Database,
   repoPath: string,
   options: IndexOptions,
+  branch?: string,
 ): IndexStats {
-  // Step 1: Extract metadata
-  const metadata = extractMetadata(repoPath);
+  // Resolve branch if not provided
+  if (!branch) {
+    branch = resolveDefaultBranch(repoPath) ?? undefined;
+    if (!branch) {
+      throw new Error('No main or master branch found');
+    }
+  }
+
+  // Step 1: Extract metadata from branch
+  const metadata = extractMetadata(repoPath, branch);
   const repoName = metadata.name;
 
   // Step 2: Determine indexing mode
@@ -140,20 +161,22 @@ export function indexSingleRepo(
 
   // Step 3: Handle incremental deleted files
   if (isIncremental && existingRow) {
-    const changes = getChangedFiles(
+    const changes = getChangedFilesSinceBranch(
       repoPath,
       existingRow.last_indexed_commit!,
+      branch,
     );
     if (changes.deleted.length > 0) {
       clearRepoFiles(db, existingRow.id, changes.deleted);
     }
   }
 
-  // Step 4: Run extractors
-  const elixirModules = extractElixirModules(repoPath);
-  const protoDefinitions = extractProtoDefinitions(repoPath);
+  // Step 4: Run extractors (all branch-aware)
+  const elixirModules = extractElixirModules(repoPath, branch);
+  const protoDefinitions = extractProtoDefinitions(repoPath, branch);
   const eventRelationships = detectEventRelationships(
     repoPath,
+    branch,
     protoDefinitions,
     elixirModules,
   );

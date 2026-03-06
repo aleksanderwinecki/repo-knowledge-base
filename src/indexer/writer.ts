@@ -41,12 +41,13 @@ export interface EdgeData {
  */
 function upsertRepo(db: Database.Database, metadata: RepoMetadata): number {
   const stmt = db.prepare(`
-    INSERT INTO repos (name, path, description, last_indexed_commit)
-    VALUES (@name, @path, @description, @lastIndexedCommit)
+    INSERT INTO repos (name, path, description, last_indexed_commit, default_branch)
+    VALUES (@name, @path, @description, @lastIndexedCommit, @defaultBranch)
     ON CONFLICT(name) DO UPDATE SET
       path = @path,
       description = @description,
       last_indexed_commit = @lastIndexedCommit,
+      default_branch = @defaultBranch,
       updated_at = datetime('now')
   `);
 
@@ -55,6 +56,7 @@ function upsertRepo(db: Database.Database, metadata: RepoMetadata): number {
     path: metadata.path,
     description: metadata.description,
     lastIndexedCommit: metadata.currentCommit,
+    defaultBranch: metadata.defaultBranch,
   });
 
   // Get the repo ID
