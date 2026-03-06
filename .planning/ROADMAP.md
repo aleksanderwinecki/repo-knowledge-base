@@ -51,7 +51,10 @@ Plans:
   2. When a file is deleted from a repo, `kb index` removes all entities and FTS entries that originated from that file
   3. A full wipe-and-rewrite still works via `kb index --force` as a recovery path
   4. After surgical re-indexing, search results are identical to what a full `--force` re-index would produce (no orphaned or stale entries)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 07-01-PLAN.md -- Schema v4 migration (file_id on events) and surgical writer functions
+- [ ] 07-02-PLAN.md -- Pipeline refactoring for surgical vs full mode branching
 
 ### Phase 8: New Extractors
 **Goal**: The knowledge base captures GraphQL schemas, gRPC service definitions, Ecto database structures, and Event Catalog domain metadata from indexed repos
@@ -87,6 +90,6 @@ Plans:
 | 4. CLI + Knowledge | v1.0 | 2/2 | Complete | 2026-03-05 |
 | 5. MCP Server | v1.0 | 2/2 | Complete | 2026-03-06 |
 | 6. Branch-Aware Tracking & Schema Migration | v1.1 | 0/2 | Planning | - |
-| 7. Surgical File-Level Indexing | v1.1 | 0/? | Not started | - |
+| 7. Surgical File-Level Indexing | v1.1 | 0/2 | Planning | - |
 | 8. New Extractors | v1.1 | 0/? | Not started | - |
 | 9. Parallel Execution | v1.1 | 0/? | Not started | - |
