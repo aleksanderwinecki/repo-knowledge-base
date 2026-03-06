@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
-status: planning
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-06T14:24:28.384Z"
-last_activity: 2026-03-06 -- Phase 6 complete, transitioning to Phase 7
+status: executing
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-06T14:43:30Z"
+last_activity: 2026-03-06 -- Phase 7 Plan 1 complete (schema v4 + surgical writer)
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 67
+  total_plans: 4
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 ## Current Position
 
 Phase: 7 of 9 (Surgical File-Level Indexing)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-06 -- Phase 6 complete, transitioning to Phase 7
+Plan: 1 of 2 complete
+Status: Executing
+Last activity: 2026-03-06 -- Phase 7 Plan 1 complete (schema v4 + surgical writer)
 
-Progress: [#############.......] 67% (6/9 phases complete)
+Progress: [###############.....] 75% (6/9 phases, plan 1/2 in phase 7)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [#############.......] 67% (6/9 phases complete)
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
 | 6. Branch-Aware Tracking | 2 | 2 | Complete |
+| 7. Surgical File-Level Indexing | 2 | 1 | In Progress |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Recent decisions affecting current work:
 - Phase 6-02: Extractors use shared LIB_PATH_PATTERNS regex for lib path matching via branch file lists
 - Phase 6-02: indexSingleRepo auto-resolves branch when called directly for backward compat
 - Phase 6-02: events.ts sourceFile uses branch-relative paths from listBranchFiles
+- Phase 7-01: V1 CREATE TABLE keeps original schema; V4 ALTER TABLE adds file_id to events
+- Phase 7-01: clearRepoFiles dual-path cleanup: file_id FK join primary, source_file text fallback for pre-v4 data
+- Phase 7-01: persistSurgicalData clears ALL repo edges (caller re-inserts) rather than per-file edge tracking
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T14:24:28.382Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-surgical-file-level-indexing/07-CONTEXT.md
+Last session: 2026-03-06T14:43:30Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: .planning/phases/07-surgical-file-level-indexing/07-02-PLAN.md

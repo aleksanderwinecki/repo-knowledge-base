@@ -8,8 +8,8 @@
 ### Indexing Infrastructure
 
 - [x] **IDX2-01**: Indexer tracks only `main`/`master` branch commit SHA, ignoring checked-out PR branches
-- [ ] **IDX2-02**: Re-indexing surgically processes only files changed since last indexed commit (no full wipe-and-rewrite)
-- [ ] **IDX2-03**: Deleted files detected via `git diff` and their entities/FTS entries cleaned up
+- [x] **IDX2-02**: Re-indexing surgically processes only files changed since last indexed commit (no full wipe-and-rewrite)
+- [x] **IDX2-03**: Deleted files detected via `git diff` and their entities/FTS entries cleaned up
 - [ ] **IDX2-04**: Repos indexed in parallel with configurable concurrency, DB writes serialized on main thread
 - [x] **IDX2-05**: Schema migration (v3) adds columns/tables needed for new extractors
 
@@ -46,8 +46,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | IDX2-01 | Phase 6 | Complete |
-| IDX2-02 | Phase 7 | Pending |
-| IDX2-03 | Phase 7 | Pending |
+| IDX2-02 | Phase 7 | Complete |
+| IDX2-03 | Phase 7 | Complete |
 | IDX2-04 | Phase 9 | Pending |
 | IDX2-05 | Phase 6 | Complete |
 | EXT-01 | Phase 8 | Pending |
