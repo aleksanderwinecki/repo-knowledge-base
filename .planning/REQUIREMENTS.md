@@ -42,6 +42,14 @@
 - [ ] **KNOW-02**: Learned facts stored persistently and searchable alongside indexed data
 - [ ] **KNOW-03**: Service relationship graph queryable (service → events → consumers)
 
+### MCP Server
+
+- [ ] **MCP-01**: MCP server exposing search, deps, entity lookup, and learn/forget as tools
+- [ ] **MCP-02**: MCP responses are concise (<4KB), well-structured summaries suitable for LLM consumption
+- [ ] **MCP-03**: Auto-sync: server detects stale indexes and re-indexes repos with new commits when queried
+- [ ] **MCP-04**: Data hygiene: server can identify and clean outdated/wrong facts (e.g., repos that no longer exist, stale learned facts)
+- [ ] **MCP-05**: Installable via claude_desktop_config.json or Claude Code MCP settings with zero manual config beyond initial setup
+
 ## v2 Requirements
 
 ### Semantic Search
@@ -100,6 +108,11 @@
 | KNOW-01 | Phase 4 | Pending |
 | KNOW-02 | Phase 4 | Pending |
 | KNOW-03 | Phase 4 | Pending |
+| MCP-01 | Phase 5 | Pending |
+| MCP-02 | Phase 5 | Pending |
+| MCP-03 | Phase 5 | Pending |
+| MCP-04 | Phase 5 | Pending |
+| MCP-05 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total

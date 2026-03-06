@@ -16,6 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
 - [x] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results (completed 2026-03-05)
 - [x] **Phase 4: CLI + MCP + Knowledge** - CLI tool, manual knowledge injection, relationship graph queries (completed 2026-03-05)
+- [ ] **Phase 5: MCP Server** - Standalone MCP server with search tools, auto-sync, and data hygiene
 
 ## Phase Details
 
@@ -79,6 +80,21 @@ Plans:
 - [x] 04-01: CLI scaffolding with commander.js (index, search, deps, status commands)
 - [x] 04-02: Knowledge injection (learn, learned, forget, docs commands)
 
+### Phase 5: MCP Server
+**Goal**: Claude Code can query the knowledge base mid-conversation via MCP tools, with automatic index freshness and data quality maintenance
+**Depends on**: Phase 4
+**Requirements**: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05
+**Success Criteria** (what must be TRUE):
+  1. An MCP server process exposes search, entity lookup, deps, and learn/forget as callable tools
+  2. Claude Code can discover and call these tools without manual per-query setup
+  3. When a query arrives, the server checks for stale repos and re-indexes them transparently
+  4. The server can detect and remove entries for deleted repos or outdated learned facts
+  5. Installation is a single config entry pointing to the server binary
+**Plans**: TBD
+
+Plans:
+- [ ] TBD
+
 ## Progress
 
 **Execution Order:**
@@ -90,3 +106,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
 | 3. Search | 1/1 | Complete | 2026-03-05 |
 | 4. CLI + Knowledge | 2/2 | Complete | 2026-03-05 |
+| 5. MCP Server | 0/? | Planned | - |
