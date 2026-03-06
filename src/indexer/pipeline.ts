@@ -8,10 +8,11 @@ import { extractElixirModules } from './elixir.js';
 import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
 import type { ProtoDefinition } from './proto.js';
+import { extractGraphqlDefinitions } from './graphql.js';
 import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
 import { persistRepoData, persistSurgicalData } from './writer.js';
-import type { ModuleData, EventData, EdgeData } from './writer.js';
+import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
 
 /** Options for the indexing pipeline */
 export interface IndexOptions {
@@ -24,6 +25,8 @@ export interface IndexStats {
   modules: number;
   protos: number;
   events: number;
+  services: number;
+  graphqlTypes: number;
 }
 
 /** Result of indexing a single repo */
@@ -187,16 +190,61 @@ export function indexSingleRepo(
   // Step 4: Run extractors (all branch-aware) -- needed for both modes
   const elixirModules = extractElixirModules(repoPath, branch);
   const protoDefinitions = extractProtoDefinitions(repoPath, branch);
+  const graphqlDefinitions = extractGraphqlDefinitions(repoPath, branch);
+
+  // Map gRPC services from proto definitions (EXT-01)
+  const services: ServiceData[] = protoDefinitions.flatMap((proto) =>
+    proto.services.map((svc) => ({
+      name: svc.name,
+      description: `gRPC service with RPCs: ${svc.rpcs.map((r) => `${r.name}(${r.inputType}) -> ${r.outputType}`).join(', ')}`,
+      serviceType: 'grpc',
+    })),
+  );
+
+  // Map GraphQL types to modules (EXT-03)
+  const graphqlModules: ModuleData[] = graphqlDefinitions.flatMap((def) =>
+    def.types.map((t) => ({
+      name: t.name,
+      type: `graphql_${t.kind}`,
+      filePath: def.filePath,
+      summary: t.body || null,
+    })),
+  );
+
+  // Map Elixir modules to writer format, including Ecto fields (EXT-02)
+  const elixirModuleData: ModuleData[] = elixirModules.map((mod) => ({
+    name: mod.name,
+    type: mod.type,
+    filePath: mod.filePath,
+    summary: mod.moduledoc,
+    tableName: mod.tableName,
+    schemaFields: mod.schemaFields.length > 0 ? JSON.stringify(mod.schemaFields) : null,
+  }));
+
+  // Map Absinthe types to additional modules (EXT-04)
+  const absintheModules: ModuleData[] = elixirModules.flatMap((mod) =>
+    mod.absintheTypes.map((aType) => ({
+      name: aType.name,
+      type: `absinthe_${aType.kind}`,
+      filePath: mod.filePath,
+      summary: `Absinthe ${aType.kind} defined in ${mod.name}`,
+    })),
+  );
+
+  // Combine all modules
+  const allModules: ModuleData[] = [...elixirModuleData, ...graphqlModules, ...absintheModules];
+
+  // Total GraphQL type count for stats
+  const graphqlTypeCount = graphqlModules.length;
 
   if (useSurgical && changes && existingRow) {
     // === SURGICAL MODE ===
     const allChangedFiles = [...changes.added, ...changes.modified, ...changes.deleted];
-
-    // Filter to changed files only for persistence
     const changedSet = new Set([...changes.added, ...changes.modified]);
-    const surgicalModules: ModuleData[] = elixirModules
-      .filter(m => changedSet.has(m.filePath))
-      .map(mod => ({ name: mod.name, type: mod.type, filePath: mod.filePath, summary: mod.moduledoc }));
+
+    // Filter modules to changed files only
+    const surgicalModules: ModuleData[] = allModules.filter(m => changedSet.has(m.filePath));
+
     const surgicalEvents: EventData[] = protoDefinitions
       .filter(p => changedSet.has(p.filePath))
       .flatMap(proto => proto.messages.map(msg => ({
@@ -206,12 +254,14 @@ export function indexSingleRepo(
       })));
 
     // Persist surgical data (clears changed files, inserts new entities, clears all edges)
+    // Services are always fully wiped and re-inserted (no file_id on services table)
     persistSurgicalData(db, {
       repoId: existingRow.id,
       metadata,
       changedFiles: allChangedFiles,
       modules: surgicalModules,
       events: surgicalEvents,
+      services,
     });
 
     // Re-derive ALL edges from full extractor output (not just changed files)
@@ -220,23 +270,21 @@ export function indexSingleRepo(
       insertEventEdges(db, existingRow.id, eventRelationships);
     }
 
+    // Insert gRPC client edges (EXT-06) and Ecto association edges (EXT-02)
+    insertGrpcClientEdges(db, existingRow.id, elixirModules);
+    insertEctoAssociationEdges(db, existingRow.id, elixirModules);
+
     return {
       modules: elixirModules.length,
       protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
       events: eventRelationships.length,
+      services: services.length,
+      graphqlTypes: graphqlTypeCount,
       mode: 'surgical' as const,
     };
   }
 
   // === FULL MODE ===
-
-  // Map extractor output to writer format
-  const modules: ModuleData[] = elixirModules.map((mod) => ({
-    name: mod.name,
-    type: mod.type,
-    filePath: mod.filePath,
-    summary: mod.moduledoc,
-  }));
 
   const events: EventData[] = protoDefinitions.flatMap((proto) =>
     proto.messages.map((msg) => ({
@@ -256,8 +304,9 @@ export function indexSingleRepo(
   // Full persist: wipe all repo entities and re-insert
   const { repoId } = persistRepoData(db, {
     metadata,
-    modules,
+    modules: allModules,
     events,
+    services,
   });
 
   // Insert edges based on event relationships
@@ -265,10 +314,18 @@ export function indexSingleRepo(
     insertEventEdges(db, repoId, eventRelationships);
   }
 
+  // Insert gRPC client edges (EXT-06)
+  insertGrpcClientEdges(db, repoId, elixirModules);
+
+  // Insert Ecto association edges (EXT-02)
+  insertEctoAssociationEdges(db, repoId, elixirModules);
+
   return {
     modules: elixirModules.length,
     protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
     events: eventRelationships.length,
+    services: services.length,
+    graphqlTypes: graphqlTypeCount,
     mode: 'full' as const,
   };
 }
@@ -325,5 +382,100 @@ function insertEventEdges(
       rel.type,
       rel.sourceFile,
     );
+  }
+}
+
+/**
+ * Insert gRPC client edges (calls_grpc) from repo to service.
+ * For each Elixir module with grpcStubs, look up matching services
+ * and create edges. (EXT-06)
+ */
+function insertGrpcClientEdges(
+  db: Database.Database,
+  repoId: number,
+  elixirModules: ElixirModule[],
+): void {
+  const insertEdge = db.prepare(
+    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+
+  const seenServiceIds = new Set<number>();
+
+  for (const mod of elixirModules) {
+    for (const stub of mod.grpcStubs) {
+      // Extract the service name from the stub reference
+      // e.g., "Rpc.Booking.V1.BookingService.Stub" -> try "BookingService"
+      // or "Rpc.Booking.V1.BookingService.Stub" -> try matching by LIKE
+      const parts = stub.replace(/\.Stub$/, '').split('.');
+      const shortName = parts[parts.length - 1]; // Last segment
+
+      // Try exact match on short name first, then LIKE match on full stub path
+      let service = db
+        .prepare('SELECT id FROM services WHERE name = ?')
+        .get(shortName) as { id: number } | undefined;
+
+      if (!service) {
+        // Try matching by the full qualified name without .Stub
+        const fullName = stub.replace(/\.Stub$/, '');
+        service = db
+          .prepare('SELECT id FROM services WHERE name = ? OR name LIKE ?')
+          .get(fullName, `%${shortName}%`) as { id: number } | undefined;
+      }
+
+      if (service && !seenServiceIds.has(service.id)) {
+        seenServiceIds.add(service.id);
+        insertEdge.run('repo', repoId, 'service', service.id, 'calls_grpc', mod.filePath);
+      }
+    }
+  }
+}
+
+/**
+ * Insert Ecto association edges between modules.
+ * For each module with associations, look up the target module by name
+ * and create edges. Skips if target not found (cross-repo). (EXT-02)
+ */
+function insertEctoAssociationEdges(
+  db: Database.Database,
+  repoId: number,
+  elixirModules: ElixirModule[],
+): void {
+  const insertEdge = db.prepare(
+    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+
+  for (const mod of elixirModules) {
+    if (mod.associations.length === 0) continue;
+
+    // Find the source module ID
+    const sourceModule = db
+      .prepare('SELECT id FROM modules WHERE repo_id = ? AND name = ?')
+      .get(repoId, mod.name) as { id: number } | undefined;
+
+    if (!sourceModule) continue;
+
+    for (const assoc of mod.associations) {
+      // Look up target module by name (same repo first, then any repo)
+      let targetModule = db
+        .prepare('SELECT id FROM modules WHERE repo_id = ? AND name = ?')
+        .get(repoId, assoc.target) as { id: number } | undefined;
+
+      if (!targetModule) {
+        targetModule = db
+          .prepare('SELECT id FROM modules WHERE name = ?')
+          .get(assoc.target) as { id: number } | undefined;
+      }
+
+      if (!targetModule) continue; // Skip cross-repo targets not in DB
+
+      insertEdge.run(
+        'module',
+        sourceModule.id,
+        'module',
+        targetModule.id,
+        assoc.kind,
+        mod.filePath,
+      );
+    }
   }
 }

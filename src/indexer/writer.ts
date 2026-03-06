@@ -25,6 +25,8 @@ export interface ModuleData {
   type: string | null;
   filePath: string;
   summary: string | null;
+  tableName?: string | null;
+  schemaFields?: string | null;
 }
 
 /** Event data from proto extractors */
@@ -193,7 +195,7 @@ export function persistRepoData(
         'INSERT INTO files (repo_id, path, language) VALUES (?, ?, ?) ON CONFLICT(repo_id, path) DO UPDATE SET updated_at = datetime(\'now\') RETURNING id',
       );
       const insertModule = db.prepare(
-        'INSERT INTO modules (repo_id, file_id, name, type, summary) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO modules (repo_id, file_id, name, type, summary, table_name, schema_fields) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
 
       for (const mod of data.modules) {
@@ -201,15 +203,23 @@ export function persistRepoData(
         const fileRow = insertFile.get(repoId, mod.filePath, null) as { id: number } | undefined;
         const fileId = fileRow?.id ?? null;
 
-        const modInfo = insertModule.run(repoId, fileId, mod.name, mod.type, mod.summary);
+        const modInfo = insertModule.run(repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
         const modId = Number(modInfo.lastInsertRowid);
+
+        // Build FTS description: include table name for Ecto schema searchability
+        let ftsDescription = mod.summary;
+        if (mod.tableName) {
+          ftsDescription = mod.summary
+            ? `${mod.summary} table:${mod.tableName}`
+            : `Ecto schema table: ${mod.tableName}`;
+        }
 
         // Index in FTS
         indexEntity(db, {
           type: 'module' as EntityType,
           id: modId,
           name: mod.name,
-          description: mod.summary,
+          description: ftsDescription,
         });
       }
     }
@@ -346,18 +356,27 @@ export function persistSurgicalData(
       "INSERT INTO files (repo_id, path, language) VALUES (?, ?, ?) ON CONFLICT(repo_id, path) DO UPDATE SET updated_at = datetime('now') RETURNING id",
     );
     const insertModule = db.prepare(
-      'INSERT INTO modules (repo_id, file_id, name, type, summary) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO modules (repo_id, file_id, name, type, summary, table_name, schema_fields) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
 
     for (const mod of data.modules) {
       const fileRow = insertFile.get(data.repoId, mod.filePath, null) as { id: number } | undefined;
       const fileId = fileRow?.id ?? null;
-      const modInfo = insertModule.run(data.repoId, fileId, mod.name, mod.type, mod.summary);
+      const modInfo = insertModule.run(data.repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
+
+      // Build FTS description: include table name for Ecto schema searchability
+      let ftsDescription = mod.summary;
+      if (mod.tableName) {
+        ftsDescription = mod.summary
+          ? `${mod.summary} table:${mod.tableName}`
+          : `Ecto schema table: ${mod.tableName}`;
+      }
+
       indexEntity(db, {
         type: 'module' as EntityType,
         id: Number(modInfo.lastInsertRowid),
         name: mod.name,
-        description: mod.summary,
+        description: ftsDescription,
       });
     }
 
