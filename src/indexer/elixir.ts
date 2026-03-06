@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import { listBranchFiles, readBranchFile } from './git.js';
 
 /** Extracted Elixir module data */
 export interface ElixirModule {
@@ -11,36 +10,39 @@ export interface ElixirModule {
   tableName: string | null;
 }
 
-/** Directories to skip when scanning for .ex files */
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '_build',
-  'deps',
-  'vendor',
-  'dist',
-  '.elixir_ls',
-  '.git',
-]);
-
 /** Max file size to process (500KB) */
 const MAX_FILE_SIZE = 500 * 1024;
 
 /**
- * Extract all Elixir modules from a repo.
+ * Lib path prefixes where .ex files are expected.
+ * Matches: lib/, src/lib/, apps/X/lib/, src/apps/X/lib/
+ */
+const LIB_PATH_PATTERNS = [
+  /^lib\//,
+  /^src\/lib\//,
+  /^apps\/[^/]+\/lib\//,
+  /^src\/apps\/[^/]+\/lib\//,
+];
+
+/**
+ * Extract all Elixir modules from a repo by reading from a git branch.
  * Scans lib/ and apps/star/lib/ for .ex files (umbrella apps).
  */
-export function extractElixirModules(repoPath: string): ElixirModule[] {
-  const exFiles = findExFiles(repoPath);
+export function extractElixirModules(repoPath: string, branch: string): ElixirModule[] {
+  const allFiles = listBranchFiles(repoPath, branch);
   const modules: ElixirModule[] = [];
+
+  // Filter for .ex files under lib paths
+  const exFiles = allFiles.filter(
+    (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)),
+  );
 
   for (const filePath of exFiles) {
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.size > MAX_FILE_SIZE) continue;
+      const content = readBranchFile(repoPath, branch, filePath);
+      if (!content || content.length > MAX_FILE_SIZE) continue;
 
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const relativePath = path.relative(repoPath, filePath);
-      const parsed = parseElixirFile(relativePath, content);
+      const parsed = parseElixirFile(filePath, content);
       modules.push(...parsed);
     } catch {
       // Skip unreadable files
@@ -48,66 +50,6 @@ export function extractElixirModules(repoPath: string): ElixirModule[] {
   }
 
   return modules;
-}
-
-/**
- * Find all .ex files under lib/ and umbrella apps/app/lib/ directories.
- */
-function findExFiles(repoPath: string): string[] {
-  const files: string[] = [];
-
-  // Standard lib/ and src/lib/ directories
-  for (const libDir of [
-    path.join(repoPath, 'lib'),
-    path.join(repoPath, 'src', 'lib'),
-  ]) {
-    if (fs.existsSync(libDir)) {
-      collectFiles(libDir, '.ex', files);
-    }
-  }
-
-  // Umbrella apps: apps/*/lib/ and src/apps/*/lib/
-  for (const appsDir of [
-    path.join(repoPath, 'apps'),
-    path.join(repoPath, 'src', 'apps'),
-  ]) {
-    if (!fs.existsSync(appsDir)) continue;
-    try {
-      const apps = fs.readdirSync(appsDir, { withFileTypes: true });
-      for (const app of apps) {
-        if (!app.isDirectory() || SKIP_DIRS.has(app.name)) continue;
-        const appLibDir = path.join(appsDir, app.name, 'lib');
-        if (fs.existsSync(appLibDir)) {
-          collectFiles(appLibDir, '.ex', files);
-        }
-      }
-    } catch {
-      // Skip unreadable apps directory
-    }
-  }
-
-  return files;
-}
-
-/**
- * Recursively collect files with a given extension.
- */
-function collectFiles(dir: string, ext: string, result: string[]): void {
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        collectFiles(fullPath, ext, result);
-      } else if (entry.isFile() && entry.name.endsWith(ext)) {
-        result.push(fullPath);
-      }
-    }
-  } catch {
-    // Skip unreadable directories
-  }
 }
 
 /**

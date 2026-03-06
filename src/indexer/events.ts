@@ -1,7 +1,6 @@
-import fs from 'fs';
-import path from 'path';
 import type { ProtoDefinition } from './proto.js';
 import type { ElixirModule } from './elixir.js';
+import { listBranchFiles, readBranchFile } from './git.js';
 
 /** A detected event relationship (producer or consumer) */
 export interface EventRelationship {
@@ -11,16 +10,16 @@ export interface EventRelationship {
   handlerModule: string | null;
 }
 
-/** Directories to skip when scanning for handler files */
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '_build',
-  'deps',
-  'vendor',
-  'dist',
-  '.git',
-  '.elixir_ls',
-]);
+/**
+ * Lib path prefixes where .ex files are expected for consumer detection.
+ * Matches: lib/, src/lib/, apps/X/lib/, src/apps/X/lib/
+ */
+const LIB_PATH_PATTERNS = [
+  /^lib\//,
+  /^src\/lib\//,
+  /^apps\/[^/]+\/lib\//,
+  /^src\/apps\/[^/]+\/lib\//,
+];
 
 /**
  * Detect event relationships (producers and consumers) for a repo.
@@ -30,6 +29,7 @@ const SKIP_DIRS = new Set([
  */
 export function detectEventRelationships(
   repoPath: string,
+  branch: string,
   protoDefinitions: ProtoDefinition[],
   _elixirModules: ElixirModule[],
 ): EventRelationship[] {
@@ -48,14 +48,14 @@ export function detectEventRelationships(
   }
 
   // Consumer detection: scan .ex files for event handler patterns
-  const consumers = detectConsumers(repoPath);
+  const consumers = detectConsumers(repoPath, branch);
   relationships.push(...consumers);
 
   return relationships;
 }
 
 /**
- * Scan .ex files for event handler patterns.
+ * Scan .ex files for event handler patterns using git branch content.
  *
  * Detects:
  * 1. handle_event/handle_message with struct pattern matching
@@ -63,9 +63,13 @@ export function detectEventRelationships(
  * 3. Kafkaesque.Consumer topics_config with topic names
  * 4. Kafkaesque decoder_config schema references
  */
-function detectConsumers(repoPath: string): EventRelationship[] {
+function detectConsumers(repoPath: string, branch: string): EventRelationship[] {
   const consumers: EventRelationship[] = [];
-  const exFiles = findExFiles(repoPath);
+
+  const allFiles = listBranchFiles(repoPath, branch);
+  const exFiles = allFiles.filter(
+    (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)),
+  );
 
   // Pattern 1: handle_event(%Struct{}) or handle_message(%Struct{})
   const handleEventRe =
@@ -89,8 +93,8 @@ function detectConsumers(repoPath: string): EventRelationship[] {
 
   for (const filePath of exFiles) {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const relativePath = path.relative(repoPath, filePath);
+      const content = readBranchFile(repoPath, branch, filePath);
+      if (!content) continue;
 
       const moduleMatch = content.match(/defmodule\s+([\w.]+)/);
       const handlerModule = moduleMatch ? moduleMatch[1] : null;
@@ -107,7 +111,7 @@ function detectConsumers(repoPath: string): EventRelationship[] {
           consumers.push({
             type: 'consumes_event',
             eventName: match[1],
-            sourceFile: relativePath,
+            sourceFile: filePath,
             handlerModule,
           });
         }
@@ -122,7 +126,7 @@ function detectConsumers(repoPath: string): EventRelationship[] {
           consumers.push({
             type: 'consumes_event',
             eventName: match[1],
-            sourceFile: relativePath,
+            sourceFile: filePath,
             handlerModule,
           });
         }
@@ -140,7 +144,7 @@ function detectConsumers(repoPath: string): EventRelationship[] {
             consumers.push({
               type: 'consumes_event',
               eventName: topic,
-              sourceFile: relativePath,
+              sourceFile: filePath,
               handlerModule,
             });
           }
@@ -158,7 +162,7 @@ function detectConsumers(repoPath: string): EventRelationship[] {
             consumers.push({
               type: 'consumes_event',
               eventName: schema,
-              sourceFile: relativePath,
+              sourceFile: filePath,
               handlerModule,
             });
           }
@@ -170,64 +174,4 @@ function detectConsumers(repoPath: string): EventRelationship[] {
   }
 
   return consumers;
-}
-
-/** Find all .ex files under lib, apps, src/lib, and src/apps directories. */
-function findExFiles(repoPath: string): string[] {
-  const files: string[] = [];
-
-  // Direct lib/ directory
-  const libDir = path.join(repoPath, 'lib');
-  if (fs.existsSync(libDir)) {
-    collectFiles(libDir, '.ex', files);
-  }
-
-  // src/lib/ directory
-  const srcLibDir = path.join(repoPath, 'src', 'lib');
-  if (fs.existsSync(srcLibDir)) {
-    collectFiles(srcLibDir, '.ex', files);
-  }
-
-  // Scan umbrella app directories: apps/ and src/apps/
-  for (const appsDir of [
-    path.join(repoPath, 'apps'),
-    path.join(repoPath, 'src', 'apps'),
-  ]) {
-    if (!fs.existsSync(appsDir)) continue;
-    try {
-      const apps = fs.readdirSync(appsDir, { withFileTypes: true });
-      for (const app of apps) {
-        if (!app.isDirectory() || SKIP_DIRS.has(app.name)) continue;
-        const appLibDir = path.join(appsDir, app.name, 'lib');
-        if (fs.existsSync(appLibDir)) {
-          collectFiles(appLibDir, '.ex', files);
-        }
-      }
-    } catch {
-      // Skip unreadable apps directory
-    }
-  }
-
-  return files;
-}
-
-/**
- * Recursively collect files with a given extension.
- */
-function collectFiles(dir: string, ext: string, result: string[]): void {
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        collectFiles(fullPath, ext, result);
-      } else if (entry.isFile() && entry.name.endsWith(ext)) {
-        result.push(fullPath);
-      }
-    }
-  } catch {
-    // Skip unreadable directories
-  }
 }

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { getCurrentCommit } from './git.js';
+import { getCurrentCommit, getBranchCommit, readBranchFile, listBranchFiles } from './git.js';
 
 /** Metadata extracted from a single repo */
 export interface RepoMetadata {
@@ -10,6 +10,7 @@ export interface RepoMetadata {
   techStack: string[];
   keyFiles: string[];
   currentCommit: string | null;
+  defaultBranch: string | null;
 }
 
 /** Key Elixir deps to detect in mix.exs */
@@ -61,15 +62,29 @@ const KEY_DIR_CANDIDATES = [
 
 /**
  * Extract metadata from a single repo.
+ * When branch is provided, reads from git branch (not working tree).
+ * When branch is null, falls back to filesystem-based reading.
  */
-export function extractMetadata(repoPath: string): RepoMetadata {
+export function extractMetadata(repoPath: string, branch?: string | null): RepoMetadata {
   const name = path.basename(repoPath);
+
+  if (branch) {
+    // Branch-aware: read from git
+    const description = extractDescriptionFromBranch(repoPath, branch);
+    const techStack = detectTechStackFromBranch(repoPath, branch);
+    const keyFiles = detectKeyFilesFromBranch(repoPath, branch);
+    const currentCommit = getBranchCommit(repoPath, branch);
+
+    return { name, path: repoPath, description, techStack, keyFiles, currentCommit, defaultBranch: branch };
+  }
+
+  // Fallback: filesystem-based (branch is null/undefined)
   const description = extractDescription(repoPath);
   const techStack = detectTechStack(repoPath);
   const keyFiles = detectKeyFiles(repoPath);
   const currentCommit = getCurrentCommit(repoPath);
 
-  return { name, path: repoPath, description, techStack, keyFiles, currentCommit };
+  return { name, path: repoPath, description, techStack, keyFiles, currentCommit, defaultBranch: branch ?? null };
 }
 
 /**
@@ -224,6 +239,102 @@ function detectKeyFiles(repoPath: string): string[] {
     const dirPath = path.join(repoPath, dir);
     if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
       keyFiles.push(`${dir}/`);
+    }
+  }
+
+  return keyFiles;
+}
+
+// ---- Branch-aware variants (read from git, not working tree) ----
+
+/**
+ * Extract description from README.md or CLAUDE.md on a git branch.
+ */
+function extractDescriptionFromBranch(repoPath: string, branch: string): string | null {
+  for (const filename of ['README.md', 'CLAUDE.md']) {
+    const content = readBranchFile(repoPath, branch, filename);
+    if (!content) continue;
+
+    const desc = parseFirstParagraph(content.slice(0, 2000));
+    if (desc) return desc;
+  }
+  return null;
+}
+
+/**
+ * Detect tech stack from project files on a git branch.
+ */
+function detectTechStackFromBranch(repoPath: string, branch: string): string[] {
+  const stack: string[] = [];
+
+  // Elixir
+  const mixContent = readBranchFile(repoPath, branch, 'mix.exs');
+  if (mixContent !== null) {
+    stack.push('elixir');
+    for (const dep of ELIXIR_KEY_DEPS) {
+      if (new RegExp(`\\{:${dep},`).test(mixContent)) {
+        stack.push(dep);
+      }
+    }
+  }
+
+  // Node.js
+  const pkgContent = readBranchFile(repoPath, branch, 'package.json');
+  if (pkgContent !== null) {
+    stack.push('node');
+    try {
+      const pkg = JSON.parse(pkgContent);
+      const allDeps: Record<string, string> = {
+        ...(pkg.dependencies || {}),
+        ...(pkg.devDependencies || {}),
+      };
+      for (const dep of NODE_KEY_DEPS) {
+        if (allDeps[dep] || allDeps[`@${dep}/core`]) {
+          stack.push(dep);
+        }
+      }
+    } catch {
+      /* corrupted package.json -- still report node */
+    }
+  }
+
+  // Ruby
+  if (readBranchFile(repoPath, branch, 'Gemfile') !== null) {
+    stack.push('ruby');
+  }
+
+  // Rust
+  if (readBranchFile(repoPath, branch, 'Cargo.toml') !== null) {
+    stack.push('rust');
+  }
+
+  // Go
+  if (readBranchFile(repoPath, branch, 'go.mod') !== null) {
+    stack.push('go');
+  }
+
+  return stack;
+}
+
+/**
+ * Detect key files and directories from a git branch tree.
+ */
+function detectKeyFilesFromBranch(repoPath: string, branch: string): string[] {
+  const branchFiles = listBranchFiles(repoPath, branch);
+  const keyFiles: string[] = [];
+
+  // Check hardcoded key files (exact match in branch tree)
+  for (const file of KEY_FILE_CANDIDATES) {
+    if (branchFiles.includes(file)) {
+      keyFiles.push(file);
+    }
+  }
+
+  // Check top-level directories (any file starting with dir/ means dir exists)
+  for (const dir of KEY_DIR_CANDIDATES) {
+    const prefix = `${dir}/`;
+    if (branchFiles.some((f) => f.startsWith(prefix))) {
+      keyFiles.push(prefix);
     }
   }
 

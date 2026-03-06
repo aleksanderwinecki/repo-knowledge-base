@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import { listBranchFiles, readBranchFile } from './git.js';
 
 /** A single proto message field */
 export interface ProtoField {
@@ -34,35 +33,24 @@ export interface ProtoDefinition {
   services: ProtoService[];
 }
 
-/** Directories to skip when scanning */
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '_build',
-  'deps',
-  'vendor',
-  'dist',
-  '.git',
-]);
-
 /** Max file size to process (500KB) */
 const MAX_FILE_SIZE = 500 * 1024;
 
 /**
- * Extract all proto definitions from a repo.
- * Scans the entire repo for .proto files.
+ * Extract all proto definitions from a repo by reading from a git branch.
+ * Scans the entire branch tree for .proto files.
  */
-export function extractProtoDefinitions(repoPath: string): ProtoDefinition[] {
-  const protoFiles = findProtoFiles(repoPath);
+export function extractProtoDefinitions(repoPath: string, branch: string): ProtoDefinition[] {
+  const allFiles = listBranchFiles(repoPath, branch);
+  const protoFiles = allFiles.filter((f) => f.endsWith('.proto'));
   const definitions: ProtoDefinition[] = [];
 
   for (const filePath of protoFiles) {
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.size > MAX_FILE_SIZE) continue;
+      const content = readBranchFile(repoPath, branch, filePath);
+      if (!content || content.length > MAX_FILE_SIZE) continue;
 
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const relativePath = path.relative(repoPath, filePath);
-      const parsed = parseProtoFile(relativePath, content);
+      const parsed = parseProtoFile(filePath, content);
       if (parsed.messages.length > 0 || parsed.services.length > 0) {
         definitions.push(parsed);
       }
@@ -72,36 +60,6 @@ export function extractProtoDefinitions(repoPath: string): ProtoDefinition[] {
   }
 
   return definitions;
-}
-
-/**
- * Find all .proto files in a repo, recursively.
- */
-function findProtoFiles(repoPath: string): string[] {
-  const files: string[] = [];
-  collectFiles(repoPath, '.proto', files);
-  return files;
-}
-
-/**
- * Recursively collect files with a given extension.
- */
-function collectFiles(dir: string, ext: string, result: string[]): void {
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        collectFiles(fullPath, ext, result);
-      } else if (entry.isFile() && entry.name.endsWith(ext)) {
-        result.push(fullPath);
-      }
-    }
-  } catch {
-    // Skip unreadable directories
-  }
 }
 
 /**

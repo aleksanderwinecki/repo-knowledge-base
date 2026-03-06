@@ -2,19 +2,30 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execSync } from 'child_process';
 import { detectEventRelationships } from '../../src/indexer/events.js';
 import type { ProtoDefinition } from '../../src/indexer/proto.js';
 import type { ElixirModule } from '../../src/indexer/elixir.js';
 
 let tmpDir: string;
 
-function setupMockRepo(files: Record<string, string>): string {
-  const repoDir = path.join(tmpDir, 'test-repo');
+function setupGitRepo(files: Record<string, string>, name = 'test-repo'): string {
+  const repoDir = path.join(tmpDir, name);
+  fs.mkdirSync(repoDir, { recursive: true });
+
+  execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
+
   for (const [filePath, content] of Object.entries(files)) {
     const fullPath = path.join(repoDir, filePath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content);
   }
+  execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+
   return repoDir;
 }
 
@@ -38,7 +49,7 @@ afterEach(() => {
 
 describe('detectEventRelationships', () => {
   it('detects producers from proto message definitions', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/handler.ex': 'defmodule MyApp.Handler do\nend',
     });
     const protos: ProtoDefinition[] = [
@@ -50,7 +61,7 @@ describe('detectEventRelationships', () => {
       }),
     ];
 
-    const rels = detectEventRelationships(repoDir, protos, []);
+    const rels = detectEventRelationships(repoDir, 'main', protos, []);
     const producers = rels.filter((r) => r.type === 'produces_event');
     expect(producers).toHaveLength(2);
     expect(producers[0].eventName).toBe('BookingCreated');
@@ -58,7 +69,7 @@ describe('detectEventRelationships', () => {
   });
 
   it('detects consumers from handle_event patterns', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/handler.ex': `
 defmodule MyApp.BookingHandler do
   def handle_event(%BookingCreated{} = event) do
@@ -72,7 +83,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(2);
     expect(consumers[0].eventName).toBe('BookingCreated');
@@ -81,7 +92,7 @@ end
   });
 
   it('detects consumers from handle_message patterns', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/consumer.ex': `
 defmodule MyApp.Consumer do
   def handle_message(%BookingUpdated{} = msg) do
@@ -91,14 +102,14 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(1);
     expect(consumers[0].eventName).toBe('BookingUpdated');
   });
 
   it('detects both producers and consumers in same repo', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/handler.ex': `
 defmodule MyApp.Handler do
   def handle_event(%ExternalEvent{} = event) do
@@ -114,7 +125,7 @@ end
       }),
     ];
 
-    const rels = detectEventRelationships(repoDir, protos, []);
+    const rels = detectEventRelationships(repoDir, 'main', protos, []);
     const producers = rels.filter((r) => r.type === 'produces_event');
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(producers).toHaveLength(1);
@@ -124,7 +135,7 @@ end
   });
 
   it('returns empty when no proto messages and no handlers', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/plain.ex': `
 defmodule MyApp.Plain do
   def hello, do: :world
@@ -132,21 +143,21 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     expect(rels).toHaveLength(0);
   });
 
   it('returns empty when repo has no lib/ directory', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'README.md': '# Hello',
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     expect(rels).toHaveLength(0);
   });
 
   it('scans umbrella apps for consumers', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'apps/booking/lib/handler.ex': `
 defmodule Booking.Handler do
   def handle_event(%BookingCreated{} = e) do
@@ -163,7 +174,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(2);
     const eventNames = consumers.map((c) => c.eventName).sort();
@@ -171,7 +182,7 @@ end
   });
 
   it('includes source file in relationship', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/deep/nested/handler.ex': `
 defmodule MyApp.Deep.Handler do
   def handle_event(%SomeEvent{} = e), do: :ok
@@ -179,12 +190,12 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     expect(rels[0].sourceFile).toContain('deep/nested/handler.ex');
   });
 
   it('handles namespaced event types', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/handler.ex': `
 defmodule MyApp.Handler do
   def handle_event(%Booking.Events.BookingCreated{} = e), do: :ok
@@ -192,13 +203,13 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     expect(rels).toHaveLength(1);
     expect(rels[0].eventName).toBe('Booking.Events.BookingCreated');
   });
 
   it('detects consumers from handle_decoded_message patterns (Kafkaesque)', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/consumer.ex': `
 defmodule MyApp.Consumer do
   use Kafkaesque.Consumer,
@@ -214,14 +225,14 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const eventNames = consumers.map((c) => c.eventName);
     expect(eventNames).toContain('Events.Booking.BookingEnvelope');
   });
 
   it('detects Kafkaesque topics_config topic names', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/consumer.ex': `
 defmodule MyApp.KafkaConsumer do
   use Kafkaesque.Consumer,
@@ -248,7 +259,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const eventNames = consumers.map((c) => c.eventName);
     expect(eventNames).toContain('partners.employee-events-v2');
@@ -258,7 +269,7 @@ end
   });
 
   it('detects consumers from src/apps/ umbrella structure', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'src/apps/notifications/lib/consumer.ex': `
 defmodule Notifications.Consumer do
   use Kafkaesque.Consumer,
@@ -273,7 +284,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers.length).toBeGreaterThan(0);
     const eventNames = consumers.map((c) => c.eventName);
@@ -282,7 +293,7 @@ end
   });
 
   it('does not extract topics from non-Kafkaesque files', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/config.ex': `
 defmodule MyApp.Config do
   @config %{
@@ -294,12 +305,12 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     expect(rels).toHaveLength(0);
   });
 
   it('deduplicates consumer events within the same file', () => {
-    const repoDir = setupMockRepo({
+    const repoDir = setupGitRepo({
       'lib/consumer.ex': `
 defmodule MyApp.Consumer do
   use Kafkaesque.Consumer,
@@ -314,82 +325,17 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, [], []);
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const schemaCount = consumers.filter((c) => c.eventName === 'Events.V1.Payload').length;
     // schema: reference and handle_decoded_message struct share the same name
     // but use different dedup keys (schema: vs decoded:), so both appear
-    // That's fine — they're detected via different patterns
+    // That's fine -- they're detected via different patterns
     expect(schemaCount).toBeLessThanOrEqual(2);
   });
 
-  it('skips node_modules and _build directories', () => {
-    const repoDir = setupMockRepo({
-      'lib/real.ex': `
-defmodule MyApp.Real do
-  def handle_event(%RealEvent{} = e), do: :ok
-end
-`,
-      'node_modules/pkg/lib/fake.ex': `
-defmodule Fake do
-  def handle_event(%FakeEvent{} = e), do: :ok
-end
-`,
-      '_build/dev/lib/fake.ex': `
-defmodule BuildFake do
-  def handle_event(%BuildFakeEvent{} = e), do: :ok
-end
-`,
-    });
-
-    const rels = detectEventRelationships(repoDir, [], []);
-    const consumers = rels.filter((r) => r.type === 'consumes_event');
-    expect(consumers).toHaveLength(1);
-    expect(consumers[0].eventName).toBe('RealEvent');
-  });
-});
-
-describe('detectEventRelationships (branch-aware)', () => {
-  function setupGitEventRepo(files: Record<string, string>): string {
-    const repoDir = path.join(tmpDir, 'git-event-repo');
-    fs.mkdirSync(repoDir, { recursive: true });
-
-    const { execSync } = require('child_process');
-    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
-    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
-    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
-    execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
-
-    for (const [filePath, content] of Object.entries(files)) {
-      const fullPath = path.join(repoDir, filePath);
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-      fs.writeFileSync(fullPath, content);
-    }
-    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
-    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
-
-    return repoDir;
-  }
-
-  it('detects consumers from branch via handle_event', () => {
-    const repoDir = setupGitEventRepo({
-      'lib/handler.ex': `
-defmodule MyApp.Handler do
-  def handle_event(%BookingCreated{} = event) do
-    :ok
-  end
-end
-`,
-    });
-
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
-    const consumers = rels.filter((r) => r.type === 'consumes_event');
-    expect(consumers).toHaveLength(1);
-    expect(consumers[0].eventName).toBe('BookingCreated');
-  });
-
-  it('reads consumer files from main branch, ignoring feature branch', () => {
-    const repoDir = setupGitEventRepo({
+  it('reads from main branch, ignoring feature branch consumers', () => {
+    const repoDir = setupGitRepo({
       'lib/main_handler.ex': `
 defmodule MyApp.MainHandler do
   def handle_event(%MainEvent{} = e), do: :ok
@@ -397,7 +343,6 @@ end
 `,
     });
 
-    const { execSync } = require('child_process');
     execSync('git checkout -b feature/new', { cwd: repoDir, stdio: 'pipe' });
     fs.writeFileSync(
       path.join(repoDir, 'lib', 'feature_handler.ex'),
