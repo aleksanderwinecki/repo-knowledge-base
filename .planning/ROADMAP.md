@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Indexing Pipeline** - Repo scanning, metadata extraction, proto/event parsing, error isolation
 - [x] **Phase 3: Search** - Full-text search, structured entity queries, dependency queries with contextual results (completed 2026-03-05)
 - [x] **Phase 4: CLI + MCP + Knowledge** - CLI tool, manual knowledge injection, relationship graph queries (completed 2026-03-05)
-- [ ] **Phase 5: MCP Server** - Standalone MCP server with search tools, auto-sync, and data hygiene
+- [x] **Phase 5: MCP Server** - Standalone MCP server with search tools, auto-sync, and data hygiene (completed 2026-03-06)
 
 ## Phase Details
 
@@ -93,8 +93,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Response formatting, auto-sync, and data hygiene utility modules
-- [ ] 05-02-PLAN.md — MCP server entry point, 7 tool registrations, and installation wiring
+- [x] 05-01-PLAN.md — Response formatting, auto-sync, and data hygiene utility modules
+- [x] 05-02-PLAN.md — MCP server entry point, 7 tool registrations, and installation wiring
 
 ## Progress
 
@@ -107,4 +107,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
 | 3. Search | 1/1 | Complete | 2026-03-05 |
 | 4. CLI + Knowledge | 2/2 | Complete | 2026-03-05 |
-| 5. MCP Server | 0/2 | In Progress | - |
+| 5. MCP Server | 2/2 | Complete | 2026-03-06 |
