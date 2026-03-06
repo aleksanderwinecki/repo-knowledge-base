@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
-status: Defining requirements
+status: Ready to plan
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: 2026-03-06 -- Milestone v1.1 started
+last_activity: 2026-03-06 -- Roadmap created for v1.1 (phases 6-9)
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Defining requirements for v1.1 Improved Reindexing
+**Current focus:** Phase 6 -- Branch-Aware Tracking & Schema Migration
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-06 — Milestone v1.1 started
+Phase: 6 of 9 (Branch-Aware Tracking & Schema Migration) -- first phase of v1.1
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-06 -- Roadmap created for v1.1 milestone
+
+Progress: [##########..........] 56% (5/9 phases, v1.0 complete)
+
+## Performance Metrics
+
+**Velocity (v1.0):**
+- Total plans completed: 8
+- Total execution time: ~18 hours
+
+**By Phase (v1.0):**
+
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 1. Storage Foundation | 1 | Complete |
+| 2. Indexing Pipeline | 2 | Complete |
+| 3. Search | 1 | Complete |
+| 4. CLI + Knowledge | 2 | Complete |
+| 5. MCP Server | 2 | Complete |
 
 ## Accumulated Context
 
@@ -36,16 +54,22 @@ Last activity: 2026-03-06 — Milestone v1.1 started
 
 See PROJECT.md Key Decisions table for full log.
 
+Recent decisions affecting current work:
+- v1.1: No worker_threads -- p-limit + Promise.all sufficient; SQLite can't share connections across threads
+- v1.1: No AST parsing -- regex sufficient for well-structured Elixir/proto/GraphQL macros
+- v1.1: EventCatalog via filesystem parsing, not HTTP API (SDK is file-based)
+
 ### Pending Todos
 
-- Track only main/master branch for indexing (indexer)
+None.
 
 ### Blockers/Concerns
 
-- sqlite-vec platform compatibility on macOS ARM64 — track for v2 embeddings
+- Cross-repo edge stability model needs design decision during Phase 7 planning (3 approaches identified in research)
+- EventCatalog frontmatter fields may vary between v2/v3 -- validate against actual catalog repo during Phase 8
 
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: null
+Stopped at: Roadmap created, ready to plan Phase 6
 Resume file: None

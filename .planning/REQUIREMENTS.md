@@ -28,40 +28,40 @@
 
 - **OWN-01**: CODEOWNERS file parsed per repo, mapping glob patterns to team handles
 - **OWN-02**: Each entity (module, event, service) matched against CODEOWNERS patterns to derive owning team(s)
-- **OWN-03**: Ownership queryable — "who owns X?" and "what does team Y own?"
+- **OWN-03**: Ownership queryable -- "who owns X?" and "what does team Y own?"
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Embedding-based semantic search | Deferred to v2 — FTS5 sufficient for current scale |
-| Auto-learn patterns from tasks | Deferred to v2 — intelligence layer |
-| Cross-repo impact analysis | Deferred to v2 — requires stable extractor coverage first |
+| Embedding-based semantic search | Deferred to v2 -- FTS5 sufficient for current scale |
+| Auto-learn patterns from tasks | Deferred to v2 -- intelligence layer |
+| Cross-repo impact analysis | Deferred to v2 -- requires stable extractor coverage first |
 | worker_threads parallelism | p-limit + Promise.all sufficient; SQLite can't share connections across threads |
 | AST-based parsing | Regex sufficient for well-structured Elixir/proto/GraphQL macros |
-| EventCatalog HTTP API | Doesn't exist — SDK is filesystem-based, use direct file parsing |
+| EventCatalog HTTP API | Doesn't exist -- SDK is filesystem-based, use direct file parsing |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| IDX2-01 | TBD | Pending |
-| IDX2-02 | TBD | Pending |
-| IDX2-03 | TBD | Pending |
-| IDX2-04 | TBD | Pending |
-| IDX2-05 | TBD | Pending |
-| EXT-01 | TBD | Pending |
-| EXT-02 | TBD | Pending |
-| EXT-03 | TBD | Pending |
-| EXT-04 | TBD | Pending |
-| EXT-05 | TBD | Pending |
-| EXT-06 | TBD | Pending |
+| IDX2-01 | Phase 6 | Pending |
+| IDX2-02 | Phase 7 | Pending |
+| IDX2-03 | Phase 7 | Pending |
+| IDX2-04 | Phase 9 | Pending |
+| IDX2-05 | Phase 6 | Pending |
+| EXT-01 | Phase 8 | Pending |
+| EXT-02 | Phase 8 | Pending |
+| EXT-03 | Phase 8 | Pending |
+| EXT-04 | Phase 8 | Pending |
+| EXT-05 | Phase 8 | Pending |
+| EXT-06 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-06 after initial definition*
+*Last updated: 2026-03-06 after roadmap creation*
