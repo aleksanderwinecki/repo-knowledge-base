@@ -10,6 +10,8 @@ export interface ElixirModule {
   tableName: string | null;
   schemaFields: { name: string; type: string }[];
   associations: { kind: string; name: string; target: string }[];
+  absintheTypes: { kind: string; name: string }[];
+  grpcStubs: string[];
 }
 
 /** Max file size to process (500KB) */
@@ -83,6 +85,8 @@ export function parseElixirFile(
     const functions = extractPublicFunctions(moduleContent);
     const tableName = extractSchemaTable(moduleContent);
     const { schemaFields, associations } = extractSchemaDetails(moduleContent);
+    const absintheTypes = extractAbsintheTypes(moduleContent);
+    const grpcStubs = extractGrpcStubs(moduleContent);
     const type = tableName ? 'schema' : classifyModule(name);
 
     modules.push({
@@ -94,6 +98,8 @@ export function parseElixirFile(
       tableName,
       schemaFields,
       associations,
+      absintheTypes,
+      grpcStubs,
     });
   }
 
@@ -209,6 +215,55 @@ function extractSchemaDetails(
 function extractSchemaTable(content: string): string | null {
   const match = content.match(/schema\s+"(\w+)"/);
   return match ? match[1] : null;
+}
+
+/**
+ * Extract Absinthe GraphQL macro definitions from module content.
+ * Detects object, input_object, query, and mutation macros.
+ */
+function extractAbsintheTypes(moduleContent: string): { kind: string; name: string }[] {
+  const types: { kind: string; name: string }[] = [];
+
+  // Named macros: object :name do, input_object :name do
+  const namedRe = /(object|input_object)\s+:(\w+)\s+do\b/g;
+  let m;
+  while ((m = namedRe.exec(moduleContent)) !== null) {
+    types.push({ kind: m[1], name: m[2] });
+  }
+
+  // Root macros: query do, mutation do (no atom name)
+  const rootRe = /(query|mutation)\s+do\b/g;
+  while ((m = rootRe.exec(moduleContent)) !== null) {
+    types.push({ kind: m[1], name: m[1] });
+  }
+
+  return types;
+}
+
+/**
+ * Extract gRPC stub references from module content.
+ * Pattern 1: use RpcClient.Client/MockableRpcClient with stub: keyword
+ * Pattern 2: direct ServiceName.Stub.method_name() calls
+ * Returns deduplicated stub module names.
+ */
+function extractGrpcStubs(moduleContent: string): string[] {
+  const stubs = new Set<string>();
+
+  // Pattern 1: use RpcClient.Client, ... stub: Module.Stub
+  // The use statement may span multiple lines, so we search for stub: after RpcClient
+  const rpcClientRe = /use\s+RpcClient\.(?:Client|MockableRpcClient)[\s\S]*?stub:\s*(\w+(?:\.\w+)*)/g;
+  let m;
+  while ((m = rpcClientRe.exec(moduleContent)) !== null) {
+    stubs.add(m[1]);
+  }
+
+  // Pattern 2: ServiceName.Stub.method_name(
+  const stubCallRe = /(\w+(?:\.\w+)*)\.Stub\.(\w+)\s*\(/g;
+  while ((m = stubCallRe.exec(moduleContent)) !== null) {
+    stubs.add(`${m[1]}.Stub`);
+  }
+
+  return Array.from(stubs);
 }
 
 /**
