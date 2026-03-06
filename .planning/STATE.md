@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-06T13:07:50Z"
-last_activity: 2026-03-06 -- Completed plan 06-01 (schema v3 + branch-aware git)
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-06T13:18:02Z"
+last_activity: 2026-03-06 -- Completed plan 06-02 (branch-aware indexing pipeline)
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 61
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 6 of 9 (Branch-Aware Tracking & Schema Migration) -- first phase of v1.1
-Plan: 2 of 2
-Status: Executing (plan 01 complete)
-Last activity: 2026-03-06 -- Completed plan 06-01 (schema v3 + branch-aware git)
+Plan: 2 of 2 (COMPLETE)
+Status: Phase 6 complete
+Last activity: 2026-03-06 -- Completed plan 06-02 (branch-aware indexing pipeline)
 
-Progress: [############........] 61% (5/9 phases complete, 1/2 plans in phase 6)
+Progress: [#############.......] 67% (6/9 phases complete, 2/2 plans in phase 6)
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ Progress: [############........] 61% (5/9 phases complete, 1/2 plans in phase 6)
 
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
-| 6. Branch-Aware Tracking | 2 | 1 | In Progress |
+| 6. Branch-Aware Tracking | 2 | 2 | Complete |
 
 ## Accumulated Context
 
@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - v1.1: EventCatalog via filesystem parsing, not HTTP API (SDK is file-based)
 - Phase 6-01: Fixed runMigrations to respect toVersion parameter (was silently ignored)
 - Phase 6-01: readBranchFile uses maxBuffer 500KB matching existing MAX_FILE_SIZE; listBranchFiles uses 10MB
+- Phase 6-02: Extractors use shared LIB_PATH_PATTERNS regex for lib path matching via branch file lists
+- Phase 6-02: indexSingleRepo auto-resolves branch when called directly for backward compat
+- Phase 6-02: events.ts sourceFile uses branch-relative paths from listBranchFiles
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T13:07:50Z
-Stopped at: Completed 06-01-PLAN.md
-Resume file: .planning/phases/06-branch-aware-tracking-schema-migration/06-01-SUMMARY.md
+Last session: 2026-03-06T13:18:02Z
+Stopped at: Completed 06-02-PLAN.md (Phase 6 complete)
+Resume file: .planning/phases/06-branch-aware-tracking-schema-migration/06-02-SUMMARY.md
