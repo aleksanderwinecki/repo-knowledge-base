@@ -16,11 +16,11 @@
 ### Extractors
 
 - [x] **EXT-01**: gRPC service definitions from `.proto` files persisted to services table (already parsed, needs wiring)
-- [ ] **EXT-02**: Ecto schema fields, associations (`belongs_to`, `has_many`), and table names extracted from `.ex` files
+- [x] **EXT-02**: Ecto schema fields, associations (`belongs_to`, `has_many`), and table names extracted from `.ex` files
 - [x] **EXT-03**: GraphQL types, queries, and mutations extracted from `.graphql` SDL files
-- [ ] **EXT-04**: Absinthe macro definitions (`object`, `field`, `query`, `mutation`) extracted from `.ex` files
+- [x] **EXT-04**: Absinthe macro definitions (`object`, `field`, `query`, `mutation`) extracted from `.ex` files
 - [ ] **EXT-05**: Event Catalog data (event descriptions, team ownership, domain assignments) integrated from local catalog repo
-- [ ] **EXT-06**: gRPC client call patterns detected to create `calls_grpc` edges between services
+- [x] **EXT-06**: gRPC client call patterns detected to create `calls_grpc` edges between services
 
 ## v1.2 Requirements
 
@@ -51,11 +51,11 @@
 | IDX2-04 | Phase 9 | Pending |
 | IDX2-05 | Phase 6 | Complete |
 | EXT-01 | Phase 8 | Complete |
-| EXT-02 | Phase 8 | Pending |
+| EXT-02 | Phase 8 | Complete |
 | EXT-03 | Phase 8 | Complete |
-| EXT-04 | Phase 8 | Pending |
+| EXT-04 | Phase 8 | Complete |
 | EXT-05 | Phase 8 | Pending |
-| EXT-06 | Phase 8 | Pending |
+| EXT-06 | Phase 8 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 11 total

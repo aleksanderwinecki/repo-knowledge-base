@@ -55,7 +55,7 @@ Progress: [################----] 80% (8/9 phases in progress)
 | 6. Branch-Aware Tracking | 2 | 2 | Complete |
 | 7. Surgical File-Level Indexing | 2 | 2 | Complete |
 | 8. New Extractors | 3 | 2 | In Progress |
-| Phase 08 P02 | 3min | 2 tasks | 4 files |
+| Phase 08 P01 | 3min | 2 tasks | 2 files |
 | Phase 08 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
