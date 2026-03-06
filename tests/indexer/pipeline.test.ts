@@ -777,3 +777,366 @@ end
     expect(edgesAfterSurgical.cnt).toBe(edgesAfterFull.cnt);
   });
 });
+
+describe('new extractor wiring', () => {
+  function ensureMainBranch(repoDir: string): void {
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+  }
+
+  it('persists gRPC services from proto definitions to services table', () => {
+    const repoDir = createGitRepo('grpc-service', {
+      'mix.exs': 'defmodule GrpcService.MixProject do\nend',
+      'proto/booking.proto': `
+syntax = "proto3";
+package booking.v1;
+
+service BookingService {
+  rpc CreateBooking (CreateBookingRequest) returns (CreateBookingResponse);
+  rpc CancelBooking (CancelBookingRequest) returns (CancelBookingResponse);
+}
+
+message CreateBookingRequest { string id = 1; }
+message CreateBookingResponse { string id = 1; }
+message CancelBookingRequest { string id = 1; }
+message CancelBookingResponse { string id = 1; }
+`,
+    });
+
+    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    expect(stats.services).toBeGreaterThan(0);
+
+    const services = db
+      .prepare("SELECT name, description, service_type FROM services WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('grpc-service') as { name: string; description: string | null; service_type: string }[];
+    expect(services).toHaveLength(1);
+    expect(services[0].name).toBe('BookingService');
+    expect(services[0].service_type).toBe('grpc');
+    expect(services[0].description).toContain('CreateBooking');
+    expect(services[0].description).toContain('CancelBooking');
+  });
+
+  it('creates modules from GraphQL SDL files with graphql_ type prefix', () => {
+    const repoDir = createGitRepo('graphql-service', {
+      'mix.exs': 'defmodule GraphqlService.MixProject do\nend',
+      'schema.graphql': `
+type Booking {
+  id: ID!
+  guestName: String!
+}
+
+input CreateBookingInput {
+  guestName: String!
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+`,
+    });
+
+    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    expect(stats.graphqlTypes).toBeGreaterThan(0);
+
+    const modules = db
+      .prepare("SELECT name, type FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'graphql_%'")
+      .all('graphql-service') as { name: string; type: string }[];
+    expect(modules).toHaveLength(3);
+    const types = modules.map(m => m.type).sort();
+    expect(types).toEqual(['graphql_enum', 'graphql_input', 'graphql_type']);
+    const names = modules.map(m => m.name).sort();
+    expect(names).toEqual(['Booking', 'BookingStatus', 'CreateBookingInput']);
+  });
+
+  it('populates modules.table_name and modules.schema_fields for Ecto schemas', () => {
+    const repoDir = createGitRepo('ecto-service', {
+      'mix.exs': 'defmodule EctoService.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule EctoService.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :guest_name, :string
+    field :status, :string
+    belongs_to :user, EctoService.User
+    timestamps()
+  end
+end
+`,
+    });
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const mod = db
+      .prepare("SELECT name, table_name, schema_fields FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND table_name IS NOT NULL")
+      .get('ecto-service') as { name: string; table_name: string; schema_fields: string } | undefined;
+    expect(mod).toBeDefined();
+    expect(mod!.table_name).toBe('bookings');
+    expect(mod!.schema_fields).toBeTruthy();
+    const fields = JSON.parse(mod!.schema_fields);
+    expect(fields).toContainEqual({ name: 'guest_name', type: 'string' });
+    expect(fields).toContainEqual({ name: 'status', type: 'string' });
+  });
+
+  it('creates Absinthe type modules with absinthe_ type prefix', () => {
+    const repoDir = createGitRepo('absinthe-service', {
+      'mix.exs': 'defmodule AbsintheService.MixProject do\nend',
+      'lib/schema.ex': `
+defmodule AbsintheService.Schema do
+  use Absinthe.Schema
+
+  query do
+    field :bookings, list_of(:booking) do
+      resolve(&AbsintheService.Resolvers.list_bookings/3)
+    end
+  end
+
+  object :booking do
+    field :id, :id
+    field :guest_name, :string
+  end
+
+  input_object :booking_input do
+    field :guest_name, non_null(:string)
+  end
+end
+`,
+    });
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const modules = db
+      .prepare("SELECT name, type FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'absinthe_%'")
+      .all('absinthe-service') as { name: string; type: string }[];
+    expect(modules.length).toBeGreaterThanOrEqual(3);
+    const types = modules.map(m => m.type).sort();
+    expect(types).toContain('absinthe_object');
+    expect(types).toContain('absinthe_input_object');
+    expect(types).toContain('absinthe_query');
+  });
+
+  it('creates calls_grpc edges from repo to services when gRPC stubs detected', () => {
+    const repoDir = createGitRepo('grpc-caller', {
+      'mix.exs': 'defmodule GrpcCaller.MixProject do\nend',
+      'proto/booking.proto': `
+syntax = "proto3";
+service BookingService {
+  rpc CreateBooking (CreateBookingRequest) returns (CreateBookingResponse);
+}
+message CreateBookingRequest { string id = 1; }
+message CreateBookingResponse { string id = 1; }
+`,
+      'lib/client.ex': `
+defmodule GrpcCaller.BookingClient do
+  use RpcClient.Client,
+    service: Rpc.Booking.V1.BookingService,
+    stub: Rpc.Booking.V1.BookingService.Stub
+end
+`,
+    });
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const edges = db
+      .prepare("SELECT relationship_type FROM edges WHERE relationship_type = 'calls_grpc'")
+      .all() as { relationship_type: string }[];
+    expect(edges.length).toBeGreaterThan(0);
+  });
+
+  it('creates Ecto association edges between modules', () => {
+    const repoDir = createGitRepo('ecto-assoc', {
+      'mix.exs': 'defmodule EctoAssoc.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule EctoAssoc.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :title, :string
+    belongs_to :user, EctoAssoc.User
+    has_many :items, EctoAssoc.Item
+  end
+end
+`,
+      'lib/user.ex': `
+defmodule EctoAssoc.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+    has_many :bookings, EctoAssoc.Booking
+  end
+end
+`,
+      'lib/item.ex': `
+defmodule EctoAssoc.Item do
+  use Ecto.Schema
+
+  schema "items" do
+    field :label, :string
+    belongs_to :booking, EctoAssoc.Booking
+  end
+end
+`,
+    });
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const edges = db
+      .prepare("SELECT relationship_type, source_type, target_type FROM edges WHERE relationship_type IN ('belongs_to', 'has_many', 'has_one', 'many_to_many')")
+      .all() as { relationship_type: string; source_type: string; target_type: string }[];
+    expect(edges.length).toBeGreaterThanOrEqual(3);
+    expect(edges.every(e => e.source_type === 'module' && e.target_type === 'module')).toBe(true);
+
+    // Check specific belongs_to edge: Booking -> User
+    const belongsToEdges = edges.filter(e => e.relationship_type === 'belongs_to');
+    expect(belongsToEdges.length).toBeGreaterThan(0);
+  });
+
+  it('surgical mode includes services in wipe-and-reinsert', () => {
+    const repoDir = createGitRepo('surgical-svc', {
+      'mix.exs': 'defmodule SurgicalSvc.MixProject do\nend',
+      'proto/svc.proto': `
+syntax = "proto3";
+service TestService {
+  rpc DoThing (DoThingRequest) returns (DoThingResponse);
+}
+message DoThingRequest { string id = 1; }
+message DoThingResponse { string id = 1; }
+`,
+      'lib/handler.ex': `
+defmodule SurgicalSvc.Handler do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Verify service exists
+    const servicesBefore = db
+      .prepare("SELECT name FROM services WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('surgical-svc') as { name: string }[];
+    expect(servicesBefore).toHaveLength(1);
+
+    // Modify handler only and commit
+    fs.writeFileSync(path.join(repoDir, 'lib', 'handler.ex'), `
+defmodule SurgicalSvc.Handler do
+  @moduledoc "Updated"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update handler"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Surgical re-index
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // Services should survive surgical mode (wipe-and-reinsert)
+    const servicesAfter = db
+      .prepare("SELECT name FROM services WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('surgical-svc') as { name: string }[];
+    expect(servicesAfter).toHaveLength(1);
+    expect(servicesAfter[0].name).toBe('TestService');
+  });
+
+  it('surgical mode handles GraphQL modules', () => {
+    const repoDir = createGitRepo('surgical-gql', {
+      'mix.exs': 'defmodule SurgicalGql.MixProject do\nend',
+      'schema.graphql': `
+type Booking {
+  id: ID!
+}
+`,
+      'lib/mod.ex': `
+defmodule SurgicalGql.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const gqlModsBefore = db
+      .prepare("SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'graphql_%'")
+      .all('surgical-gql') as { name: string }[];
+    expect(gqlModsBefore).toHaveLength(1);
+
+    // Modify Elixir module only
+    fs.writeFileSync(path.join(repoDir, 'lib', 'mod.ex'), `
+defmodule SurgicalGql.Mod do
+  @moduledoc "Updated"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update mod"', { cwd: repoDir, stdio: 'pipe' });
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // GraphQL modules should survive (unchanged file not in changedSet)
+    const gqlModsAfter = db
+      .prepare("SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'graphql_%'")
+      .all('surgical-gql') as { name: string }[];
+    expect(gqlModsAfter).toHaveLength(1);
+  });
+
+  it('surgical mode handles Ecto fields', () => {
+    const repoDir = createGitRepo('surgical-ecto', {
+      'mix.exs': 'defmodule SurgicalEcto.MixProject do\nend',
+      'lib/schema.ex': `
+defmodule SurgicalEcto.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :title, :string
+  end
+end
+`,
+      'lib/other.ex': `
+defmodule SurgicalEcto.Other do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const ectoBefore = db
+      .prepare("SELECT table_name, schema_fields FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND table_name IS NOT NULL")
+      .get('surgical-ecto') as { table_name: string; schema_fields: string } | undefined;
+    expect(ectoBefore).toBeDefined();
+    expect(ectoBefore!.table_name).toBe('bookings');
+
+    // Modify other file only
+    fs.writeFileSync(path.join(repoDir, 'lib', 'other.ex'), `
+defmodule SurgicalEcto.Other do
+  @moduledoc "Updated"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update other"', { cwd: repoDir, stdio: 'pipe' });
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // Ecto schema should survive with table_name and schema_fields
+    const ectoAfter = db
+      .prepare("SELECT table_name, schema_fields FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND table_name IS NOT NULL")
+      .get('surgical-ecto') as { table_name: string; schema_fields: string } | undefined;
+    expect(ectoAfter).toBeDefined();
+    expect(ectoAfter!.table_name).toBe('bookings');
+    expect(ectoAfter!.schema_fields).toBeTruthy();
+  });
+});
