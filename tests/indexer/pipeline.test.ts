@@ -388,3 +388,392 @@ describe('indexAllRepos', () => {
     expect(results[0].skipReason).toBe('no new commits');
   });
 });
+
+describe('surgical indexing', () => {
+  /**
+   * Helper: get default branch name for a repo (main or master).
+   */
+  function getDefaultBranch(repoDir: string): string {
+    try {
+      execSync('git rev-parse --verify refs/heads/main', { cwd: repoDir, stdio: 'pipe' });
+      return 'main';
+    } catch {
+      return 'master';
+    }
+  }
+
+  /**
+   * Helper: ensure repo uses 'main' as default branch.
+   */
+  function ensureMainBranch(repoDir: string): void {
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+  }
+
+  it('uses surgical mode when a single file is modified', () => {
+    const repoDir = createGitRepo('surgical-modify', {
+      'mix.exs': 'defmodule SurgicalModify.MixProject do\nend',
+      'lib/alpha.ex': `
+defmodule SurgicalModify.Alpha do
+  @moduledoc "Alpha module"
+  def run, do: :ok
+end
+`,
+      'lib/beta.ex': `
+defmodule SurgicalModify.Beta do
+  @moduledoc "Beta module"
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    const firstResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    expect(firstResult.mode).toBe('full');
+    expect(firstResult.modules).toBe(2);
+
+    // Modify one file and commit on main
+    fs.writeFileSync(path.join(repoDir, 'lib', 'alpha.ex'), `
+defmodule SurgicalModify.AlphaRenamed do
+  @moduledoc "Alpha renamed"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "rename alpha"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Re-index without force -> should use surgical mode
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // Beta should survive untouched, Alpha should be renamed
+    const modules = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
+      .all('surgical-modify') as { name: string }[];
+    const names = modules.map(m => m.name).sort();
+    expect(names).toEqual(['SurgicalModify.AlphaRenamed', 'SurgicalModify.Beta']);
+  });
+
+  it('uses surgical mode when a file is added', () => {
+    const repoDir = createGitRepo('surgical-add', {
+      'mix.exs': 'defmodule SurgicalAdd.MixProject do\nend',
+      'lib/existing.ex': `
+defmodule SurgicalAdd.Existing do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Add new file and commit
+    fs.writeFileSync(path.join(repoDir, 'lib', 'new_mod.ex'), `
+defmodule SurgicalAdd.NewMod do
+  @moduledoc "New module"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "add new"', { cwd: repoDir, stdio: 'pipe' });
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    const modules = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
+      .all('surgical-add') as { name: string }[];
+    expect(modules).toHaveLength(2);
+    const names = modules.map(m => m.name).sort();
+    expect(names).toEqual(['SurgicalAdd.Existing', 'SurgicalAdd.NewMod']);
+  });
+
+  it('uses surgical mode when a file is deleted', () => {
+    const repoDir = createGitRepo('surgical-delete', {
+      'mix.exs': 'defmodule SurgicalDelete.MixProject do\nend',
+      'lib/keep.ex': `
+defmodule SurgicalDelete.Keep do
+  def run, do: :ok
+end
+`,
+      'lib/remove.ex': `
+defmodule SurgicalDelete.Remove do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const modulesBefore = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
+      .all('surgical-delete') as { name: string }[];
+    expect(modulesBefore).toHaveLength(2);
+
+    // Delete one file and commit
+    fs.unlinkSync(path.join(repoDir, 'lib', 'remove.ex'));
+    execSync('git add -A && git commit -m "remove file"', { cwd: repoDir, stdio: 'pipe' });
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    const modulesAfter = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
+      .all('surgical-delete') as { name: string }[];
+    expect(modulesAfter).toHaveLength(1);
+    expect(modulesAfter[0].name).toBe('SurgicalDelete.Keep');
+  });
+
+  it('produces identical results to full re-index (equivalence)', () => {
+    const repoDir = createGitRepo('surgical-equiv', {
+      'mix.exs': 'defmodule SurgicalEquiv.MixProject do\nend',
+      'lib/mod_a.ex': `
+defmodule SurgicalEquiv.ModA do
+  @moduledoc "Module A"
+  def run, do: :ok
+end
+`,
+      'lib/mod_b.ex': `
+defmodule SurgicalEquiv.ModB do
+  @moduledoc "Module B"
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Modify one file
+    fs.writeFileSync(path.join(repoDir, 'lib', 'mod_a.ex'), `
+defmodule SurgicalEquiv.ModAv2 do
+  @moduledoc "Module A v2"
+  def run, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update mod_a"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Surgical re-index
+    const surgicalResult = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(surgicalResult.mode).toBe('surgical');
+
+    // Snapshot surgical state
+    const surgicalModules = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) ORDER BY name')
+      .all('surgical-equiv') as { name: string }[];
+    const surgicalEvents = db
+      .prepare('SELECT name FROM events WHERE repo_id = (SELECT id FROM repos WHERE name = ?) ORDER BY name')
+      .all('surgical-equiv') as { name: string }[];
+
+    // Full re-index
+    const fullResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    expect(fullResult.mode).toBe('full');
+
+    // Snapshot full state
+    const fullModules = db
+      .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) ORDER BY name')
+      .all('surgical-equiv') as { name: string }[];
+    const fullEvents = db
+      .prepare('SELECT name FROM events WHERE repo_id = (SELECT id FROM repos WHERE name = ?) ORDER BY name')
+      .all('surgical-equiv') as { name: string }[];
+
+    // Compare
+    expect(surgicalModules).toEqual(fullModules);
+    expect(surgicalEvents).toEqual(fullEvents);
+  });
+
+  it('falls back to full mode for unreachable commit', () => {
+    const repoDir = createGitRepo('surgical-unreachable', {
+      'mix.exs': 'defmodule SurgicalUnreachable.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SurgicalUnreachable.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Overwrite last_indexed_commit with a fake SHA
+    db.prepare("UPDATE repos SET last_indexed_commit = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' WHERE name = 'surgical-unreachable'").run();
+
+    // Make a new commit so it doesn't skip
+    fs.writeFileSync(path.join(repoDir, 'lib', 'mod.ex'), `
+defmodule SurgicalUnreachable.Mod do
+  def run_v2, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Re-index without force -- should fallback to full because commit is unreachable
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('full');
+  });
+
+  it('falls back to full mode for large diff (>200 files or >50% changed)', () => {
+    // Create repo with many files
+    const files: Record<string, string> = {
+      'mix.exs': 'defmodule LargeDiff.MixProject do\nend',
+    };
+    // Create 10 modules so we can trigger the >50% rule with 6 changes
+    for (let i = 0; i < 10; i++) {
+      files[`lib/mod_${i}.ex`] = `defmodule LargeDiff.Mod${i} do\n  def run, do: :ok\nend`;
+    }
+
+    const repoDir = createGitRepo('surgical-large-diff', files);
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Modify 6 of 10 files (>50%) and commit
+    for (let i = 0; i < 6; i++) {
+      fs.writeFileSync(path.join(repoDir, `lib/mod_${i}.ex`), `defmodule LargeDiff.Mod${i}v2 do\n  def run, do: :ok\nend`);
+    }
+    execSync('git add -A && git commit -m "bulk update"', { cwd: repoDir, stdio: 'pipe' });
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('full');
+  });
+
+  it('force flag always uses full mode', () => {
+    const repoDir = createGitRepo('surgical-force', {
+      'mix.exs': 'defmodule SurgicalForce.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SurgicalForce.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Modify and commit
+    fs.writeFileSync(path.join(repoDir, 'lib', 'mod.ex'), `
+defmodule SurgicalForce.Mod do
+  def run_v2, do: :ok
+end
+`);
+    execSync('git add -A && git commit -m "update"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Re-index WITH force -> should be full mode, not surgical
+    const result = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    expect(result.mode).toBe('full');
+  });
+
+  it('first index of a new repo uses full mode', () => {
+    const repoDir = createGitRepo('surgical-first', {
+      'mix.exs': 'defmodule SurgicalFirst.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SurgicalFirst.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('full');
+  });
+
+  it('skipped repos have mode="skipped" in indexAllRepos result', () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = createGitRepo('surgical-skip-mode', {
+      'mix.exs': 'defmodule SurgicalSkipMode.MixProject do\nend',
+    });
+
+    ensureMainBranch(repoDir);
+
+    // First index
+    indexAllRepos(db, { force: true, rootDir });
+
+    // Second index without force -- should skip
+    const results = indexAllRepos(db, { force: false, rootDir });
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('skipped');
+    expect(results[0].mode).toBe('skipped');
+  });
+
+  it('successful repos have mode in indexAllRepos result', () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = createGitRepo('surgical-mode-report', {
+      'mix.exs': 'defmodule SurgicalModeReport.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SurgicalModeReport.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index
+    const results = indexAllRepos(db, { force: true, rootDir });
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('success');
+    expect(results[0].mode).toBe('full');
+  });
+
+  it('recalculates edges after surgical update using ALL files', () => {
+    const repoDir = createGitRepo('surgical-edges', {
+      'mix.exs': 'defmodule SurgicalEdges.MixProject do\nend',
+      'proto/events.proto': `
+syntax = "proto3";
+package test;
+
+message TestEvent {
+  string id = 1;
+}
+`,
+      'lib/handler.ex': `
+defmodule SurgicalEdges.Handler do
+  def handle_event(%TestEvent{} = event), do: event
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    const firstResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    expect(firstResult.events).toBeGreaterThan(0);
+
+    // Capture edge count after full
+    const repoRow = db.prepare("SELECT id FROM repos WHERE name = 'surgical-edges'").get() as { id: number };
+    const edgesAfterFull = db
+      .prepare("SELECT COUNT(*) as cnt FROM edges WHERE source_type = 'repo' AND source_id = ?")
+      .get(repoRow.id) as { cnt: number };
+
+    // Modify the handler (not the proto) and commit
+    fs.writeFileSync(path.join(repoDir, 'lib', 'handler.ex'), `
+defmodule SurgicalEdges.Handler do
+  @moduledoc "Updated handler"
+  def handle_event(%TestEvent{} = event), do: event
+end
+`);
+    execSync('git add -A && git commit -m "update handler"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Surgical re-index
+    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // Edges should still be present (re-derived from ALL files, not just changed)
+    const edgesAfterSurgical = db
+      .prepare("SELECT COUNT(*) as cnt FROM edges WHERE source_type = 'repo' AND source_id = ?")
+      .get(repoRow.id) as { cnt: number };
+    expect(edgesAfterSurgical.cnt).toBe(edgesAfterFull.cnt);
+  });
+});
