@@ -166,6 +166,134 @@ end
   });
 });
 
+describe('ecto schema extraction', () => {
+  it('extracts schema fields with name and type', () => {
+    const content = `
+defmodule MyApp.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :date, :date
+    field :status, :string
+    timestamps()
+  end
+end
+`;
+    const modules = parseElixirFile('lib/booking.ex', content);
+    expect(modules[0].schemaFields).toEqual([
+      { name: 'date', type: 'date' },
+      { name: 'status', type: 'string' },
+    ]);
+  });
+
+  it('extracts associations with kind, name, and target', () => {
+    const content = `
+defmodule MyApp.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :date, :date
+    belongs_to :user, MyApp.Accounts.User
+    has_many :items, MyApp.Booking.Item
+    timestamps()
+  end
+end
+`;
+    const modules = parseElixirFile('lib/booking.ex', content);
+    expect(modules[0].associations).toEqual([
+      { kind: 'belongs_to', name: 'user', target: 'MyApp.Accounts.User' },
+      { kind: 'has_many', name: 'items', target: 'MyApp.Booking.Item' },
+    ]);
+  });
+
+  it('captures has_one and many_to_many association kinds', () => {
+    const content = `
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  schema "users" do
+    has_one :profile, MyApp.Profile
+    many_to_many :roles, MyApp.Role, join_through: "users_roles"
+    timestamps()
+  end
+end
+`;
+    const modules = parseElixirFile('lib/user.ex', content);
+    expect(modules[0].associations).toContainEqual(
+      { kind: 'has_one', name: 'profile', target: 'MyApp.Profile' },
+    );
+    expect(modules[0].associations).toContainEqual(
+      { kind: 'many_to_many', name: 'roles', target: 'MyApp.Role' },
+    );
+  });
+
+  it('skips embedded_schema - returns no schemaFields', () => {
+    const content = `
+defmodule MyApp.Address do
+  use Ecto.Schema
+
+  embedded_schema do
+    field :street, :string
+    field :city, :string
+  end
+end
+`;
+    const modules = parseElixirFile('lib/address.ex', content);
+    expect(modules[0].schemaFields).toEqual([]);
+    expect(modules[0].associations).toEqual([]);
+  });
+
+  it('returns empty schemaFields and associations for module without schema', () => {
+    const content = `
+defmodule MyApp.Helper do
+  def format(x), do: x
+end
+`;
+    const modules = parseElixirFile('lib/helper.ex', content);
+    expect(modules[0].schemaFields).toEqual([]);
+    expect(modules[0].associations).toEqual([]);
+  });
+
+  it('captures parenthesized field syntax field(:name, :type)', () => {
+    const content = `
+defmodule MyApp.Event do
+  use Ecto.Schema
+
+  schema "events" do
+    field(:name, :string)
+    field(:payload, :map)
+    field :status, :string
+    timestamps()
+  end
+end
+`;
+    const modules = parseElixirFile('lib/event.ex', content);
+    expect(modules[0].schemaFields).toEqual([
+      { name: 'name', type: 'string' },
+      { name: 'payload', type: 'map' },
+      { name: 'status', type: 'string' },
+    ]);
+  });
+
+  it('does not include timestamps() in schemaFields', () => {
+    const content = `
+defmodule MyApp.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :name, :string
+    timestamps()
+  end
+end
+`;
+    const modules = parseElixirFile('lib/booking.ex', content);
+    expect(modules[0].schemaFields).toEqual([{ name: 'name', type: 'string' }]);
+    // timestamps should NOT appear as a field
+    expect(modules[0].schemaFields.find((f: any) => f.name === 'inserted_at')).toBeUndefined();
+    expect(modules[0].schemaFields.find((f: any) => f.name === 'updated_at')).toBeUndefined();
+  });
+});
+
 describe('extractElixirModules (branch-aware)', () => {
   function setupGitElixirRepo(files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, 'git-elixir-repo');
