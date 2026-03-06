@@ -294,6 +294,128 @@ end
   });
 });
 
+describe('absinthe macro extraction', () => {
+  it('extracts object macro with atom name', () => {
+    const content = `
+defmodule MyApp.Schema.Types do
+  use Absinthe.Schema.Notation
+
+  object :booking do
+    field :id, :id
+    field :date, :date
+  end
+end
+`;
+    const modules = parseElixirFile('lib/schema/types.ex', content);
+    expect(modules[0].absintheTypes).toEqual([
+      { kind: 'object', name: 'booking' },
+    ]);
+  });
+
+  it('extracts input_object, query, and mutation macros', () => {
+    const content = `
+defmodule MyApp.Schema do
+  use Absinthe.Schema
+
+  query do
+    field :bookings, list_of(:booking)
+  end
+
+  mutation do
+    field :create_booking, :booking
+  end
+
+  input_object :booking_input do
+    field :date, :date
+  end
+end
+`;
+    const modules = parseElixirFile('lib/schema.ex', content);
+    expect(modules[0].absintheTypes).toContainEqual({ kind: 'query', name: 'query' });
+    expect(modules[0].absintheTypes).toContainEqual({ kind: 'mutation', name: 'mutation' });
+    expect(modules[0].absintheTypes).toContainEqual({ kind: 'input_object', name: 'booking_input' });
+  });
+
+  it('query/mutation blocks without atom name use kind as name', () => {
+    const content = `
+defmodule MyApp.Schema do
+  use Absinthe.Schema
+
+  query do
+    field :me, :user
+  end
+
+  mutation do
+    field :login, :session
+  end
+end
+`;
+    const modules = parseElixirFile('lib/schema.ex', content);
+    const query = modules[0].absintheTypes.find((t: any) => t.kind === 'query');
+    expect(query).toEqual({ kind: 'query', name: 'query' });
+    const mutation = modules[0].absintheTypes.find((t: any) => t.kind === 'mutation');
+    expect(mutation).toEqual({ kind: 'mutation', name: 'mutation' });
+  });
+
+  it('returns empty absintheTypes for module without Absinthe macros', () => {
+    const content = `
+defmodule MyApp.Helper do
+  def format(x), do: x
+end
+`;
+    const modules = parseElixirFile('lib/helper.ex', content);
+    expect(modules[0].absintheTypes).toEqual([]);
+  });
+});
+
+describe('grpc stub detection', () => {
+  it('detects RpcClient.Client with stub keyword', () => {
+    const content = `
+defmodule MyApp.Rpc.AppointmentsClient do
+  use RpcClient.Client,
+    service: Rpc.Appointments.V1.RPCService,
+    stub: Rpc.Appointments.V1.RPCService.Stub
+end
+`;
+    const modules = parseElixirFile('lib/rpc/appointments_client.ex', content);
+    expect(modules[0].grpcStubs).toEqual(['Rpc.Appointments.V1.RPCService.Stub']);
+  });
+
+  it('detects direct Stub.method() calls', () => {
+    const content = `
+defmodule MyApp.Booking.Service do
+  def create_booking(channel, request) do
+    BookingService.Stub.create_booking(channel, request)
+  end
+end
+`;
+    const modules = parseElixirFile('lib/booking/service.ex', content);
+    expect(modules[0].grpcStubs).toEqual(['BookingService.Stub']);
+  });
+
+  it('detects RpcClient.MockableRpcClient pattern', () => {
+    const content = `
+defmodule MyApp.Rpc.MockClient do
+  use RpcClient.MockableRpcClient,
+    service: Rpc.Payments.V1.RPCService,
+    stub: Rpc.Payments.V1.RPCService.Stub
+end
+`;
+    const modules = parseElixirFile('lib/rpc/mock_client.ex', content);
+    expect(modules[0].grpcStubs).toEqual(['Rpc.Payments.V1.RPCService.Stub']);
+  });
+
+  it('returns empty grpcStubs for module without gRPC usage', () => {
+    const content = `
+defmodule MyApp.Helper do
+  def format(x), do: x
+end
+`;
+    const modules = parseElixirFile('lib/helper.ex', content);
+    expect(modules[0].grpcStubs).toEqual([]);
+  });
+});
+
 describe('extractElixirModules (branch-aware)', () => {
   function setupGitElixirRepo(files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, 'git-elixir-repo');
