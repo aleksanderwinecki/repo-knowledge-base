@@ -13,11 +13,12 @@ Persistent knowledge base that indexes your entire microservice ecosystem so AI 
 ## Quick start
 
 ```bash
-# Build
+# Install
 npm install
 npm run build
+npm link          # makes `kb` available globally
 
-# Index your repos
+# Index your repos (first run takes a few minutes)
 kb index --root ~/Documents/Repos
 
 # Search
