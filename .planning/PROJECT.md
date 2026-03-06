@@ -4,6 +4,19 @@
 
 A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ repos) into a single SQLite file with FTS5 search. Any AI agent can instantly query architectural knowledge, service relationships, event flows, and implementation patterns via CLI or MCP tools — without re-scanning repos every session.
 
+## Current Milestone: v1.1 Improved Reindexing
+
+**Goal:** Faster, smarter indexing with branch-aware tracking, surgical file-level updates, parallel execution, and new extractors for GraphQL, gRPC, Ecto, and Event Catalog.
+
+**Target features:**
+- Track only main/master branch (ignore PR branch checkouts)
+- Surgical file-level re-indexing (only re-process changed files)
+- Parallel repo indexing for faster full re-index
+- GraphQL schema extraction (types, queries, mutations)
+- gRPC service definition extraction
+- Ecto schema and database structure extraction
+- Event Catalog as supplementary data source
+
 ## Core Value
 
 Eliminate the repeated cost of AI agents re-learning the same codebase architecture every session. One index, always fresh, queryable in milliseconds.
@@ -91,4 +104,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-06 after v1.0 milestone*
+*Last updated: 2026-03-06 after v1.1 milestone start*
