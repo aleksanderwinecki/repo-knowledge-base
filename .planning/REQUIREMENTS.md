@@ -19,7 +19,7 @@
 - [x] **EXT-02**: Ecto schema fields, associations (`belongs_to`, `has_many`), and table names extracted from `.ex` files
 - [x] **EXT-03**: GraphQL types, queries, and mutations extracted from `.graphql` SDL files
 - [x] **EXT-04**: Absinthe macro definitions (`object`, `field`, `query`, `mutation`) extracted from `.ex` files
-- [ ] **EXT-05**: Event Catalog data (event descriptions, team ownership, domain assignments) integrated from local catalog repo
+- [x] **EXT-05**: Event Catalog data (event descriptions, team ownership, domain assignments) integrated from local catalog repo
 - [x] **EXT-06**: gRPC client call patterns detected to create `calls_grpc` edges between services
 
 ## v1.2 Requirements
@@ -54,7 +54,7 @@
 | EXT-02 | Phase 8 | Complete |
 | EXT-03 | Phase 8 | Complete |
 | EXT-04 | Phase 8 | Complete |
-| EXT-05 | Phase 8 | Pending |
+| EXT-05 | Phase 8 | Complete |
 | EXT-06 | Phase 8 | Complete |
 
 **Coverage:**

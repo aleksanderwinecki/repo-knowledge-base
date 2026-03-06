@@ -68,9 +68,9 @@ Plans:
   5. All new extractor data survives surgical re-indexing -- entities have correct `source_file` values and are properly scoped to file-level updates
 **Plans:** 3 plans
 Plans:
-- [ ] 08-01-PLAN.md -- Elixir extractor extensions (Ecto fields/associations, Absinthe macros, gRPC stubs)
-- [ ] 08-02-PLAN.md -- GraphQL SDL extractor and gRPC service persistence infrastructure
-- [ ] 08-03-PLAN.md -- Pipeline wiring for all new extractors and Event Catalog enrichment
+- [x] 08-01-PLAN.md -- Elixir extractor extensions (Ecto fields/associations, Absinthe macros, gRPC stubs)
+- [x] 08-02-PLAN.md -- GraphQL SDL extractor and gRPC service persistence infrastructure
+- [x] 08-03-PLAN.md -- Pipeline wiring for all new extractors and Event Catalog enrichment
 
 ### Phase 9: Parallel Execution
 **Goal**: Full and incremental re-indexing runs repos concurrently, reducing wall-clock time by 2-4x while maintaining data consistency
@@ -95,5 +95,5 @@ Plans:
 | 5. MCP Server | v1.0 | 2/2 | Complete | 2026-03-06 |
 | 6. Branch-Aware Tracking & Schema Migration | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 7. Surgical File-Level Indexing | v1.1 | 2/2 | Complete | 2026-03-06 |
-| 8. New Extractors | v1.1 | 0/3 | Planning | - |
+| 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
 | 9. Parallel Execution | v1.1 | 0/? | Not started | - |

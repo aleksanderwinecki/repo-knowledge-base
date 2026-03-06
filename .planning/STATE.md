@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
 status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-06T15:46:06.920Z"
-last_activity: 2026-03-06 -- Phase 8 Plan 02 complete (GraphQL extractor + service persistence)
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-06T15:54:36Z"
+last_activity: 2026-03-06 -- Phase 8 Plan 03 complete (Pipeline wiring + Event Catalog enrichment)
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
-  percent: 80
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 ## Current Position
 
 Phase: 8 of 9 (New Extractors)
-Plan: 2 of 3 complete
-Status: In Progress
-Last activity: 2026-03-06 -- Phase 8 Plan 02 complete (GraphQL extractor + service persistence)
+Plan: 3 of 3 complete
+Status: Complete
+Last activity: 2026-03-06 -- Phase 8 Plan 03 complete (Pipeline wiring + Event Catalog enrichment)
 
-Progress: [################----] 80% (8/9 phases in progress)
+Progress: [####################] 100% (Phase 8 complete)
 
 ## Performance Metrics
 
@@ -54,9 +54,10 @@ Progress: [################----] 80% (8/9 phases in progress)
 |-------|-------|-----------|--------|
 | 6. Branch-Aware Tracking | 2 | 2 | Complete |
 | 7. Surgical File-Level Indexing | 2 | 2 | Complete |
-| 8. New Extractors | 3 | 2 | In Progress |
+| 8. New Extractors | 3 | 3 | Complete |
 | Phase 08 P01 | 3min | 2 tasks | 2 files |
 | Phase 08 P02 | 3min | 2 tasks | 4 files |
+| Phase 08 P03 | 7min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,11 @@ Recent decisions affecting current work:
 - Phase 8-02: Service FTS includes description for RPC method searchability
 - [Phase 08]: GraphQL types stored as body text (no field-level extraction per user decision)
 - [Phase 08]: Surgical mode wipes ALL repo services and re-inserts (no file_id on services table)
+- Phase 8-03: FTS description includes table_name for Ecto schema searchability (Pitfall 6 fix)
+- Phase 8-03: Event Catalog multi-strategy matching: exact CamelCase, LIKE suffix, path-based for Payload events
+- Phase 8-03: Domain derived by traversing domain->service->event chain in catalog MDX files
+- Phase 8-03: Ecto association edges skip cross-repo targets not found in DB
+- Phase 8-03: enrichFromEventCatalog wrapped in try/catch to prevent catalog failures from blocking indexing
 
 ### Pending Todos
 
@@ -97,10 +103,10 @@ None.
 ### Blockers/Concerns
 
 - Cross-repo edge stability model needs design decision during Phase 7 planning (3 approaches identified in research)
-- EventCatalog frontmatter fields may vary between v2/v3 -- validate against actual catalog repo during Phase 8
+- ~~EventCatalog frontmatter fields may vary between v2/v3~~ -- RESOLVED: validated against actual catalog repo (v2.60.0), implemented multi-strategy matching
 
 ## Session Continuity
 
-Last session: 2026-03-06T15:46:02.559Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-06T15:54:36Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
