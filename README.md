@@ -78,9 +78,67 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 
 Single SQLite file at `~/.kb/knowledge.db` (override with `KB_DB_PATH` env var). Uses WAL mode, FTS5 virtual tables, and a generic edges table for the relationship graph.
 
-## Using with Claude Code
+## MCP Server
 
-See [CLAUDE.md](CLAUDE.md) for setup instructions, or install the `kb` skill for automatic integration.
+The knowledge base ships as an MCP server so Claude Code (or any MCP client) can query it directly — no CLI piping needed.
+
+### Setup
+
+```bash
+# Build and link (if you haven't already)
+npm install && npm run build && npm link
+```
+
+### Add to Claude Code
+
+Add this to your `~/.claude/settings.json` (or the project-level `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "kb": {
+      "command": "kb-mcp"
+    }
+  }
+}
+```
+
+That's it. Restart Claude Code and the 7 tools below become available in every conversation.
+
+### Custom database path
+
+By default the server uses `~/.kb/knowledge.db`. To use a different path:
+
+```json
+{
+  "mcpServers": {
+    "kb": {
+      "command": "kb-mcp",
+      "env": {
+        "KB_DB_PATH": "/path/to/your/knowledge.db"
+      }
+    }
+  }
+}
+```
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `kb_search` | Full-text search across all indexed repos, modules, events, and learned facts |
+| `kb_entity` | Structured entity card with relationships by name |
+| `kb_deps` | Service dependency graph (upstream/downstream) |
+| `kb_learn` | Store a new fact for future reference |
+| `kb_forget` | Delete a learned fact by ID |
+| `kb_status` | Database statistics: entity counts, repo staleness, learned facts |
+| `kb_cleanup` | Detect deleted repos and stale facts (dry run by default) |
+
+Read tools (`kb_search`, `kb_entity`, `kb_deps`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
+
+## Using with Claude Code (CLI)
+
+You can also use the `kb` CLI directly. See [CLAUDE.md](CLAUDE.md) for setup instructions, or install the `kb` skill for automatic integration.
 
 ## Architecture
 
@@ -91,12 +149,13 @@ src/
   search/      # Text search, entity queries, dependency traversal
   knowledge/   # Learned facts store
   cli/         # Commander.js CLI with all subcommands
+  mcp/         # MCP server, tool handlers, auto-sync, formatting, hygiene
 ```
 
 ## Development
 
 ```bash
-npm test          # Run 197 tests
+npm test          # Run 236 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```
