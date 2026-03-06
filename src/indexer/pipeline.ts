@@ -3,14 +3,14 @@ import path from 'path';
 import { discoverRepos } from './scanner.js';
 import { extractMetadata } from './metadata.js';
 import type { RepoMetadata } from './metadata.js';
-import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable } from './git.js';
+import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable, listBranchFiles } from './git.js';
 import { extractElixirModules } from './elixir.js';
 import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
 import type { ProtoDefinition } from './proto.js';
 import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
-import { persistRepoData, clearRepoFiles } from './writer.js';
+import { persistRepoData, persistSurgicalData } from './writer.js';
 import type { ModuleData, EventData, EdgeData } from './writer.js';
 
 /** Options for the indexing pipeline */
@@ -30,6 +30,7 @@ export interface IndexStats {
 export interface IndexResult {
   repo: string;
   status: 'success' | 'skipped' | 'error';
+  mode?: 'full' | 'surgical' | 'skipped';
   stats?: IndexStats;
   error?: string;
   skipReason?: string;
@@ -55,7 +56,7 @@ export function indexAllRepos(
       const branch = resolveDefaultBranch(repoPath);
       if (!branch) {
         console.warn(`Skipping ${repoName}: no main or master branch`);
-        results.push({ repo: repoName, status: 'skipped', skipReason: 'no main or master branch' });
+        results.push({ repo: repoName, status: 'skipped', mode: 'skipped', skipReason: 'no main or master branch' });
         continue;
       }
 
@@ -73,7 +74,7 @@ export function indexAllRepos(
       console.log(
         `Indexing ${repoName}... done (${stats.modules} modules, ${stats.protos} protos)`,
       );
-      results.push({ repo: repoName, status: 'success', stats });
+      results.push({ repo: repoName, status: 'success', mode: stats.mode, stats });
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : String(error);
@@ -116,6 +117,7 @@ function checkSkip(
     return {
       repo: repoName,
       status: 'skipped',
+      mode: 'skipped',
       skipReason: 'no new commits',
     };
   }
@@ -126,13 +128,20 @@ function checkSkip(
 /**
  * Index a single repo from its default branch. Runs all extractors and persists results.
  * If branch is not provided, resolves it (used when called directly, not via indexAllRepos).
+ *
+ * Supports two modes:
+ * - **full**: wipe all repo entities and re-insert from scratch
+ * - **surgical**: only clear entities from changed files, leave others untouched
+ *
+ * Surgical mode is used when: not forced, commit is reachable, and the diff is small
+ * (<=200 files changed AND <=50% of repo files). Otherwise falls back to full.
  */
 export function indexSingleRepo(
   db: Database.Database,
   repoPath: string,
   options: IndexOptions,
   branch?: string,
-): IndexStats {
+): IndexStats & { mode: 'full' | 'surgical' } {
   // Resolve branch if not provided
   if (!branch) {
     branch = resolveDefaultBranch(repoPath) ?? undefined;
@@ -159,29 +168,69 @@ export function indexSingleRepo(
     existingRow.last_indexed_commit !== metadata.currentCommit &&
     isCommitReachable(repoPath, existingRow.last_indexed_commit);
 
-  // Step 3: Handle incremental deleted files
+  // Step 3: Determine surgical vs full mode
+  let useSurgical = false;
+  let changes: { added: string[]; modified: string[]; deleted: string[] } | null = null;
+
   if (isIncremental && existingRow) {
-    const changes = getChangedFilesSinceBranch(
+    changes = getChangedFilesSinceBranch(
       repoPath,
       existingRow.last_indexed_commit!,
       branch,
     );
-    if (changes.deleted.length > 0) {
-      clearRepoFiles(db, existingRow.id, changes.deleted);
-    }
+    const totalChanged = changes.added.length + changes.modified.length + changes.deleted.length;
+    const allFiles = listBranchFiles(repoPath, branch);
+    const changeRatio = totalChanged / Math.max(allFiles.length, 1);
+    useSurgical = totalChanged > 0 && totalChanged <= 200 && changeRatio <= 0.5;
   }
 
-  // Step 4: Run extractors (all branch-aware)
+  // Step 4: Run extractors (all branch-aware) -- needed for both modes
   const elixirModules = extractElixirModules(repoPath, branch);
   const protoDefinitions = extractProtoDefinitions(repoPath, branch);
-  const eventRelationships = detectEventRelationships(
-    repoPath,
-    branch,
-    protoDefinitions,
-    elixirModules,
-  );
 
-  // Step 5: Map extractor output to writer format
+  if (useSurgical && changes && existingRow) {
+    // === SURGICAL MODE ===
+    const allChangedFiles = [...changes.added, ...changes.modified, ...changes.deleted];
+
+    // Filter to changed files only for persistence
+    const changedSet = new Set([...changes.added, ...changes.modified]);
+    const surgicalModules: ModuleData[] = elixirModules
+      .filter(m => changedSet.has(m.filePath))
+      .map(mod => ({ name: mod.name, type: mod.type, filePath: mod.filePath, summary: mod.moduledoc }));
+    const surgicalEvents: EventData[] = protoDefinitions
+      .filter(p => changedSet.has(p.filePath))
+      .flatMap(proto => proto.messages.map(msg => ({
+        name: msg.name,
+        schemaDefinition: `message ${msg.name} { ${msg.fields.map(f => `${f.type} ${f.name}`).join('; ')} }`,
+        sourceFile: proto.filePath,
+      })));
+
+    // Persist surgical data (clears changed files, inserts new entities, clears all edges)
+    persistSurgicalData(db, {
+      repoId: existingRow.id,
+      metadata,
+      changedFiles: allChangedFiles,
+      modules: surgicalModules,
+      events: surgicalEvents,
+    });
+
+    // Re-derive ALL edges from full extractor output (not just changed files)
+    const eventRelationships = detectEventRelationships(repoPath, branch, protoDefinitions, elixirModules);
+    if (eventRelationships.length > 0) {
+      insertEventEdges(db, existingRow.id, eventRelationships);
+    }
+
+    return {
+      modules: elixirModules.length,
+      protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
+      events: eventRelationships.length,
+      mode: 'surgical' as const,
+    };
+  }
+
+  // === FULL MODE ===
+
+  // Map extractor output to writer format
   const modules: ModuleData[] = elixirModules.map((mod) => ({
     name: mod.name,
     type: mod.type,
@@ -197,16 +246,21 @@ export function indexSingleRepo(
     })),
   );
 
-  // Step 6: Build edges from event relationships
-  // We need to resolve entity IDs after persistence, so we persist repo first,
-  // then build edges based on the newly inserted entities.
+  const eventRelationships = detectEventRelationships(
+    repoPath,
+    branch,
+    protoDefinitions,
+    elixirModules,
+  );
+
+  // Full persist: wipe all repo entities and re-insert
   const { repoId } = persistRepoData(db, {
     metadata,
     modules,
     events,
   });
 
-  // Now insert edges based on event relationships
+  // Insert edges based on event relationships
   if (eventRelationships.length > 0) {
     insertEventEdges(db, repoId, eventRelationships);
   }
@@ -215,6 +269,7 @@ export function indexSingleRepo(
     modules: elixirModules.length,
     protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
     events: eventRelationships.length,
+    mode: 'full' as const,
   };
 }
 
