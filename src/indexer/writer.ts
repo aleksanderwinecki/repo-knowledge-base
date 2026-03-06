@@ -3,12 +3,20 @@ import type { RepoMetadata } from './metadata.js';
 import { indexEntity, removeEntity } from '../db/fts.js';
 import type { EntityType } from '../types/entities.js';
 
+/** Service data from proto/gRPC extractors */
+export interface ServiceData {
+  name: string;
+  description: string | null;
+  serviceType: string;
+}
+
 /** Data to persist for a single repo */
 export interface RepoData {
   metadata: RepoMetadata;
   modules?: ModuleData[];
   events?: EventData[];
   edges?: EdgeData[];
+  services?: ServiceData[];
 }
 
 /** Module data from extractors (Elixir modules, etc.) */
@@ -86,6 +94,14 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
     .all(repoId) as { id: number }[];
   for (const evt of events) {
     removeEntity(db, 'event', evt.id);
+  }
+
+  // Remove FTS entries for services
+  const services = db
+    .prepare('SELECT id FROM services WHERE repo_id = ?')
+    .all(repoId) as { id: number }[];
+  for (const svc of services) {
+    removeEntity(db, 'service', svc.id);
   }
 
   // Remove FTS entry for the repo itself
@@ -223,6 +239,36 @@ export function persistRepoData(
       }
     }
 
+    // Insert services (from proto/gRPC extractors)
+    if (data.services) {
+      const insertService = db.prepare(`
+        INSERT INTO services (repo_id, name, description, service_type)
+        VALUES (@repoId, @name, @description, @serviceType)
+        ON CONFLICT(repo_id, name) DO UPDATE SET
+          description = @description,
+          service_type = @serviceType,
+          updated_at = datetime('now')
+      `);
+
+      for (const svc of data.services) {
+        const svcInfo = insertService.run({
+          repoId,
+          name: svc.name,
+          description: svc.description,
+          serviceType: svc.serviceType,
+        });
+        const svcId = Number(svcInfo.lastInsertRowid);
+
+        // Index in FTS for searchability
+        indexEntity(db, {
+          type: 'service' as EntityType,
+          id: svcId,
+          name: svc.name,
+          description: svc.description,
+        });
+      }
+    }
+
     // Insert edges
     if (data.edges) {
       const insertEdge = db.prepare(
@@ -285,6 +331,7 @@ export function persistSurgicalData(
     changedFiles: string[];
     modules: ModuleData[];
     events: EventData[];
+    services?: ServiceData[];
   },
 ): void {
   const txn = db.transaction(() => {
@@ -331,7 +378,46 @@ export function persistSurgicalData(
       });
     }
 
-    // 5. Clear ALL repo edges (caller will re-insert via insertEventEdges)
+    // 5. Wipe and re-insert services if provided (services have no file_id, so full replace)
+    if (data.services) {
+      // Remove FTS entries for existing services
+      const existingServices = db
+        .prepare('SELECT id FROM services WHERE repo_id = ?')
+        .all(data.repoId) as { id: number }[];
+      for (const svc of existingServices) {
+        removeEntity(db, 'service', svc.id);
+      }
+
+      // Delete all repo services
+      db.prepare('DELETE FROM services WHERE repo_id = ?').run(data.repoId);
+
+      // Re-insert from extractor output
+      const insertService = db.prepare(`
+        INSERT INTO services (repo_id, name, description, service_type)
+        VALUES (@repoId, @name, @description, @serviceType)
+        ON CONFLICT(repo_id, name) DO UPDATE SET
+          description = @description,
+          service_type = @serviceType,
+          updated_at = datetime('now')
+      `);
+
+      for (const svc of data.services) {
+        const svcInfo = insertService.run({
+          repoId: data.repoId,
+          name: svc.name,
+          description: svc.description,
+          serviceType: svc.serviceType,
+        });
+        indexEntity(db, {
+          type: 'service' as EntityType,
+          id: Number(svcInfo.lastInsertRowid),
+          name: svc.name,
+          description: svc.description,
+        });
+      }
+    }
+
+    // 6. Clear ALL repo edges (caller will re-insert via insertEventEdges)
     clearRepoEdges(db, data.repoId);
   });
   txn();

@@ -531,3 +531,163 @@ describe('clearRepoEdges', () => {
     expect(events[0].name).toBe('ProducerEvent');
   });
 });
+
+describe('service persistence', () => {
+  it('persistRepoData with services array inserts rows into services table with service_type=grpc', () => {
+    const metadata = makeMetadata();
+    const services = [
+      { name: 'BookingService', description: 'gRPC service with RPCs: CreateBooking(CreateBookingRequest) -> CreateBookingResponse', serviceType: 'grpc' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, services });
+
+    const rows = db.prepare('SELECT * FROM services WHERE repo_id = ?').all(repoId) as {
+      name: string;
+      description: string;
+      service_type: string;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('BookingService');
+    expect(rows[0].service_type).toBe('grpc');
+    expect(rows[0].description).toContain('CreateBooking');
+  });
+
+  it('service description contains human-readable RPC method summary for FTS', () => {
+    const metadata = makeMetadata();
+    const description = 'gRPC service with RPCs: CreateBooking(CreateBookingRequest) -> CreateBookingResponse, CancelBooking(CancelBookingRequest) -> CancelBookingResponse';
+    const services = [
+      { name: 'BookingService', description, serviceType: 'grpc' },
+    ];
+
+    persistRepoData(db, { metadata, services });
+
+    const row = db.prepare("SELECT description FROM services WHERE name = 'BookingService'").get() as { description: string };
+    expect(row.description).toContain('CreateBooking');
+    expect(row.description).toContain('CancelBooking');
+  });
+
+  it('persistRepoData with services indexes services in FTS (name + description searchable)', () => {
+    const metadata = makeMetadata();
+    const services = [
+      { name: 'BookingService', description: 'gRPC service with RPCs: CreateBooking', serviceType: 'grpc' },
+    ];
+
+    persistRepoData(db, { metadata, services });
+
+    // Search by service name
+    const nameResults = search(db, 'booking service');
+    const serviceResults = nameResults.filter(r => r.entityType === 'service');
+    expect(serviceResults.length).toBeGreaterThan(0);
+
+    // Search by RPC method name in description
+    const rpcResults = search(db, 'create booking');
+    const rpcServiceResults = rpcResults.filter(r => r.entityType === 'service');
+    expect(rpcServiceResults.length).toBeGreaterThan(0);
+  });
+
+  it('clearRepoEntities removes services and their FTS entries', () => {
+    const metadata = makeMetadata();
+    const services = [
+      { name: 'UniqueGrpcSvc', description: 'unique grpc svc description', serviceType: 'grpc' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, services });
+
+    // Verify service exists
+    const svcCount = (db.prepare('SELECT COUNT(*) as count FROM services WHERE repo_id = ?').get(repoId) as { count: number }).count;
+    expect(svcCount).toBe(1);
+
+    // Verify FTS entry exists
+    const ftsBefore = search(db, 'unique grpc svc');
+    expect(ftsBefore.filter(r => r.entityType === 'service').length).toBeGreaterThan(0);
+
+    clearRepoEntities(db, repoId);
+
+    // Services should be gone
+    const svcAfter = (db.prepare('SELECT COUNT(*) as count FROM services WHERE repo_id = ?').get(repoId) as { count: number }).count;
+    expect(svcAfter).toBe(0);
+
+    // FTS entries should be gone
+    const ftsAfter = search(db, 'unique grpc svc');
+    expect(ftsAfter.filter(r => r.entityType === 'service')).toHaveLength(0);
+  });
+
+  it('persistRepoData with empty services array does not crash', () => {
+    const metadata = makeMetadata();
+    const result = persistRepoData(db, { metadata, services: [] });
+    expect(result.repoId).toBeGreaterThan(0);
+
+    const svcCount = (db.prepare('SELECT COUNT(*) as count FROM services WHERE repo_id = ?').get(result.repoId) as { count: number }).count;
+    expect(svcCount).toBe(0);
+  });
+
+  it('services with same (repo_id, name) are upserted not duplicated', () => {
+    const metadata = makeMetadata();
+    const services1 = [
+      { name: 'BookingService', description: 'version 1', serviceType: 'grpc' },
+    ];
+
+    persistRepoData(db, { metadata, services: services1 });
+
+    // Re-persist with updated description
+    const services2 = [
+      { name: 'BookingService', description: 'version 2', serviceType: 'grpc' },
+    ];
+    persistRepoData(db, { metadata, services: services2 });
+
+    const rows = db.prepare("SELECT * FROM services WHERE name = 'BookingService'").all() as { description: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].description).toBe('version 2');
+  });
+
+  it('persistSurgicalData with services wipes and re-inserts all repo services', () => {
+    const metadata = makeMetadata();
+    const services = [
+      { name: 'SvcA', description: 'Service A', serviceType: 'grpc' },
+      { name: 'SvcB', description: 'Service B', serviceType: 'grpc' },
+    ];
+    const { repoId } = persistRepoData(db, { metadata, services });
+
+    // Verify 2 services
+    const countBefore = (db.prepare('SELECT COUNT(*) as count FROM services WHERE repo_id = ?').get(repoId) as { count: number }).count;
+    expect(countBefore).toBe(2);
+
+    // Surgical update: wipe and re-insert with only 1 service
+    persistSurgicalData(db, {
+      repoId,
+      metadata,
+      changedFiles: [],
+      modules: [],
+      events: [],
+      services: [
+        { name: 'SvcC', description: 'Service C', serviceType: 'grpc' },
+      ],
+    });
+
+    const rows = db.prepare('SELECT name FROM services WHERE repo_id = ?').all(repoId) as { name: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('SvcC');
+  });
+
+  it('persistSurgicalData without services does not touch existing services', () => {
+    const metadata = makeMetadata();
+    const services = [
+      { name: 'ExistingSvc', description: 'Existing service', serviceType: 'grpc' },
+    ];
+    const { repoId } = persistRepoData(db, { metadata, services });
+
+    // Surgical update without services field
+    persistSurgicalData(db, {
+      repoId,
+      metadata,
+      changedFiles: [],
+      modules: [],
+      events: [],
+    });
+
+    // Existing service should survive
+    const rows = db.prepare('SELECT name FROM services WHERE repo_id = ?').all(repoId) as { name: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('ExistingSvc');
+  });
+});
