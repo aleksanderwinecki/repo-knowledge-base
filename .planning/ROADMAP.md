@@ -37,7 +37,10 @@
   1. Running `kb index` while a repo is checked out on a feature branch still indexes from main/master content
   2. Running `kb index` on a repo in detached HEAD state does not crash -- it resolves the default branch and indexes normally
   3. The database schema has been migrated to v3 with columns/tables needed by all v1.1 extractors, and existing v2 data is preserved
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 06-01-PLAN.md -- Schema v3 migration and branch-aware git utility functions
+- [ ] 06-02-PLAN.md -- Pipeline and extractor refactor for branch-aware indexing
 
 ### Phase 7: Surgical File-Level Indexing
 **Goal**: Incremental re-indexing processes only files that changed since last indexed commit, dramatically reducing re-index time for repos with small changes
@@ -83,7 +86,7 @@
 | 3. Search | v1.0 | 1/1 | Complete | 2026-03-05 |
 | 4. CLI + Knowledge | v1.0 | 2/2 | Complete | 2026-03-05 |
 | 5. MCP Server | v1.0 | 2/2 | Complete | 2026-03-06 |
-| 6. Branch-Aware Tracking & Schema Migration | v1.1 | 0/? | Not started | - |
+| 6. Branch-Aware Tracking & Schema Migration | v1.1 | 0/2 | Planning | - |
 | 7. Surgical File-Level Indexing | v1.1 | 0/? | Not started | - |
 | 8. New Extractors | v1.1 | 0/? | Not started | - |
 | 9. Parallel Execution | v1.1 | 0/? | Not started | - |
