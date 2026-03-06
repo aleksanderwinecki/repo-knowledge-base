@@ -66,7 +66,11 @@ Plans:
   3. `kb search "CreateBooking"` returns GraphQL mutations/queries/types from both `.graphql` SDL files and Absinthe macro definitions in `.ex` files
   4. `kb search "BookingCreated"` returns Event Catalog metadata (descriptions, team ownership, domain assignments) merged with existing proto-extracted event data
   5. All new extractor data survives surgical re-indexing -- entities have correct `source_file` values and are properly scoped to file-level updates
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 08-01-PLAN.md -- Elixir extractor extensions (Ecto fields/associations, Absinthe macros, gRPC stubs)
+- [ ] 08-02-PLAN.md -- GraphQL SDL extractor and gRPC service persistence infrastructure
+- [ ] 08-03-PLAN.md -- Pipeline wiring for all new extractors and Event Catalog enrichment
 
 ### Phase 9: Parallel Execution
 **Goal**: Full and incremental re-indexing runs repos concurrently, reducing wall-clock time by 2-4x while maintaining data consistency
@@ -89,7 +93,7 @@ Plans:
 | 3. Search | v1.0 | 1/1 | Complete | 2026-03-05 |
 | 4. CLI + Knowledge | v1.0 | 2/2 | Complete | 2026-03-05 |
 | 5. MCP Server | v1.0 | 2/2 | Complete | 2026-03-06 |
-| 6. Branch-Aware Tracking & Schema Migration | v1.1 | 0/2 | Planning | - |
-| 7. Surgical File-Level Indexing | v1.1 | 0/2 | Planning | - |
-| 8. New Extractors | v1.1 | 0/? | Not started | - |
+| 6. Branch-Aware Tracking & Schema Migration | v1.1 | 2/2 | Complete | 2026-03-06 |
+| 7. Surgical File-Level Indexing | v1.1 | 2/2 | Complete | 2026-03-06 |
+| 8. New Extractors | v1.1 | 0/3 | Planning | - |
 | 9. Parallel Execution | v1.1 | 0/? | Not started | - |
