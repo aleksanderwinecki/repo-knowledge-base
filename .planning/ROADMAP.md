@@ -90,15 +90,16 @@ Plans:
   3. When a query arrives, the server checks for stale repos and re-indexes them transparently
   4. The server can detect and remove entries for deleted repos or outdated learned facts
   5. Installation is a single config entry pointing to the server binary
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD
+- [ ] 05-01-PLAN.md — Response formatting, auto-sync, and data hygiene utility modules
+- [ ] 05-02-PLAN.md — MCP server entry point, 7 tool registrations, and installation wiring
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -106,4 +107,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 2. Indexing Pipeline | 2/2 | Complete | 2026-03-05 |
 | 3. Search | 1/1 | Complete | 2026-03-05 |
 | 4. CLI + Knowledge | 2/2 | Complete | 2026-03-05 |
-| 5. MCP Server | 0/? | Planned | - |
+| 5. MCP Server | 0/2 | In Progress | - |
