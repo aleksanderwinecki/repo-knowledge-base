@@ -36,9 +36,11 @@ export function discoverRepos(rootDir: string): string[] {
     const hasGit = fs.existsSync(path.join(dirPath, '.git'));
     if (!hasGit) continue;
 
-    // Check for at least one project file marker
-    const hasProjectFile = PROJECT_MARKERS.some((marker) =>
-      fs.existsSync(path.join(dirPath, marker)),
+    // Check for at least one project file marker (root or src/ subdirectory)
+    const hasProjectFile = PROJECT_MARKERS.some(
+      (marker) =>
+        fs.existsSync(path.join(dirPath, marker)) ||
+        fs.existsSync(path.join(dirPath, 'src', marker)),
     );
 
     if (hasProjectFile) {

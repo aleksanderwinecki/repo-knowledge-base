@@ -56,15 +56,22 @@ export function extractElixirModules(repoPath: string): ElixirModule[] {
 function findExFiles(repoPath: string): string[] {
   const files: string[] = [];
 
-  // Standard lib/ directory
-  const libDir = path.join(repoPath, 'lib');
-  if (fs.existsSync(libDir)) {
-    collectFiles(libDir, '.ex', files);
+  // Standard lib/ and src/lib/ directories
+  for (const libDir of [
+    path.join(repoPath, 'lib'),
+    path.join(repoPath, 'src', 'lib'),
+  ]) {
+    if (fs.existsSync(libDir)) {
+      collectFiles(libDir, '.ex', files);
+    }
   }
 
-  // Umbrella apps/*/lib/ directories
-  const appsDir = path.join(repoPath, 'apps');
-  if (fs.existsSync(appsDir)) {
+  // Umbrella apps: apps/*/lib/ and src/apps/*/lib/
+  for (const appsDir of [
+    path.join(repoPath, 'apps'),
+    path.join(repoPath, 'src', 'apps'),
+  ]) {
+    if (!fs.existsSync(appsDir)) continue;
     try {
       const apps = fs.readdirSync(appsDir, { withFileTypes: true });
       for (const app of apps) {

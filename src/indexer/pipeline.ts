@@ -198,6 +198,8 @@ export function indexSingleRepo(
 /**
  * Insert edges for event relationships.
  * Resolves entity IDs from the database.
+ * For consumer relationships, creates event entities if they don't exist
+ * (consumer event names may differ from producer proto message names).
  */
 function insertEventEdges(
   db: Database.Database,
@@ -207,55 +209,43 @@ function insertEventEdges(
   const insertEdge = db.prepare(
     'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
   );
+  const insertEvent = db.prepare(
+    'INSERT INTO events (name, schema_definition, source_file, repo_id) VALUES (?, ?, ?, ?)',
+  );
 
   for (const rel of relationships) {
-    // Find the event entity by name
-    const event = db
+    // Find the event entity by name (same repo first, then cross-repo)
+    let event = db
       .prepare('SELECT id FROM events WHERE name = ? AND repo_id = ?')
       .get(rel.eventName, repoId) as { id: number } | undefined;
 
     if (!event) {
-      // Try cross-repo event lookup
-      const crossEvent = db
+      event = db
         .prepare('SELECT id FROM events WHERE name = ?')
         .get(rel.eventName) as { id: number } | undefined;
-
-      if (!crossEvent) continue; // Event not found anywhere, skip
-
-      // For consumers: edge from repo -> event
-      if (rel.type === 'consumes_event') {
-        insertEdge.run(
-          'repo',
-          repoId,
-          'event',
-          crossEvent.id,
-          rel.type,
-          rel.sourceFile,
-        );
-      }
-      continue;
     }
 
-    if (rel.type === 'produces_event') {
-      // Producer: repo -> event
-      insertEdge.run(
-        'repo',
-        repoId,
-        'event',
-        event.id,
-        rel.type,
+    // For consumers: create event entity if it doesn't exist
+    // (consumer names may be topic names or Elixir schema aliases)
+    if (!event && rel.type === 'consumes_event') {
+      const result = insertEvent.run(
+        rel.eventName,
+        `consumed: ${rel.eventName}`,
         rel.sourceFile,
-      );
-    } else {
-      // Consumer: repo -> event
-      insertEdge.run(
-        'repo',
         repoId,
-        'event',
-        event.id,
-        rel.type,
-        rel.sourceFile,
       );
+      event = { id: Number(result.lastInsertRowid) };
     }
+
+    if (!event) continue;
+
+    insertEdge.run(
+      'repo',
+      repoId,
+      'event',
+      event.id,
+      rel.type,
+      rel.sourceFile,
+    );
   }
 }
