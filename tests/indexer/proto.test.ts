@@ -120,48 +120,60 @@ package empty;
   });
 });
 
-describe('extractProtoDefinitions', () => {
-  it('finds proto files recursively', () => {
-    const repoDir = path.join(tmpDir, 'repo');
-    fs.mkdirSync(path.join(repoDir, 'proto'), { recursive: true });
-    fs.writeFileSync(
-      path.join(repoDir, 'proto', 'booking.proto'),
-      'message BookingCreated { string id = 1; }',
-    );
-    fs.writeFileSync(
-      path.join(repoDir, 'proto', 'payment.proto'),
-      'message PaymentProcessed { string id = 1; }',
-    );
+describe('extractProtoDefinitions (branch-aware)', () => {
+  function setupGitProtoRepo(files: Record<string, string>): string {
+    const repoDir = path.join(tmpDir, 'git-proto-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
 
-    const defs = extractProtoDefinitions(repoDir);
+    const { execSync } = require('child_process');
+    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
+
+    for (const [filePath, content] of Object.entries(files)) {
+      const fullPath = path.join(repoDir, filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content);
+    }
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+
+    return repoDir;
+  }
+
+  it('finds proto files from git branch recursively', () => {
+    const repoDir = setupGitProtoRepo({
+      'proto/booking.proto': 'message BookingCreated { string id = 1; }',
+      'proto/payment.proto': 'message PaymentProcessed { string id = 1; }',
+    });
+
+    const defs = extractProtoDefinitions(repoDir, 'main');
     expect(defs).toHaveLength(2);
   });
 
-  it('returns empty when no proto files', () => {
-    const repoDir = path.join(tmpDir, 'empty-repo');
-    fs.mkdirSync(repoDir, { recursive: true });
-    fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
+  it('returns empty when branch has no proto files', () => {
+    const repoDir = setupGitProtoRepo({
+      'README.md': '# Hello',
+    });
 
-    const defs = extractProtoDefinitions(repoDir);
+    const defs = extractProtoDefinitions(repoDir, 'main');
     expect(defs).toHaveLength(0);
   });
 
-  it('skips node_modules', () => {
-    const repoDir = path.join(tmpDir, 'repo');
+  it('reads from main branch, ignoring feature branch proto files', () => {
+    const repoDir = setupGitProtoRepo({
+      'proto/main.proto': 'message MainEvent { string id = 1; }',
+    });
+
+    const { execSync } = require('child_process');
+    execSync('git checkout -b feature/proto', { cwd: repoDir, stdio: 'pipe' });
     fs.mkdirSync(path.join(repoDir, 'proto'), { recursive: true });
-    fs.mkdirSync(path.join(repoDir, 'node_modules', 'pkg'), { recursive: true });
+    fs.writeFileSync(path.join(repoDir, 'proto', 'feature.proto'), 'message FeatureEvent { string id = 1; }');
+    execSync('git add -A && git commit -m "feature proto"', { cwd: repoDir, stdio: 'pipe' });
 
-    fs.writeFileSync(
-      path.join(repoDir, 'proto', 'real.proto'),
-      'message Real { string id = 1; }',
-    );
-    fs.writeFileSync(
-      path.join(repoDir, 'node_modules', 'pkg', 'vendored.proto'),
-      'message Vendored { string id = 1; }',
-    );
-
-    const defs = extractProtoDefinitions(repoDir);
+    const defs = extractProtoDefinitions(repoDir, 'main');
     expect(defs).toHaveLength(1);
-    expect(defs[0].messages[0].name).toBe('Real');
+    expect(defs[0].messages[0].name).toBe('MainEvent');
   });
 });

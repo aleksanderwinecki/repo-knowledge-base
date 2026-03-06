@@ -348,3 +348,66 @@ end
     expect(consumers[0].eventName).toBe('RealEvent');
   });
 });
+
+describe('detectEventRelationships (branch-aware)', () => {
+  function setupGitEventRepo(files: Record<string, string>): string {
+    const repoDir = path.join(tmpDir, 'git-event-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
+
+    const { execSync } = require('child_process');
+    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
+
+    for (const [filePath, content] of Object.entries(files)) {
+      const fullPath = path.join(repoDir, filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content);
+    }
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+
+    return repoDir;
+  }
+
+  it('detects consumers from branch via handle_event', () => {
+    const repoDir = setupGitEventRepo({
+      'lib/handler.ex': `
+defmodule MyApp.Handler do
+  def handle_event(%BookingCreated{} = event) do
+    :ok
+  end
+end
+`,
+    });
+
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const consumers = rels.filter((r) => r.type === 'consumes_event');
+    expect(consumers).toHaveLength(1);
+    expect(consumers[0].eventName).toBe('BookingCreated');
+  });
+
+  it('reads consumer files from main branch, ignoring feature branch', () => {
+    const repoDir = setupGitEventRepo({
+      'lib/main_handler.ex': `
+defmodule MyApp.MainHandler do
+  def handle_event(%MainEvent{} = e), do: :ok
+end
+`,
+    });
+
+    const { execSync } = require('child_process');
+    execSync('git checkout -b feature/new', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(
+      path.join(repoDir, 'lib', 'feature_handler.ex'),
+      `defmodule MyApp.FeatureHandler do\n  def handle_event(%FeatureEvent{} = e), do: :ok\nend`,
+    );
+    execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
+
+    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const consumers = rels.filter((r) => r.type === 'consumes_event');
+    expect(consumers).toHaveLength(1);
+    expect(consumers[0].eventName).toBe('MainEvent');
+  });
+});

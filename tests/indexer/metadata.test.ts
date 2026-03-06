@@ -162,3 +162,105 @@ describe('extractMetadata', () => {
     expect(path.isAbsolute(meta.path)).toBe(true);
   });
 });
+
+describe('extractMetadata (branch-aware)', () => {
+  function setupBranchRepo(name: string, files: Record<string, string>): string {
+    const repoDir = path.join(tmpDir, name);
+    fs.mkdirSync(repoDir, { recursive: true });
+
+    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Rename default branch to main
+    execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
+
+    // Write and commit files on main
+    for (const [filePath, content] of Object.entries(files)) {
+      const fullPath = path.join(repoDir, filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content);
+    }
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+
+    return repoDir;
+  }
+
+  it('reads metadata from branch, populates defaultBranch field', () => {
+    const repoDir = setupBranchRepo('branch-meta', {
+      'README.md': '# BranchService\n\nA service for branch testing.\n\n## Setup\n',
+      'mix.exs': `defp deps do\n  [{:phoenix, "~> 1.7"}]\nend`,
+      'lib/app.ex': 'defmodule App do\nend',
+    });
+
+    const meta = extractMetadata(repoDir, 'main');
+    expect(meta.defaultBranch).toBe('main');
+    expect(meta.description).toBe('A service for branch testing.');
+    expect(meta.techStack).toContain('elixir');
+    expect(meta.techStack).toContain('phoenix');
+    expect(meta.keyFiles).toContain('README.md');
+    expect(meta.keyFiles).toContain('mix.exs');
+    expect(meta.keyFiles).toContain('lib/');
+    expect(meta.currentCommit).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('reads from main branch even when on feature branch', () => {
+    const repoDir = setupBranchRepo('feature-isolation', {
+      'README.md': '# MainService\n\nOriginal main description.\n',
+    });
+
+    // Create feature branch and modify README
+    execSync('git checkout -b feature/new-stuff', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(repoDir, 'README.md'), '# FeatureService\n\nModified on feature branch.\n');
+    execSync('git add -A && git commit -m "feature changes"', { cwd: repoDir, stdio: 'pipe' });
+
+    // extractMetadata with 'main' should return the original content
+    const meta = extractMetadata(repoDir, 'main');
+    expect(meta.description).toBe('Original main description.');
+    expect(meta.defaultBranch).toBe('main');
+  });
+
+  it('detects key files from branch tree via listBranchFiles', () => {
+    const repoDir = setupBranchRepo('keyfiles-branch', {
+      'README.md': '# Svc\n\nDesc.\n',
+      'mix.exs': '',
+      'lib/app.ex': 'defmodule App do\nend',
+      'test/app_test.exs': 'test',
+      'config/config.exs': 'config',
+    });
+
+    const meta = extractMetadata(repoDir, 'main');
+    expect(meta.keyFiles).toContain('README.md');
+    expect(meta.keyFiles).toContain('mix.exs');
+    expect(meta.keyFiles).toContain('lib/');
+    expect(meta.keyFiles).toContain('test/');
+    expect(meta.keyFiles).toContain('config/');
+  });
+
+  it('uses branch commit instead of HEAD for currentCommit', () => {
+    const repoDir = setupBranchRepo('commit-branch', {
+      'README.md': '# Svc\n',
+    });
+
+    // Record main commit
+    const mainCommit = execSync('git rev-parse refs/heads/main', { cwd: repoDir, encoding: 'utf-8' }).trim();
+
+    // Create feature branch with new commit (HEAD moves)
+    execSync('git checkout -b feature/x', { cwd: repoDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(repoDir, 'new.txt'), 'new');
+    execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
+
+    const meta = extractMetadata(repoDir, 'main');
+    expect(meta.currentCommit).toBe(mainCommit);
+  });
+
+  it('falls back to fs-based behavior when branch is null', () => {
+    const repoDir = setupMockRepo('fallback-null');
+    fs.writeFileSync(path.join(repoDir, 'README.md'), '# Fallback\n\nFallback description.\n');
+
+    const meta = extractMetadata(repoDir, null);
+    expect(meta.description).toBe('Fallback description.');
+    expect(meta.defaultBranch).toBeNull();
+  });
+});

@@ -166,44 +166,72 @@ end
   });
 });
 
-describe('extractElixirModules', () => {
-  it('finds modules in lib/ directory', () => {
-    const repoDir = setupMockElixirRepo({
+describe('extractElixirModules (branch-aware)', () => {
+  function setupGitElixirRepo(files: Record<string, string>): string {
+    const repoDir = path.join(tmpDir, 'git-elixir-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
+
+    const { execSync } = require('child_process');
+    execSync('git init', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git checkout -b main', { cwd: repoDir, stdio: 'pipe' });
+
+    for (const [filePath, content] of Object.entries(files)) {
+      const fullPath = path.join(repoDir, filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content);
+    }
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+
+    return repoDir;
+  }
+
+  it('finds modules from git branch in lib/ directory', () => {
+    const repoDir = setupGitElixirRepo({
       'lib/booking.ex': `defmodule MyApp.Booking do\n  def create(x), do: x\nend`,
     });
 
-    const modules = extractElixirModules(repoDir);
+    const modules = extractElixirModules(repoDir, 'main');
     expect(modules).toHaveLength(1);
     expect(modules[0].name).toBe('MyApp.Booking');
   });
 
-  it('finds modules in apps/ umbrella structure', () => {
-    const repoDir = setupMockElixirRepo({
+  it('finds modules from git branch in apps/ umbrella structure', () => {
+    const repoDir = setupGitElixirRepo({
       'apps/booking/lib/booking.ex': `defmodule Booking do\nend`,
       'apps/payments/lib/payments.ex': `defmodule Payments do\nend`,
     });
 
-    const modules = extractElixirModules(repoDir);
+    const modules = extractElixirModules(repoDir, 'main');
     expect(modules).toHaveLength(2);
   });
 
-  it('returns empty for repo without lib/', () => {
-    const repoDir = setupMockElixirRepo({
+  it('returns empty for branch with no lib/ files', () => {
+    const repoDir = setupGitElixirRepo({
       'README.md': '# Hello',
     });
 
-    const modules = extractElixirModules(repoDir);
+    const modules = extractElixirModules(repoDir, 'main');
     expect(modules).toHaveLength(0);
   });
 
-  it('skips _build directory', () => {
-    const repoDir = setupMockElixirRepo({
-      'lib/real.ex': `defmodule Real do\nend`,
-      '_build/dev/lib/real.ex': `defmodule BuildArtifact do\nend`,
+  it('reads from main branch, ignoring feature branch files', () => {
+    const repoDir = setupGitElixirRepo({
+      'lib/main_module.ex': `defmodule MainModule do\nend`,
     });
 
-    const modules = extractElixirModules(repoDir);
+    const { execSync } = require('child_process');
+    // Create feature branch with additional module
+    execSync('git checkout -b feature/new', { cwd: repoDir, stdio: 'pipe' });
+    const featurePath = path.join(repoDir, 'lib', 'feature_module.ex');
+    fs.writeFileSync(featurePath, `defmodule FeatureModule do\nend`);
+    execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Extracting from main should only see MainModule
+    const modules = extractElixirModules(repoDir, 'main');
     expect(modules).toHaveLength(1);
-    expect(modules[0].name).toBe('Real');
+    expect(modules[0].name).toBe('MainModule');
   });
 });
