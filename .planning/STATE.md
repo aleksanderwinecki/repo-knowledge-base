@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
-status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-06T14:43:30Z"
-last_activity: 2026-03-06 -- Phase 7 Plan 1 complete (schema v4 + surgical writer)
+status: completed
+stopped_at: Completed 07-02-PLAN.md (Phase 7 complete)
+last_updated: "2026-03-06T14:56:29.796Z"
+last_activity: 2026-03-06 -- Phase 7 complete (surgical file-level indexing)
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 ## Current Position
 
 Phase: 7 of 9 (Surgical File-Level Indexing)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-06 -- Phase 7 Plan 1 complete (schema v4 + surgical writer)
+Plan: 2 of 2 complete
+Status: Phase 7 Complete
+Last activity: 2026-03-06 -- Phase 7 complete (surgical file-level indexing)
 
-Progress: [###############.....] 75% (6/9 phases, plan 1/2 in phase 7)
+Progress: [####################] 100% (7/9 phases complete)
 
 ## Performance Metrics
 
@@ -53,7 +53,8 @@ Progress: [###############.....] 75% (6/9 phases, plan 1/2 in phase 7)
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
 | 6. Branch-Aware Tracking | 2 | 2 | Complete |
-| 7. Surgical File-Level Indexing | 2 | 1 | In Progress |
+| 7. Surgical File-Level Indexing | 2 | 2 | Complete |
+| Phase 07 P02 | 9min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,10 @@ Recent decisions affecting current work:
 - Phase 7-01: V1 CREATE TABLE keeps original schema; V4 ALTER TABLE adds file_id to events
 - Phase 7-01: clearRepoFiles dual-path cleanup: file_id FK join primary, source_file text fallback for pre-v4 data
 - Phase 7-01: persistSurgicalData clears ALL repo edges (caller re-inserts) rather than per-file edge tracking
+- Phase 7-02: Extractors run on ALL branch files in both modes; surgical filtering only at persistence layer
+- Phase 7-02: Surgical threshold <=200 changed files AND <=50% of repo; above triggers silent full fallback
+- Phase 7-02: Edges always re-derived repo-wide after surgical persist for correctness
+- [Phase 07]: Extractors run on ALL branch files in both modes; surgical filtering only at persistence layer
 
 ### Pending Todos
 
@@ -85,6 +90,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T14:43:30Z
-Stopped at: Completed 07-01-PLAN.md
-Resume file: .planning/phases/07-surgical-file-level-indexing/07-02-PLAN.md
+Last session: 2026-03-06T14:56:24.900Z
+Stopped at: Completed 07-02-PLAN.md (Phase 7 complete)
+Resume file: None
