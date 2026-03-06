@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-06T15:15:47.903Z"
-last_activity: 2026-03-06 -- Phase 7 complete (surgical file-level indexing)
+status: executing
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-06T15:46:06.920Z"
+last_activity: 2026-03-06 -- Phase 8 Plan 02 complete (GraphQL extractor + service persistence)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_plans: 7
+  completed_plans: 6
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 7 -- Surgical File-Level Indexing
+**Current focus:** Phase 8 -- New Extractors
 
 ## Current Position
 
-Phase: 7 of 9 (Surgical File-Level Indexing)
-Plan: 2 of 2 complete
-Status: Phase 7 Complete
-Last activity: 2026-03-06 -- Phase 7 complete (surgical file-level indexing)
+Phase: 8 of 9 (New Extractors)
+Plan: 2 of 3 complete
+Status: In Progress
+Last activity: 2026-03-06 -- Phase 8 Plan 02 complete (GraphQL extractor + service persistence)
 
-Progress: [####################] 100% (7/9 phases complete)
+Progress: [################----] 80% (8/9 phases in progress)
 
 ## Performance Metrics
 
@@ -54,7 +54,9 @@ Progress: [####################] 100% (7/9 phases complete)
 |-------|-------|-----------|--------|
 | 6. Branch-Aware Tracking | 2 | 2 | Complete |
 | 7. Surgical File-Level Indexing | 2 | 2 | Complete |
-| Phase 07 P02 | 9min | 1 tasks | 2 files |
+| 8. New Extractors | 3 | 2 | In Progress |
+| Phase 08 P02 | 3min | 2 tasks | 4 files |
+| Phase 08 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -78,6 +80,15 @@ Recent decisions affecting current work:
 - Phase 7-02: Surgical threshold <=200 changed files AND <=50% of repo; above triggers silent full fallback
 - Phase 7-02: Edges always re-derived repo-wide after surgical persist for correctness
 - [Phase 07]: Extractors run on ALL branch files in both modes; surgical filtering only at persistence layer
+- Phase 8-01: Line-by-line schema block parsing with depth tracking instead of greedy regex for nested do...end safety
+- Phase 8-01: gRPC stub deduplication via Set -- same stub ref'd multiple ways counts once
+- Phase 8-01: Absinthe query/mutation root blocks (no atom name) use kind as name
+- Phase 8-02: GraphQL types stored as body text (no field-level extraction per user decision)
+- Phase 8-02: Services use ON CONFLICT upsert for idempotent persistence
+- Phase 8-02: Surgical mode wipes ALL repo services and re-inserts (no file_id on services table)
+- Phase 8-02: Service FTS includes description for RPC method searchability
+- [Phase 08]: GraphQL types stored as body text (no field-level extraction per user decision)
+- [Phase 08]: Surgical mode wipes ALL repo services and re-inserts (no file_id on services table)
 
 ### Pending Todos
 
@@ -90,6 +101,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T15:15:47.899Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-new-extractors/08-CONTEXT.md
+Last session: 2026-03-06T15:46:02.559Z
+Stopped at: Completed 08-02-PLAN.md
+Resume file: None
