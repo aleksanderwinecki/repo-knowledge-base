@@ -25,6 +25,8 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v1.1 IDX2-01: Indexer tracks only main/master branch commit SHA, ignoring checked-out PR branches — Phase 6
+- v1.1 IDX2-05: Schema migration (v3) adds columns/tables needed for new extractors — Phase 6
 - v1.0 STOR-01: SQLite database stores all indexed knowledge in a single file
 - v1.0 STOR-02: Schema supports repos, files, modules, events, services, and relationships
 - v1.0 STOR-03: FTS5 full-text search over indexed content
@@ -71,7 +73,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v1.0 with 8,193 LOC TypeScript, 236 tests passing.
+Shipped v1.0 with 8,193 LOC TypeScript, 236 tests passing. Phase 6 added branch-aware indexing — 263 tests passing.
 Tech stack: Node.js, TypeScript, better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, vitest.
 Built in ~18 hours as a hackathon project.
 
@@ -93,6 +95,9 @@ Known limitations:
 | No MCP SDK in utility modules | Pure data/DB operations for easy testing | v1.0 Good |
 | Recursive halving for response sizing | Reliable <4KB MCP responses without binary search | v1.0 Good |
 | createServer factory pattern | Testable MCP server without stdio transport in tests | v1.0 Good |
+| Git plumbing over porcelain for branch reads | rev-parse/ls-tree/show are scriptable, no working tree interference | v1.1 Good |
+| main→master→null fallback chain | Simple, covers 99% of repos; no remote queries needed | v1.1 Good |
+| Extractors accept branch param, parse functions unchanged | Minimal API surface change; parseElixirFile/parseProtoFile stay pure | v1.1 Good |
 
 ## Constraints
 
@@ -104,4 +109,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-06 after v1.1 milestone start*
+*Last updated: 2026-03-06 after Phase 6*
