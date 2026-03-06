@@ -1,168 +1,337 @@
-# Feature Research
+# Feature Landscape: v1.1 Improved Reindexing & New Extractors
 
 **Domain:** Codebase knowledge base / code intelligence for local microservice indexing
-**Researched:** 2026-03-05
-**Confidence:** MEDIUM (based on training data knowledge of Sourcegraph, Greptile, Continue.dev, Bloop; no live verification possible)
+**Researched:** 2026-03-06
+**Scope:** Incremental improvements to existing v1.0 tool (8,193 LOC, 236 tests)
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
+Features that v1.1 should deliver to feel like a meaningful upgrade over v1.0.
 
-Features users assume exist. Missing these = product feels incomplete.
+| Feature | Why Expected | Complexity | Depends On |
+|---------|--------------|------------|------------|
+| **Branch-aware git tracking** | v1.0 indexes whatever branch is checked out -- if a dev is on a feature branch, the KB gets polluted with WIP code. Every CI-adjacent tool tracks main/master only. | LOW | Existing `git.ts` module |
+| **Surgical file-level re-indexing** | v1.0 wipes and rewrites all entities for a repo on every index, even for incremental. The `clearRepoEntities` call in `persistRepoData` defeats the purpose of `getChangedFiles`. Users expect changed-file-only updates. | MEDIUM | Branch-aware tracking, existing `clearRepoFiles` |
+| **Parallel repo indexing** | Indexing 50+ repos sequentially is slow. Users expect concurrency from a v1.1 that's about "improved reindexing". | LOW-MEDIUM | Surgical indexing (to avoid DB contention) |
+| **Ecto schema extraction** | v1.0 already detects `schema "table_name"` in its Elixir parser but doesn't extract fields, associations, or store them as first-class entities. This is low-hanging fruit given the existing regex infrastructure. | MEDIUM | Existing `elixir.ts` extractor |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Full-text code search** | Every code intelligence tool has it. Without search, it's just a data dump nobody can query. | LOW | Regex + literal. SQLite FTS5 handles this well for ~50 repos. |
-| **Service metadata extraction** | If indexing microservices, users expect to see what each service is (language, framework, purpose, key deps). Basic inventory. | MEDIUM | Parse package.json/mix.exs, README, directory structure. Elixir-specific parsers needed. |
-| **Incremental re-indexing** | Nobody wants to wait 10 minutes every time one file changes. Git-diff-based indexing is the baseline expectation. | MEDIUM | `git diff --name-only <last-indexed-sha>..HEAD` per repo, re-index only changed files. |
-| **CLI query interface** | The tool must be queryable from the terminal. Engineers live in terminals. | LOW | Standard CLI with subcommands: `rkb search`, `rkb index`, `rkb show`. |
-| **MCP tool integration** | This is the core value prop -- any Claude session can query mid-conversation. Without MCP, it's just another CLI tool. | MEDIUM | MCP server exposing search/query tools. Sourcegraph Cody and Continue.dev both proved that IDE/agent integration is where the value lives. |
-| **Persistent storage** | Data must survive process restarts. Obvious, but worth stating. | LOW | SQLite. Zero-config, single file, fast enough for this scale. |
-| **Service dependency graph** | "Who calls whom?" is the first question anyone asks about microservices. Sourcegraph's dependency graph and Greptile's codebase understanding both center on this. | HIGH | Parse proto files, Kafka configs, HTTP clients, gRPC stubs. The parsing is the hard part -- many implicit dependencies. |
-| **Event/message flow mapping** | In a Kafka-heavy ecosystem, "which services produce/consume BookingCreated?" is the canonical query. | HIGH | Parse proto definitions, Kafka consumer/producer configs. Fresha-specific patterns. |
+## Differentiators
 
-### Differentiators (Competitive Advantage)
+Features that add new knowledge dimensions not available in v1.0.
 
-Features that set the product apart from generic code search. These align with the "persistent, self-improving" vision.
+| Feature | Value Proposition | Complexity | Depends On |
+|---------|-------------------|------------|------------|
+| **GraphQL schema extraction** | Index types, queries, mutations, subscriptions from `.graphql` SDL files and Absinthe `.ex` macros. Answers "what API surface does this service expose?" -- a question devs ask constantly. | MEDIUM | New extractor, schema migration |
+| **gRPC service definition extraction** | v1.0 extracts proto messages but ignores `service` blocks and their RPCs. The proto parser already has `extractServices()` and `ProtoService`/`ProtoRpc` types -- they're just not persisted. Wire it up. | LOW | Existing `proto.ts` (services already parsed) |
+| **Event Catalog integration** | Fresha has a `fresha-event-catalog` repo with curated JSON files: `events.json` (5,721 lines), `services.json` (1,001 lines), `rpcs.json` (6,520 lines). These contain domain ownership, event descriptions, consumer/producer mappings, and proto schemas that are richer than what the KB extracts from raw code. | MEDIUM | New data source, schema for catalog metadata |
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Learned patterns from past tasks** | No competitor does this for local tooling. "To add an event field, touch these files in these repos" is gold -- it's institutional knowledge that currently lives in engineers' heads. | HIGH | Needs a mechanism to record task context + files touched. Could start manual, automate later. |
-| **Manual knowledge injection ("learn" command)** | Lets engineers teach the tool facts that can't be parsed from code. "Service X is being deprecated, use Y instead." Bloop and Sourcegraph don't do this -- they're read-only indexes. | LOW | Store key-value or freetext facts in SQLite, make them searchable alongside code knowledge. |
-| **Natural language semantic search** | "Which services handle payments?" requires understanding, not just text matching. Greptile's core differentiator is semantic understanding of codebases. | HIGH | Requires embeddings (local or API). Could use ollama locally or OpenAI API. Significant complexity vs. value tradeoff for hackathon. |
-| **Cross-repo relationship awareness** | Most tools index repos in isolation. Understanding that service-a's proto is consumed by service-b, service-c, and service-d is cross-repo intelligence. This is what Sourcegraph's cross-repo navigation does, but for architectural knowledge rather than symbol navigation. | MEDIUM | Build on top of event/dependency extraction. The indexer already has the data -- this is about the query layer surfacing cross-repo connections. |
-| **Schema/API surface extraction** | Index GraphQL schemas, gRPC service definitions, Ecto schemas per service. Know the API surface of every service without opening the repo. | MEDIUM | Parse .graphql files, .proto files, Ecto schema modules. Structured extraction into queryable format. |
-| **Stale knowledge detection** | Flag when indexed knowledge is outdated (repo changed significantly since last index). Sourcegraph does this with precise code intel staleness indicators. | LOW | Compare current HEAD sha to indexed sha per repo. Show age/drift metrics. |
+## Anti-Features
 
-### Anti-Features (Commonly Requested, Often Problematic)
+Features to explicitly NOT build in v1.1.
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| **Real-time file watching** | "Always up to date!" sounds appealing. | Massive complexity for negligible value. 50+ repos with file watchers = resource hog. Incremental re-index on demand is sufficient and the PROJECT.md already calls this out of scope. | On-demand `rkb index` or pre-commit hook trigger. |
-| **Full AST parsing for every language** | "Deep code understanding!" | Maintaining AST parsers for Elixir, JS, proto, GraphQL is an enormous surface area. Sourcegraph has a whole team for this (SCIP/LSIF). For a hackathon tool, regex + file-pattern heuristics get 80% of the value for 5% of the cost. | Pattern-based extraction (regex on well-known file patterns) supplemented with targeted parsers only for high-value extractions. |
-| **Vector database for embeddings** | "Semantic search needs a vector DB!" | Adds infrastructure dependency (Chroma, Qdrant, etc.) that violates the zero-infrastructure constraint. For ~50 repos, you don't need ANN search. | SQLite + simple cosine similarity on stored embedding arrays, or skip embeddings entirely for v1 and use keyword search + structured queries. |
-| **UI dashboard** | "Visualize the dependency graph!" | Scope creep. A web UI is a whole project in itself. Already out of scope per PROJECT.md. | CLI output + JSON export that can be piped to other visualization tools if needed. |
-| **Code generation / PR creation** | "If it understands the code, it should be able to modify it!" | This is an action layer, not a knowledge layer. Mixing concerns turns a focused tool into a sprawling platform. PROJECT.md explicitly excludes this. | Expose knowledge via MCP so that Claude Code (the action layer) can use it to make informed changes. Clean separation. |
-| **Multi-user / team sync** | "Share the knowledge base across the team!" | Adds auth, conflict resolution, sync infrastructure. Way beyond hackathon scope. | Each engineer runs their own local instance. Knowledge files can be checked into repos if sharing is needed. |
-| **Embedding-based code search as primary search** | Greptile-style semantic-only search. | Embedding search without a fallback to exact text match is frustrating. "Find all uses of BookingCreated" should be exact, not fuzzy. | Text search as primary. Semantic search as a supplementary mode for natural language queries. |
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| **Worker thread parallelism** | better-sqlite3 cannot share connections across threads. Worker threads would require each thread to open its own DB connection, and writes still serialize at the SQLite level. The bottleneck is I/O (filesystem scanning), not CPU. | Use `Promise.all` with `p-limit` for concurrent filesystem reads, serialize DB writes on main thread. |
+| **Full AST parsing for Elixir** | Would require an Elixir parser in JS (doesn't exist) or shelling out to `mix`. The regex approach in `elixir.ts` handles the well-structured patterns at Fresha. | Extend regex patterns for Ecto fields/associations and Absinthe macros. |
+| **GraphQL introspection from running services** | Would require services to be running, auth tokens, network access. Violates local-only constraint. | Parse `.graphql` SDL files and Absinthe source files statically. |
+| **EventCatalog SDK integration** | The `@eventcatalog/sdk` requires the catalog to be built and provides an API for reading/writing catalog entities. Overkill -- the raw JSON source files are simpler and contain everything needed. | Read the JSON source files directly from the `fresha-event-catalog` repo. |
+| **Real-time file watching for re-index** | Already out of scope per PROJECT.md. On-demand indexing is sufficient. | Keep existing on-demand `kb index` and MCP auto-sync patterns. |
+
+## Detailed Feature Specifications
+
+### 1. Branch-Aware Git Tracking (main/master only)
+
+**What it does:** When indexing, always resolve to the main/master branch HEAD, regardless of what branch is currently checked out locally.
+
+**Expected behavior:**
+- Determine the default branch name for each repo (could be `main`, `master`, or custom)
+- Use `git rev-parse origin/main` or `git rev-parse origin/master` to get the default branch HEAD
+- Compare against stored `last_indexed_commit` using the default branch SHA, not the checked-out HEAD
+- If the dev is on a feature branch, still index main/master content
+
+**Implementation approach:**
+1. Add `getDefaultBranch(repoPath)` to `git.ts`:
+   - Try `git symbolic-ref refs/remotes/origin/HEAD` (unreliable, may not be set)
+   - Fallback: try `git rev-parse --verify origin/main` then `origin/master`
+   - Cache result per repo (branch name doesn't change often)
+2. Add `getCommitForRef(repoPath, ref)` to resolve branch refs to SHAs
+3. Modify `getCurrentCommit()` to accept an optional branch parameter
+4. Update `indexSingleRepo` to use default branch SHA for comparison and content
+
+**Complexity:** LOW -- 3-4 small functions in `git.ts`, minor pipeline changes.
+
+**Edge cases:**
+- Repo has no remote (local-only): fall back to HEAD
+- `origin/HEAD` not set: use fallback chain main -> master -> HEAD
+- Detached HEAD state: still works since we're resolving origin/main explicitly
+
+**Confidence:** HIGH -- git commands are well-documented and deterministic.
+
+### 2. Surgical File-Level Re-Indexing
+
+**What it does:** When a repo has new commits, only re-extract entities from changed files instead of wiping everything and re-extracting all files.
+
+**Current problem (v1.0):** The pipeline calls `getChangedFiles()` to detect deleted files, but then runs ALL extractors on ALL files and calls `clearRepoEntities()` which wipes everything before re-inserting. The incremental detection exists but isn't used for anything beyond delete cleanup.
+
+**Expected behavior:**
+1. Get changed files via `git diff --name-status <last_commit>..HEAD`
+2. For deleted files: remove their entities (already implemented via `clearRepoFiles`)
+3. For added/modified files: remove old entities for those files, run extractors only on those files
+4. For unchanged files: do nothing -- their entities remain in the DB
+5. For force re-index: wipe and rebuild everything (existing behavior)
+
+**Implementation approach:**
+1. Modify extractors to accept a file list filter (optional):
+   - `extractElixirModules(repoPath, { files?: string[] })` -- if files provided, only process those
+   - `extractProtoDefinitions(repoPath, { files?: string[] })` -- same
+   - New extractors should follow this pattern from the start
+2. Modify `persistRepoData` to support incremental mode:
+   - Remove the `clearRepoEntities(db, repoId)` call for incremental updates
+   - Only clear entities from changed files via existing `clearRepoFiles`
+   - Upsert new entities from changed files
+3. Update `indexSingleRepo` to orchestrate: detect changed files -> clear changed file entities -> extract from changed files only -> persist
+
+**Complexity:** MEDIUM -- core refactor of the extraction/persistence pipeline. Touches `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`.
+
+**Key risk:** Event relationship detection currently scans ALL `.ex` files for consumer patterns. Surgical indexing needs to handle cross-file dependencies: if file A defines a consumer and file B is modified, file A's consumer relationships should remain untouched. This requires clean file-level isolation of entities, which the current `clearRepoFiles` mostly supports via `source_file` tracking.
+
+**Confidence:** HIGH -- the existing `clearRepoFiles` and `getChangedFiles` already provide the building blocks.
+
+### 3. Parallel Repo Indexing
+
+**What it does:** Index multiple repos concurrently instead of sequentially.
+
+**Expected behavior:**
+- Run extraction (filesystem reads, git commands) for multiple repos in parallel
+- Control concurrency to avoid overwhelming the filesystem
+- Serialize database writes (SQLite single-writer constraint)
+- Maintain per-repo error isolation (existing requirement IDX-07)
+- Show progress as repos complete
+
+**Implementation approach:**
+1. Use `p-limit` (or hand-rolled semaphore) for concurrency control
+2. Split the pipeline into two phases per repo:
+   - **Phase 1 (parallel):** Extract metadata, run file extractors, detect events -- pure filesystem I/O
+   - **Phase 2 (serial):** Persist to database -- `persistRepoData` in main thread
+3. Modify `indexAllRepos` to use `Promise.all` with limiter:
+   ```typescript
+   const limit = pLimit(4); // 4 repos at a time
+   const extractions = repos.map(repo => limit(() => extractRepoData(repo)));
+   const results = await Promise.all(extractions);
+   for (const result of results) { persistRepoData(db, result); }
+   ```
+4. This requires making extractors async (they currently use sync `fs.readFileSync`)
+
+**Complexity:** LOW-MEDIUM -- the architectural change is straightforward, but converting sync filesystem operations to async and restructuring the pipeline requires touching most indexer files.
+
+**Trade-off decision:** Don't use worker_threads. The SQLite writer constraint means workers can't write in parallel anyway, and the overhead of serializing extraction results across thread boundaries isn't worth it for I/O-bound work. `Promise.all` + async filesystem operations + `p-limit` is the right call.
+
+**Expected speedup:** 2-4x for full re-index (bottleneck shifts from sequential I/O to DB writes). Diminishing returns beyond 4-6 concurrent repos due to disk throughput limits.
+
+**Confidence:** HIGH -- well-established Node.js concurrency pattern.
+
+### 4. GraphQL Schema Extraction
+
+**What it does:** Extract types, queries, mutations, and subscriptions from two sources:
+1. `.graphql` SDL files (found in at least 10 repos: app-accounting-documents, app-packages, app-blocked-times, app-wallet-transfers, etc.)
+2. Absinthe macro definitions in `.ex` files
+
+**Expected behavior for `.graphql` files:**
+- Parse SDL using the `graphql` npm package's `parse()` function
+- Extract: object types (with fields), input types, enum types, query/mutation/subscription root fields
+- Store as searchable entities with repo association
+
+**Expected behavior for Absinthe `.ex` files:**
+- Regex-extract Absinthe macros: `object :name do`, `field :name, :type`, `query do`, `mutation do`, `input_object :name do`, `enum :name do`
+- Map to equivalent GraphQL type/field structures
+- Link to source file
+
+**Implementation approach:**
+1. **New extractor: `graphql.ts`**
+   - Find `.graphql` files recursively (like proto finder)
+   - Use `graphql` package `parse()` to get AST
+   - Walk `DocumentNode.definitions`, extract `ObjectTypeDefinition`, `InputObjectTypeDefinition`, `EnumTypeDefinition`, etc.
+   - Special handling for `Query`, `Mutation`, `Subscription` root types
+2. **Extend `elixir.ts`** for Absinthe patterns:
+   - Detect Absinthe schemas: `use Absinthe.Schema` or `use Absinthe.Schema.Notation`
+   - Regex patterns for `object :identifier do`, `field :name, :type`, `query do`, `mutation do`
+   - Classify as module type "graphql_schema" or "graphql_type"
+3. **Schema migration** (v3): Add `graphql_types` table or extend modules table with GraphQL-specific columns
+4. **FTS integration:** Index GraphQL type names and field names for search
+
+**New dependency:** `graphql` npm package (the reference implementation, ~200KB, no native deps, zero config). Used only for its parser -- not running a server.
+
+**Complexity:** MEDIUM -- the `.graphql` parser is trivial with the `graphql` package. Absinthe macro extraction via regex is more brittle but follows the same pattern as existing Elixir extraction.
+
+**Confidence:** HIGH for `.graphql` SDL parsing (official parser, well-documented AST). MEDIUM for Absinthe macro extraction (regex on macros is fragile but sufficient for common patterns).
+
+### 5. gRPC Service Definition Extraction
+
+**What it does:** Persist the service/RPC definitions that the proto parser already extracts but currently discards.
+
+**Current state:** `proto.ts` already has `extractServices()` which returns `ProtoService[]` with `ProtoRpc[]`. The `indexSingleRepo` pipeline maps proto messages to events but completely ignores the service blocks. The `RelationshipType` already includes `'calls_grpc'`.
+
+**Expected behavior:**
+- Store gRPC services as entities (service name, package, source file)
+- Store RPCs with their request/response types
+- Create `calls_grpc` edges when one repo's code references another repo's gRPC service
+- Make services searchable ("what gRPC endpoints does app-rewards expose?")
+
+**Implementation approach:**
+1. Map `ProtoService` data to a new entity type or reuse the existing `services` table
+2. Store each RPC as a module-like entity with type "grpc_rpc"
+3. Add edges: repo -> service (exposes_grpc), detect gRPC client calls in Elixir code (e.g., `Stub.method_name()` patterns)
+4. Update `persistRepoData` to handle gRPC service persistence
+
+**Complexity:** LOW -- the hard parsing work is done. This is plumbing existing data into the DB and FTS.
+
+**Confidence:** HIGH -- direct extension of existing code, no new parsing needed.
+
+### 6. Ecto Schema Extraction
+
+**What it does:** Extract database structure from Ecto schema definitions: table names (already captured), field names/types, associations, and embedded schemas.
+
+**Current state:** `elixir.ts` already detects `schema "table_name"` and classifies modules as type "schema". But it doesn't extract the fields or associations defined within the schema block.
+
+**Ecto schema patterns to extract:**
+```elixir
+schema "table_name" do
+  field :name, :string                    # field with type
+  field :status, Ecto.Enum, values: [...]  # enum field
+  belongs_to :user, User                   # association
+  has_many :orders, Order                  # association
+  has_one :profile, Profile                # association
+  many_to_many :tags, Tag                  # association
+  embeds_one :metadata, Metadata           # embedded schema
+  embeds_many :items, Item                 # embedded schema
+  timestamps()                             # auto-fields
+end
+```
+
+**Expected behavior:**
+- Extract all fields with their types from `field :name, :type` declarations
+- Extract associations (belongs_to, has_many, has_one, many_to_many) with target schema
+- Extract embedded schemas (embeds_one, embeds_many)
+- Detect timestamps() calls
+- Store as structured data associated with the module entity
+- Enable queries like "which schemas have a `partner_id` field?" or "what tables does app-rewards use?"
+
+**Implementation approach:**
+1. Extend `parseElixirFile` to capture field and association data when inside a `schema` block
+2. Add regex patterns:
+   - `field\s+:(\w+),\s+([\w.:]+)` for fields
+   - `(belongs_to|has_many|has_one|many_to_many)\s+:(\w+),\s+([\w.]+)` for associations
+   - `(embeds_one|embeds_many)\s+:(\w+),\s+([\w.]+)` for embeds
+   - `timestamps\(\)` for timestamp detection
+3. Store in existing `modules` table via extended summary, or add a new `schema_fields` table
+4. Create edges for associations (schema A -> schema B via `has_many`)
+
+**Complexity:** MEDIUM -- regex extraction is straightforward for well-formatted Ecto schemas. The association-to-edge mapping adds cross-repo relationship data.
+
+**Confidence:** HIGH for field/association regex extraction (Ecto has very consistent macro syntax). MEDIUM for cross-repo association resolution (target schema names may not match module names exactly).
+
+### 7. Event Catalog Integration
+
+**What it does:** Import curated domain knowledge from the `fresha-event-catalog` repo as a supplementary data source, enriching the KB with human-authored event descriptions, domain ownership, team assignments, and service metadata that code extraction alone cannot provide.
+
+**Data available in the Event Catalog:**
+- `sources/events/events.json`: ~200+ events with name, version, channels, producers, owners, domain, proto schema, description, protocol
+- `sources/services/services.json`: ~50+ services with name, owners, repo URL, language, description, domains, sends/receives
+- `sources/rpcs/rpcs.json`: ~100+ gRPC service definitions with methods, request/response schemas, domain, protocol
+
+**Expected behavior:**
+- Detect `fresha-event-catalog` repo in the repos directory (or allow configuring its path)
+- Parse the JSON source files (not the generated MDX)
+- Merge Event Catalog data with code-extracted data:
+  - Enrich events with descriptions, domain assignments, owner teams
+  - Enrich services with domain context, team ownership
+  - Add RPC definitions not found in individual repo proto files
+- Avoid duplicates: match by event name/service name between code-extracted and catalog data
+- Track catalog version/commit separately from individual repo commits
+
+**Implementation approach:**
+1. New extractor: `event-catalog.ts`
+   - Locate the catalog repo (scan repos directory or config)
+   - Parse `events.json`, `services.json`, `rpcs.json`
+   - Map to existing entity types (events, services, edges)
+2. Merge strategy: catalog data supplements code-extracted data
+   - If an event exists from code extraction AND catalog: catalog description wins, schema from code wins
+   - If an event exists only in catalog: create entity with catalog data
+   - Domain/owner metadata always comes from catalog (authoritative source)
+3. Schema migration: Add columns for domain, owner_team to relevant tables
+4. Indexing: treat catalog as a special "repo" that gets indexed alongside code repos
+
+**Complexity:** MEDIUM -- JSON parsing is trivial, the complexity is in the merge/deduplication logic and schema evolution.
+
+**Key risk:** Event names in the catalog may not match proto message names exactly. The catalog uses human-readable names ("Payment Failed") while proto uses message names ("PaymentFailed" or "payment_failed.v1.Payload"). Need a normalization/matching strategy.
+
+**Confidence:** HIGH for parsing (it's just JSON). MEDIUM for merge logic (name matching heuristics needed).
 
 ## Feature Dependencies
 
 ```
-Persistent Storage (SQLite)
+Branch-Aware Git Tracking
     |
-    +---> Service Metadata Extraction
-    |         |
-    |         +---> Service Dependency Graph
-    |         |         |
-    |         |         +---> Cross-repo Relationship Queries
-    |         |         +---> Event/Message Flow Mapping
-    |         |
-    |         +---> Schema/API Surface Extraction
-    |
-    +---> Full-text Code Search
-    |         |
-    |         +---> Natural Language Semantic Search (enhances)
-    |
-    +---> Manual Knowledge Injection
-    |
-    +---> Learned Patterns from Past Tasks
-    |
-    +---> Incremental Re-indexing
+    +---> Surgical File-Level Re-Indexing
               |
-              +---> Stale Knowledge Detection
+              +---> Parallel Repo Indexing (benefits from surgical to reduce DB contention)
 
-CLI Query Interface --requires--> All of the above (it's the access layer)
+Existing proto.ts
+    |
+    +---> gRPC Service Definition Extraction (LOW effort, just wiring)
 
-MCP Tool Integration --requires--> CLI Query Interface (or at minimum, the same query logic)
+Existing elixir.ts
+    |
+    +---> Ecto Schema Extraction (extend regex patterns)
+
+New graphql.ts + extended elixir.ts
+    |
+    +---> GraphQL Schema Extraction
+
+fresha-event-catalog repo
+    |
+    +---> Event Catalog Integration (independent track)
+
+Schema Migration (v3)
+    |
+    +---> All new extractors need DB storage
 ```
 
-### Dependency Notes
+### Critical Path
 
-- **Service Dependency Graph requires Service Metadata Extraction:** You need to know what services exist before you can map their relationships.
-- **Event/Message Flow requires Dependency Graph:** Event flows are a subset of the dependency graph -- producer/consumer relationships are dependencies.
-- **Cross-repo Relationship Queries require Dependency Graph:** This is the query layer on top of the graph data.
-- **Natural Language Semantic Search enhances Full-text Search:** Semantic search is additive. Text search must work first.
-- **MCP Tool Integration requires query logic:** MCP exposes the same query capabilities as CLI, just over a different transport.
-- **Learned Patterns requires only Persistent Storage:** Independent track -- can be built in parallel with indexing.
+1. Branch-aware tracking MUST come before surgical indexing (surgical relies on accurate commit tracking against the right branch)
+2. Surgical indexing SHOULD come before parallelism (parallel extraction + serial persistence is cleaner with surgical updates)
+3. gRPC wiring is completely independent and can be done anytime
+4. GraphQL, Ecto, and Event Catalog extractors are independent of each other
+5. All extractors need a schema migration, so that should be designed upfront
 
-## MVP Definition
+## Implementation Priority
 
-### Launch With (v1 -- Hackathon Demo)
+| Feature | Value | Effort | Priority | Phase Recommendation |
+|---------|-------|--------|----------|---------------------|
+| gRPC service definition extraction | HIGH | LOW | P0 | First -- it's nearly free |
+| Branch-aware git tracking | HIGH | LOW | P1 | Foundation for surgical indexing |
+| Surgical file-level re-indexing | HIGH | MEDIUM | P1 | Core improvement, enables parallelism |
+| Parallel repo indexing | MEDIUM | LOW-MED | P1 | Natural follow-on to surgical |
+| Ecto schema extraction | MEDIUM | MEDIUM | P2 | Extends existing extractor |
+| GraphQL schema extraction | MEDIUM | MEDIUM | P2 | New extractor with npm dep |
+| Event Catalog integration | HIGH | MEDIUM | P2 | Independent track, rich data source |
 
-- [ ] **Persistent Storage (SQLite)** -- foundation for everything
-- [ ] **Service Metadata Extraction** -- basic inventory of all repos (name, language, framework, purpose)
-- [ ] **Full-text Code Search** -- FTS5-based search across indexed content
-- [ ] **Event/Message Flow Mapping** -- proto file parsing for producer/consumer relationships (the canonical "which services consume BookingCreated?" query)
-- [ ] **CLI Query Interface** -- `rkb index`, `rkb search`, `rkb show <service>`, `rkb events <event-name>`
-- [ ] **MCP Tool Integration** -- expose search and query as MCP tools for Claude Code
-- [ ] **Incremental Re-indexing** -- git-diff-based, only re-index changed files
-
-### Add After Validation (v1.x)
-
-- [ ] **Service Dependency Graph** -- full graph including gRPC, HTTP, and Kafka dependencies (beyond just events)
-- [ ] **Schema/API Surface Extraction** -- GraphQL schemas, Ecto schemas per service
-- [ ] **Manual Knowledge Injection** -- `rkb learn "Service X is deprecated, migrate to Y"`
-- [ ] **Stale Knowledge Detection** -- show which repos are outdated in the index
-- [ ] **Cross-repo Relationship Queries** -- "what would break if I change this proto?"
-
-### Future Consideration (v2+)
-
-- [ ] **Learned Patterns from Past Tasks** -- needs a task recording mechanism, significant design work
-- [ ] **Natural Language Semantic Search** -- requires embedding infrastructure, evaluate after v1 keyword search proves insufficient
-- [ ] **Dependency impact analysis** -- "if I change X, what services are affected?" (requires complete dependency graph)
-
-## Feature Prioritization Matrix
-
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Service Metadata Extraction | HIGH | MEDIUM | P1 |
-| Full-text Code Search (FTS5) | HIGH | LOW | P1 |
-| Event/Message Flow Mapping | HIGH | HIGH | P1 |
-| CLI Query Interface | HIGH | LOW | P1 |
-| MCP Tool Integration | HIGH | MEDIUM | P1 |
-| Incremental Re-indexing | HIGH | MEDIUM | P1 |
-| Persistent Storage (SQLite) | HIGH | LOW | P1 |
-| Service Dependency Graph | HIGH | HIGH | P2 |
-| Schema/API Surface Extraction | MEDIUM | MEDIUM | P2 |
-| Manual Knowledge Injection | MEDIUM | LOW | P2 |
-| Stale Knowledge Detection | LOW | LOW | P2 |
-| Cross-repo Relationship Queries | HIGH | MEDIUM | P2 |
-| Learned Patterns | HIGH | HIGH | P3 |
-| Natural Language Semantic Search | MEDIUM | HIGH | P3 |
-
-**Priority key:**
-- P1: Must have for hackathon demo
-- P2: Should have, add when possible post-hackathon
-- P3: Nice to have, future consideration
-
-## Competitor Feature Analysis
-
-| Feature | Sourcegraph | Greptile | Continue.dev | Bloop | Our Approach |
-|---------|-------------|----------|--------------|-------|--------------|
-| Code search | Regex, structural, symbol search across all repos | Semantic search via embeddings | @codebase context provider with embeddings | Natural language + regex code search | FTS5 keyword search, structured queries for known entities |
-| Cross-repo navigation | SCIP/LSIF-based precise go-to-definition | API-based codebase Q&A | Limited to open files + indexed workspace | Single-repo focused | Relationship graph built from proto/config parsing |
-| Dependency mapping | Repository dependency graph | Implicit via semantic understanding | Not a focus | Not a focus | Explicit extraction from proto, Kafka, gRPC configs |
-| Event flow tracking | Not built-in (code search can find it) | Not built-in | Not built-in | Not built-in | **Core differentiator**: first-class event producer/consumer mapping |
-| Incremental indexing | Yes (precise indexers) | Yes (webhook-triggered) | Yes (on file save) | Yes | Git-diff-based per repo |
-| Knowledge injection | No (read-only index) | No | No | No | **Differentiator**: `rkb learn` command for manual facts |
-| Learned patterns | No | No | No | No | **Differentiator**: record task patterns for future reference |
-| AI agent integration | Cody (their own AI) | API for external AI tools | Built into Continue IDE extension | Built-in chat | MCP tool for any Claude Code session |
-| Hosting model | Cloud or self-hosted server | Cloud API | Local (IDE extension) | Cloud or local | Local only, zero infrastructure |
-| Scale target | Millions of repos | Thousands of repos | Single workspace | Single repo to medium orgs | ~50 repos, local machine |
-
-**Key takeaway from competitor analysis:** Nobody does local-first, persistent, Elixir-microservice-aware knowledge indexing with manual knowledge injection. Sourcegraph is the closest in capability but is a heavy server deployment. Greptile is cloud-only API. Continue.dev is IDE-bound. Our niche is clear: lightweight local tool that knows your specific microservice ecosystem deeply.
+**Rationale:** Start with what's nearly free (gRPC wiring), then fix the indexing pipeline foundation (branch + surgical + parallel), then add new extractors. Event Catalog integration is high value but independent, so it can be parallelized with extractor work.
 
 ## Sources
 
-- Sourcegraph documentation and product features (training data, MEDIUM confidence)
-- Greptile product description and API documentation (training data, MEDIUM confidence)
-- Continue.dev documentation on context providers (training data, MEDIUM confidence)
-- Bloop product features (training data, LOW confidence -- Bloop pivoted/changed significantly)
-- PROJECT.md requirements and constraints (HIGH confidence, direct source)
-
-**Note:** WebSearch and WebFetch were both unavailable during this research session. All competitor analysis is based on training data (cutoff ~early 2025). Specific feature claims about competitors should be verified before making strategic decisions based on them. The feature categorization for *our* product is HIGH confidence since it's derived from the PROJECT.md requirements and well-understood patterns in the domain.
+- Existing codebase analysis (`git.ts`, `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`) -- HIGH confidence
+- `fresha-event-catalog` repo structure and JSON source files -- HIGH confidence (direct inspection)
+- [GraphQL Tools schema loading](https://the-guild.dev/graphql/tools/docs/schema-loading) -- MEDIUM confidence
+- [graphql-js parse function](https://snyk.io/advisor/npm-package/graphql/functions/graphql.parse) -- HIGH confidence
+- [Absinthe Schema Notation docs](https://hexdocs.pm/absinthe/Absinthe.Schema.Notation.html) -- HIGH confidence
+- [Ecto Schema docs](https://hexdocs.pm/ecto/Ecto.Schema.html) -- HIGH confidence
+- [EventCatalog SDK](https://www.eventcatalog.dev/docs/sdk) -- MEDIUM confidence
+- [p-limit concurrency control](https://www.npmjs.com/package/p-limit) -- HIGH confidence
+- [better-sqlite3 worker thread safety](https://github.com/JoshuaWise/better-sqlite3/issues/237) -- HIGH confidence
+- [git symbolic-ref for default branch detection](https://git-scm.com/docs/git-symbolic-ref) -- HIGH confidence
 
 ---
-*Feature research for: Codebase knowledge base / code intelligence*
-*Researched: 2026-03-05*
+*Feature research for v1.1: Improved Reindexing & New Extractors*
+*Researched: 2026-03-06*

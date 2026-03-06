@@ -1,369 +1,446 @@
-# Pitfalls Research
+# Domain Pitfalls: v1.1 Improved Reindexing and New Extractors
 
-**Domain:** Codebase knowledge base / semantic code search (local, ~50 Elixir microservices)
-**Researched:** 2026-03-05
-**Confidence:** MEDIUM (training data only -- no web search available to verify current state)
+**Domain:** Incremental indexing, parallel execution, and new extractor pipelines for existing knowledge base
+**Researched:** 2026-03-06
+**Confidence:** HIGH (verified against codebase, official docs, and multiple sources)
+
+---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Treating Code Like Prose When Embedding
-
-**What goes wrong:**
-You embed code files using the same strategy you'd use for documentation -- stuff the whole file or large blocks into a generic text embedding model. The resulting vectors are garbage for actual code search because: (a) code has structural meaning that prose embeddings miss (imports, function signatures, type definitions are semantically dense in ways that `text-embedding-3-small` doesn't capture well), (b) variable names and domain terms get tokenized into nonsense subwords, and (c) the embedding space conflates syntactically different but semantically identical patterns.
-
-**Why it happens:**
-Every RAG tutorial shows "chunk text, embed, search" and it works great for documentation. Developers assume code is just another kind of text. It isn't. A function signature like `def handle_event(event, state)` carries enormous structural meaning that a prose-trained model underweights.
-
-**How to avoid:**
-- For a hackathon MVP with ~50 repos: **skip embeddings entirely for v1**. Use structured extraction (AST-like parsing of module names, function names, event names, schema fields) stored in SQLite with full-text search (FTS5). This is faster to build, more predictable, and for a codebase you control, keyword/structured search over well-extracted metadata will outperform naive embedding search.
-- If you do embeddings later: use a code-specific model (like `voyage-code-3` or similar), embed at the function/module level with metadata prepended (language, file path, module name), and combine with keyword search (hybrid retrieval).
-- Never rely on embeddings alone for code -- always pair with structural/keyword search.
-
-**Warning signs:**
-- Searching for "BookingCreated event consumer" returns random files that mention "booking" somewhere
-- Results feel random -- no clear correlation between query intent and returned chunks
-- Exact matches (searching for a known function name) don't surface first
-
-**Phase to address:**
-Phase 1 (MVP). Get this wrong and the core value prop is broken. Start with structured extraction + FTS5, defer embeddings to a later phase.
+Mistakes that cause data corruption, silent wrongness, or require significant rework.
 
 ---
 
-### Pitfall 2: Wrong Chunking Granularity
+### Pitfall 1: Branch-Aware Tracking Breaks on Detached HEAD
 
 **What goes wrong:**
-You chunk by fixed token count (512 tokens, 1024 tokens) or by file. Fixed-token chunks split functions mid-body, separate a type definition from its usage, or merge unrelated code into one chunk. File-level chunks are too large for embedding models and dilute the signal. Either way, search results return chunks that are either too fragmented to be useful or too broad to be relevant.
+You add branch-aware git tracking with `git symbolic-ref --short HEAD` to determine the current branch and compare against main/master. But ~50 repos on developer machines are frequently in detached HEAD state (after `git checkout <sha>`, during rebase, or from IDE operations). `git symbolic-ref` throws a fatal error on detached HEAD. If you don't catch this, the entire indexer crashes or silently skips every detached repo.
 
 **Why it happens:**
-Fixed-token chunking is the default in every RAG framework (LangChain, LlamaIndex). It's designed for prose documents where paragraph boundaries are soft. Code has hard structural boundaries -- functions, classes, modules, type definitions -- that must be respected.
+The current codebase uses `git rev-parse HEAD` (in `src/indexer/git.ts:9`), which always returns a SHA regardless of HEAD state. Adding branch detection introduces a new failure mode that didn't exist before. Developers test with repos that are on branches, so the detached HEAD case never surfaces during development.
 
-**How to avoid:**
-- Chunk by structural unit: one chunk = one function, one module definition, one schema definition, one event definition, one proto message. For Elixir specifically: one chunk per module (defmodule), or per public function if modules are large.
-- Store metadata alongside each chunk: file path, module name, function name, language, repo name. This metadata is often more valuable for search than the embedding itself.
-- For this project specifically: the "chunks" aren't really chunks -- they're extracted knowledge artifacts (service metadata, event relationships, schema definitions). Treat them as structured records, not text blobs.
+**Consequences:**
+- Indexer crashes on any repo in detached HEAD state
+- If swallowed silently, repos get skipped without explanation -- users see "skipped" repos they expect to be indexed
+- MCP auto-sync (`src/mcp/sync.ts`) inherits the same bug, causing query-time failures
 
-**Warning signs:**
-- You're writing code to split by token count rather than by AST/structural boundaries
-- A single search result contains code from two unrelated functions
-- You need more than 3-4 results to find the relevant one
+**Prevention:**
+1. Use `git symbolic-ref --short HEAD 2>/dev/null` with error handling -- a non-zero exit means detached HEAD
+2. For detached HEAD, fall back to checking if HEAD is reachable from `origin/main` or `origin/master` using `git merge-base --is-ancestor HEAD origin/main`
+3. Decision: Should detached HEAD repos be indexed? The answer is almost certainly **yes** if HEAD is reachable from the main branch (developer just hasn't switched back yet). Only skip if HEAD is on a pure feature branch with no overlap.
+4. Store `indexed_branch` alongside `last_indexed_commit` in the repos table so you can detect when someone switches branches
 
-**Phase to address:**
-Phase 1 (MVP). The extraction/chunking strategy is foundational. Changing it later means re-indexing everything and restructuring the schema.
+**Detection:**
+- Test the indexer against a repo with `git checkout HEAD~1` (detached HEAD)
+- Test against a repo mid-rebase
+- Watch for "skipped" repos that should have been indexed
+
+**Phase to address:** Phase 1 of v1.1 (branch-aware tracking). Must handle detached HEAD from day one.
 
 ---
 
-### Pitfall 3: Index Staleness Without Awareness
+### Pitfall 2: Surgical File Updates Create Orphaned FTS Entries
 
 **What goes wrong:**
-The index becomes stale (someone adds a new service, changes event contracts, modifies schemas) and the knowledge base silently returns outdated information. Worse: there's no way to tell *which* results might be stale. An AI agent gets confidently wrong answers about the current state of the codebase.
+You switch from wipe-and-rewrite to surgical file-level updates. A file is modified, so you delete its old entities and insert new ones. But the FTS5 `knowledge_fts` table uses `entity_id` references to the `modules`, `events`, etc. tables. If you delete a module row (getting a new auto-increment ID on re-insert) but fail to clean up the corresponding FTS entry first, you get orphaned FTS entries pointing at IDs that no longer exist (or worse, point at *different* entities that reused the ID).
 
 **Why it happens:**
-Building the indexer is the fun part. Building the staleness-tracking metadata is boring. So you index everything once, it works great for the demo, and then two weeks later it's lying to you about which services consume an event because someone refactored a consumer.
+The current `persistRepoData` in `src/indexer/writer.ts:144` does it safely: `clearRepoEntities` removes all FTS entries, deletes all rows, then re-inserts everything fresh. The IDs change, but it doesn't matter because everything is rebuilt atomically in a transaction. Surgical updates break this assumption -- you're now doing partial deletes and inserts, and FTS consistency becomes your responsibility for each individual file.
 
-**How to avoid:**
-- Store `last_indexed_commit` per repo. On every query, optionally check if HEAD has moved since last index (cheap git operation). Surface staleness in results: "This result is from repo X, last indexed 3 days ago (14 commits behind)."
-- Make re-indexing trivially easy: `rkb reindex` or `rkb reindex --repo app-bookings`. If re-indexing is painful, it won't happen.
-- For the MCP tool: include staleness metadata in tool responses so the LLM can caveat its answers.
+**Consequences:**
+- Search returns phantom results: "Found module X in file Y" but the file no longer contains that module
+- Search misses newly extracted entities because the old FTS entry for that `entity_id` was never cleaned up, and the delete-then-insert in `indexEntity` (`src/db/fts.ts:49`) only cleans by `(entity_type, entity_id)` -- if the ID is new, it won't find the old entry
+- The database gradually accumulates garbage, degrading search quality over time
 
-**Warning signs:**
-- No `last_indexed_at` or `indexed_commit` field in your data model
-- You can't answer "when was this repo last indexed?" from the CLI
-- Users start distrusting the tool because it gave wrong info once
+**Prevention:**
+1. For each changed file, BEFORE deleting entity rows: collect all `(entity_type, entity_id)` pairs from that file and call `removeEntity` for each
+2. The existing `clearRepoFiles` function (writer.ts:108) already does this partially, but only for deleted files. Extend it to handle modified files too -- "modified" means "delete old entities from this file, then re-extract and re-insert"
+3. Wrap the entire per-file update in a transaction. Either all entities for a file are updated, or none are.
+4. Add a consistency check: count FTS entries vs actual entity rows. If they diverge, force a full re-index of that repo.
 
-**Phase to address:**
-Phase 1 (MVP). The `indexed_commit` metadata is trivial to add upfront but painful to retrofit. Staleness display can be Phase 2, but the data must be captured from day one.
+**Detection:**
+- Run `SELECT COUNT(*) FROM knowledge_fts` vs `SELECT (SELECT COUNT(*) FROM modules) + (SELECT COUNT(*) FROM events) + (SELECT COUNT(*) FROM repos)` -- they should roughly match
+- Search for an entity you know was renamed -- if the old name still returns results, FTS is orphaned
+
+**Phase to address:** Phase 2 of v1.1 (surgical file updates). This is THE critical pitfall of the incremental update work.
 
 ---
 
-### Pitfall 4: Over-Engineering for a 1.5-Day Hackathon
+### Pitfall 3: Parallel Repo Indexing Hits SQLite Write Lock
 
 **What goes wrong:**
-You build a sophisticated vector database integration, multi-stage retrieval pipeline, re-ranking system, and graph-based relationship traversal. You run out of time before you have a working demo. The judges/team sees a half-finished system instead of a simple tool that actually works.
+You spawn worker threads or parallel async operations to index multiple repos simultaneously. Each worker tries to call `persistRepoData`, which runs a write transaction. SQLite allows only ONE writer at a time, even in WAL mode. The second writer gets `SQLITE_BUSY`, and better-sqlite3 throws immediately (or after the configured timeout). Your parallel indexing is no faster than serial -- or worse, it crashes with lock errors.
 
 **Why it happens:**
-Code knowledge bases are a technically fascinating domain. Every component (embeddings, chunking, retrieval, ranking, graph queries) has deep rabbit holes. Engineers optimize for technical elegance instead of demo impact.
+WAL mode (already enabled in `src/db/database.ts:18`) allows concurrent reads with a single write. Many developers confuse this with concurrent writes. better-sqlite3 is synchronous, so a write transaction blocks the Node.js event loop for its duration. With worker threads, each thread has its own connection but they all compete for the same write lock.
 
-**How to avoid:**
-- Hard scope for MVP: structured extraction into SQLite + FTS5 + a few well-chosen queries. No embeddings. No vector DB. No re-ranking. No graph traversal.
-- The demo that wins: "I ask 'which services consume BookingCreated?' and get the right answer in 200ms" beats "I have a sophisticated multi-modal retrieval pipeline that's 60% done."
-- Build the dumbest thing that could work first. You can always add sophistication later.
-- Timebox: if a feature isn't working in 2 hours, cut it.
+**Consequences:**
+- `SQLITE_BUSY` errors on 49 out of 50 repos if all try to write at once
+- If you add a `busy_timeout`, threads queue up waiting -- negating the parallelism benefit
+- In the worst case, long write transactions (the full `persistRepoData` transaction) hold the lock for seconds, causing cascading timeouts
+- The MCP auto-sync (`src/mcp/sync.ts`) could also conflict if it triggers a sync while a parallel index is running
 
-**Warning signs:**
-- Day 1 and you're still debating embedding model selection
-- You're installing a vector database
-- You have more infrastructure than features
-- You can't demo the core use case yet
+**Prevention:**
+1. **Parallelize extraction, serialize writes.** The expensive part is file I/O and regex parsing (reading .ex files, .proto files, etc.), not the database writes. Run extractors in parallel (worker threads or Promise.all), collect results, then write to SQLite sequentially from the main thread.
+2. Architecture: `[Worker 1: extract repo A] -> results` + `[Worker 2: extract repo B] -> results` ... then main thread writes all results to DB in sequence.
+3. Do NOT open separate database connections in worker threads for writes. If you do, use `db.pragma('busy_timeout = 5000')` as a safety net, but this is a band-aid.
+4. The `persistRepoData` transaction already wraps everything in `db.transaction()` -- keep this, but only call it from the main thread.
+5. Consider using `worker_threads` with `MessagePort` to send extraction results back to main thread for DB writes.
 
-**Phase to address:**
-Phase 1 (MVP). This is the meta-pitfall -- it's about scope discipline, not technology.
+**Detection:**
+- Any `SQLITE_BUSY` error in logs during parallel indexing
+- Parallel indexing is no faster than serial (sign that writes are serialized anyway but with overhead)
+- Intermittent test failures in CI (timing-dependent lock contention)
+
+**Phase to address:** Phase 3 of v1.1 (parallel execution). Get the architecture right before writing code.
 
 ---
 
-### Pitfall 5: Ignoring Context Window Limits When Feeding Results to LLMs
+### Pitfall 4: Incremental Indexing Breaks Cross-Repo Event Edges
 
 **What goes wrong:**
-Your search returns 20 relevant results, you stuff them all into the LLM context as tool output, and either: (a) you blow the context window, (b) the LLM ignores results in the middle ("lost in the middle" effect), or (c) you waste tokens on marginally relevant results, leaving no room for the actual task. MCP tool responses that return 50KB of code are worse than useless.
+You surgically re-index repo A (a producer) because a proto file changed. The `insertEventEdges` function in `pipeline.ts:208` looks up events by name across repos to connect producers and consumers. But repo B (a consumer) wasn't re-indexed, so its edge records still point to the OLD event IDs from repo A's previous index. After surgical re-indexing repo A, those edges are now dangling -- pointing at event IDs that were deleted and re-created with new IDs.
 
 **Why it happens:**
-When building the search tool, you optimize for recall ("return everything that might be relevant"). But the consumer is an LLM with finite context, and more results != better answers.
+The current wipe-and-rewrite model (`clearRepoEntities` + fresh insert) deletes edges where `source_type = 'repo' AND source_id = repoId`. But cross-repo references (repo B's edge pointing at repo A's event) have `source_type = 'repo', source_id = B_id, target_type = 'event', target_id = A_old_event_id`. When repo A's events get new IDs, repo B's edges become dangling.
 
-**How to avoid:**
-- Cap MCP tool responses at a reasonable size (aim for 2-4KB per response, max 8KB). Return top 5-10 results with concise summaries, not full code blocks.
-- Return structured, scannable results: `{repo, file, module, relevance_summary}` -- not raw code dumps.
-- Include a "drill-down" pattern: initial search returns summaries, then the LLM can request full details for specific results.
-- Rank results and be aggressive about truncation. The 15th result is almost never useful.
+The `edges` table (migrations.ts:96) uses polymorphic `source_id`/`target_id` without foreign keys -- so there's no CASCADE delete, no constraint violation, just silent wrongness.
 
-**Warning signs:**
-- MCP tool responses are >10KB
-- You're returning full file contents in search results
-- The LLM's follow-up responses ignore some of your search results
-- Token usage spikes when the knowledge base is queried
+**Consequences:**
+- `kb deps` returns stale or broken dependency information
+- Event flow queries ("who consumes X?") silently miss consumers that haven't been re-indexed
+- The knowledge base gradually becomes less accurate as repos are incrementally updated at different times
 
-**Phase to address:**
-Phase 1 (MVP) for basic result sizing. Phase 2 for drill-down patterns and smart truncation.
+**Prevention:**
+1. When re-indexing a repo, also delete any edges in OTHER repos that point to entities in THIS repo. Add: `DELETE FROM edges WHERE target_type = 'event' AND target_id IN (SELECT id FROM events WHERE repo_id = ?)` BEFORE clearing entities.
+2. Better: use stable entity identifiers instead of auto-increment IDs for cross-repo references. An event's identity is `(repo_name, event_name)`, not its row ID. Store edges using `(source_repo, source_name, target_repo, target_name)` or add a `canonical_name` column.
+3. Alternatively: when re-indexing repo A, mark all repos that reference repo A's entities as "stale" and re-index them too. This is simpler but more expensive.
+4. At minimum: add a `PRAGMA integrity_check` equivalent -- a query that finds edges pointing at non-existent entity IDs. Run it after every incremental index.
+
+**Detection:**
+- Run: `SELECT e.* FROM edges e LEFT JOIN events ev ON e.target_type = 'event' AND e.target_id = ev.id WHERE e.target_type = 'event' AND ev.id IS NULL` -- any rows = dangling edges
+- `kb deps <repo>` returns fewer dependencies than expected after incremental re-index
+
+**Phase to address:** Phase 2 of v1.1 (surgical updates). Must be solved alongside file-level updates, not deferred.
 
 ---
 
-### Pitfall 6: Flat Extraction Missing Relationships (The Graph Problem)
+### Pitfall 5: EventCatalog SDK Is File-Based, Not HTTP
 
 **What goes wrong:**
-You index each repo in isolation: "service X has these modules, these schemas, these functions." But the core value of a knowledge base across 50 microservices is the *relationships*: who produces which events, who consumes them, which services call which via gRPC, what the data flow looks like for a given business operation. Without relationships, you have 50 disconnected inventories instead of an architectural map.
+You plan to integrate with "Event Catalog HTTP API" and design an HTTP client, retry logic, authentication, etc. But EventCatalog's `@eventcatalog/sdk` is a **file-based SDK** that reads from a local catalog directory on the filesystem. There is no HTTP API. You either waste time building an HTTP integration that doesn't exist, or you realize late that you need filesystem access to wherever the EventCatalog repo is cloned.
 
 **Why it happens:**
-Extracting per-repo metadata is straightforward (parse files, store results). Extracting cross-repo relationships requires understanding proto files, Kafka consumer configs, gRPC client stubs, and stitching them together. It's a harder problem, so it gets deferred -- and then the tool can't answer the most valuable questions.
+The milestone description says "Event Catalog HTTP API integration." EventCatalog is a static site generator (Astro-based) with a filesystem-backed SDK. The "API" is `const { getEvent } = utils(PATH_TO_CATALOG)` where `PATH_TO_CATALOG` is a local directory path. If the team hasn't used EventCatalog directly, the assumption of an HTTP API is natural.
 
-**How to avoid:**
-- Design the data model around relationships from day one, even if you populate them incrementally. Tables/records for: `services`, `events`, `event_producers`, `event_consumers`, `grpc_services`, `grpc_clients`.
-- Start with the easiest relationship to extract: event producer/consumer from proto files and Kafka configs. This alone makes the tool 10x more valuable than per-repo metadata.
-- Accept that relationship extraction will be imperfect. 80% coverage of event flows is infinitely more valuable than 0%.
+**Consequences:**
+- Wasted design/implementation time on HTTP client code
+- Requires the EventCatalog repo to be cloned locally (or accessible via filesystem), which may not be the case
+- The SDK is async (returns Promises) despite being filesystem-based, so the integration pattern differs from the current synchronous better-sqlite3 pipeline
 
-**Warning signs:**
-- Your schema has no foreign keys or relationship tables
-- You can answer "what modules does service X have?" but not "what events does service X produce?"
-- Every query returns results from a single repo
+**Prevention:**
+1. Verify: EventCatalog SDK reads from a directory of markdown files with frontmatter. Usage: `npm install @eventcatalog/sdk`, then `const { getEvent, getService, getDomain } = utils('/path/to/catalog')`
+2. The catalog path must be configured -- add a `KB_EVENTCATALOG_PATH` env var or config option pointing to the local clone of the EventCatalog repo
+3. The SDK methods are async (`getEvent` returns a Promise). The current pipeline is synchronous. Either use `await` in the EventCatalog extractor or use the CLI: `npx @eventcatalog/sdk --dir ./catalog getEvent "EventName"`
+4. Alternative: skip the SDK entirely and directly parse the catalog's markdown files (they're just markdown with YAML frontmatter). This avoids the async dependency and keeps the extraction pattern consistent with other extractors.
 
-**Phase to address:**
-Phase 1 (MVP) for the data model and basic event relationships. Phase 2 for gRPC and GraphQL relationship extraction.
+**Detection:**
+- The milestone says "HTTP API" but no HTTP endpoint exists
+- EventCatalog's docs show no REST/GraphQL API for reading catalog data programmatically over the network
+
+**Phase to address:** Phase 4 of v1.1 (Event Catalog integration). Clarify the integration approach before writing any code.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 7: Elixir/BEAM-Specific Parsing Traps
+---
+
+### Pitfall 6: GraphQL Schema Regex Parsing Misses Multi-Line Descriptions and Directives
 
 **What goes wrong:**
-You try to parse Elixir code with generic AST tools or regex and miss: macros that generate modules at compile time (like `use GenServer`), protocol implementations, behaviour callbacks, dynamic module names, and the overall pattern where an Elixir "module" can define event handlers via macro DSLs that don't look like normal function definitions. Kafka consumer setup via Broadway/GenStage often uses macros that hide the event topic configuration.
+You write regex to extract GraphQL SDL types (`type Query { ... }`, `type Mutation { ... }`, `type Booking { ... }`). But GraphQL schemas have: (a) triple-quoted multi-line descriptions (`""" ... """`), (b) directives on types and fields (`@deprecated`, `@auth`, custom directives with arguments), (c) field arguments with complex types, (d) inline comments, and (e) schema extensions (`extend type Query`). A naive regex like `/type\s+(\w+)\s*\{/` chokes on descriptions before the type keyword, and `findMatchingBrace` (from proto.ts) won't handle descriptions containing `{` characters inside triple-quoted strings.
 
 **Why it happens:**
-Most code parsing tools and examples are built for Python/JavaScript. Elixir's macro system means the "source code as written" and "what actually exists at runtime" can be very different.
+The existing proto extractor works well because proto syntax is relatively simple. GraphQL SDL has more syntax features, and Absinthe (the Elixir GraphQL library) has its own macro-based schema DSL that looks nothing like standard SDL.
 
-**How to avoid:**
-- Don't try to build a full Elixir AST parser. Instead, use targeted regex/pattern matching for the specific constructs you care about: `defmodule`, `schema`, `field`, `@topic`, proto file imports, etc.
-- Start with the simplest extraction that works: parse `mix.exs` for dependencies, `README.md`/`CLAUDE.md` for descriptions, proto files for event definitions (proto is much easier to parse than Elixir).
-- Accept some false negatives. Missing 10% of modules is fine if you correctly capture 90%.
+**Consequences:**
+- Missing types when descriptions contain special characters
+- Incorrect field extraction when directives or arguments are present
+- Absinthe schemas (which use Elixir macros like `object :booking do ... end`) are completely missed by SDL regex
 
-**Warning signs:**
-- You're trying to install an Elixir AST parser in Node.js
-- Your extractor misses modules generated by macros
-- Broadway/GenStage consumer detection returns nothing
+**Prevention:**
+1. Decide early: extract from `.graphql` SDL files, or from Absinthe Elixir macros, or both?
+2. For SDL files: handle triple-quoted strings by stripping them before brace-matching. Reuse the `findMatchingBrace` approach from proto.ts but pre-process to remove string literals.
+3. For Absinthe: write Elixir-specific regex patterns: `object\s+:(\w+)\s+do`, `field\s+:(\w+),\s+:(\w+)`, `query\s+do` / `mutation\s+do`
+4. Test against REAL schemas from your repos, not toy examples. Grab 5 actual `.graphql` or Absinthe schema files and ensure extraction works.
+5. Accept that regex will miss edge cases. 85% coverage of types and fields is fine for architectural knowledge.
 
-**Phase to address:**
-Phase 1 for basic extraction, Phase 2 for deeper Elixir-specific patterns.
+**Detection:**
+- Run the extractor against a real repo, compare extracted types with `grep -c "type " schema.graphql` -- if counts diverge significantly, the regex is too simple
+- Absinthe schemas returning zero results
+
+**Phase to address:** Phase 4 of v1.1 (new extractors).
 
 ---
 
-### Pitfall 8: SQLite Full-Text Search Misconfiguration
+### Pitfall 7: Ecto Schema Extraction Duplicates Existing Elixir Module Data
 
 **What goes wrong:**
-You set up SQLite FTS5 but: (a) use default tokenizer which doesn't handle code identifiers well (CamelCase, snake_case get tokenized wrong), (b) don't configure it to search across related tables (searching events should also consider the service context), or (c) don't understand FTS5 query syntax and build queries that return nothing or everything.
+You add an Ecto schema extractor that finds `schema "table_name" do ... end` blocks and extracts fields, associations, etc. But the existing Elixir extractor (`src/indexer/elixir.ts`) already extracts modules that contain schemas -- it detects `schema "table_name"` (line 213) and classifies them as `type: 'schema'` with the table name captured. The new Ecto extractor creates duplicate entities in the database, or worse, the two extractors produce conflicting data for the same module.
 
 **Why it happens:**
-FTS5 is powerful but has quirks. Default tokenizers split on word boundaries, so `BookingCreated` might become `booking` + `created` (good) or stay as one token (bad), depending on tokenizer config. Code identifiers need special handling.
+The existing `extractSchemaTable` in elixir.ts captures the table name but not the fields, associations, or field types. A dedicated Ecto extractor would go deeper. But without coordinating between extractors, you get one `module` record from the Elixir extractor AND a new `ecto_schema` record from the Ecto extractor for the same defmodule.
 
-**How to avoid:**
-- Use the `unicode61` tokenizer with `tokenchars` configured for underscores so `booking_created` stays meaningful.
-- Store a `search_text` column that pre-processes identifiers: split CamelCase into separate words, replace underscores with spaces, include aliases. `BookingCreated` -> `"booking created BookingCreated"`.
-- Test FTS queries with actual queries from your use cases before building the UI layer.
+**Consequences:**
+- FTS returns duplicate results for Ecto schema searches
+- The `modules` table and a new `schemas` table both contain overlapping data
+- Entity counts inflate, search quality degrades
+- Edge relationships may point to either the module or the schema entity, creating confusion
 
-**Warning signs:**
-- Searching "booking created" returns nothing even though `BookingCreated` exists
-- Searching returns way too many results (every mention of "booking" across all repos)
-- FTS queries are slow (likely missing the FTS index entirely, querying the raw table with LIKE)
+**Prevention:**
+1. Don't create a separate entity type for Ecto schemas. Instead, ENRICH the existing module extraction. When a module has `schema "table_name" do ... end`, add the field/association details to the existing module's `summary` or a new `schema_details` column.
+2. If a separate table IS needed (e.g., `schemas` for structured field data), link it back to the module via `module_id` and ensure FTS only indexes one version.
+3. Run the Ecto extractor as a post-processing step on modules already classified as `type: 'schema'`, not as an independent file scanner.
 
-**Phase to address:**
-Phase 1 (MVP). FTS is the core search mechanism; getting tokenization right is essential.
+**Detection:**
+- Search for a known Ecto schema module name and get 2+ results
+- Entity count grows disproportionately after adding the extractor
+
+**Phase to address:** Phase 4 of v1.1 (new extractors). Design the enrichment approach before coding.
 
 ---
 
-### Pitfall 9: No Graceful Degradation for Partial Index
+### Pitfall 8: gRPC Extraction From Proto Files Already Exists
 
 **What goes wrong:**
-Indexing 50 repos takes time. If one repo fails to index (parse error, unexpected file structure, missing files), the entire indexing run fails or silently skips data. Users don't know which repos are indexed and which aren't, leading to false negatives ("the tool says no service consumes this event" when actually it just hasn't indexed the consumer yet).
+You build a "gRPC service definition extractor" that parses `.proto` files for `service` blocks. But the existing `src/indexer/proto.ts` already extracts `ProtoService` definitions with RPCs (line 177-196). The new extractor either duplicates this work or conflicts with the existing proto extractor.
 
 **Why it happens:**
-Error handling in batch processing is tedious. The happy path works great, so you ship it.
+The milestone says "gRPC service definition extraction" as a new feature. But looking at the code, `proto.ts` already extracts `services` with `name` and `rpcs` (including input/output types). What's actually missing is: (a) the extracted services aren't stored as `service` entities in the database (they're only in the return type but not persisted), and (b) there are no `calls_grpc` edges connecting repos to the gRPC services they call.
 
-**How to avoid:**
-- Index per-repo with independent error handling. One repo failing should not affect others.
-- Track indexing status per repo: `indexed`, `failed`, `partial`, `not_indexed`.
-- On query, note which repos are missing from the index. "Found 3 consumers. Note: 5 repos are not yet indexed."
-- Log extraction failures to a `indexing_errors` table so you can debug and fix extractors incrementally.
+**Consequences:**
+- Wasted effort re-implementing what exists
+- If implemented independently, two extractors scanning the same `.proto` files
 
-**Warning signs:**
-- A single malformed file crashes the entire indexing run
-- No way to tell which repos are/aren't indexed
-- `rkb status` doesn't exist
+**Prevention:**
+1. Audit what's already there: `extractProtoDefinitions` returns `ProtoService[]` with RPCs, but `indexSingleRepo` in pipeline.ts only uses `proto.messages` -- the `services` data is extracted but **never persisted**.
+2. The actual work is: (a) persist proto services to the `services` table, (b) create `exposes_grpc` edges from repos to their proto services, (c) detect gRPC *client* calls in Elixir code and create `calls_grpc` edges.
+3. For gRPC client detection: look for patterns like `GRPC.Stub.call` or generated client module usage in Elixir files.
 
-**Phase to address:**
-Phase 1 (MVP). Error isolation and status tracking must be built in from the start.
+**Detection:**
+- Check `src/indexer/proto.ts` -- services are already parsed
+- Check `pipeline.ts` -- `protoDefinitions.services` is never used in the persistence logic
+
+**Phase to address:** Phase 4 of v1.1 (new extractors). Start by persisting what's already extracted before building new extractors.
 
 ---
 
-### Pitfall 10: Trying to Be a General-Purpose Code Search Engine
+### Pitfall 9: `getChangedFiles` Produces Wrong Diff When Branch Switches
 
 **What goes wrong:**
-You start building grep-with-embeddings instead of a domain-specific knowledge base. The tool can find any code anywhere but can't answer architectural questions like "what's the data flow from booking creation to payment processing?" because it's optimizing for code-level search instead of architecture-level knowledge.
+The current `getChangedFiles(repoPath, sinceCommit)` runs `git diff --name-status ${sinceCommit}..HEAD`. This works when the repo has advanced linearly from the stored commit. But if the developer switched branches (e.g., from `main` to `feature-x` and back), the diff between the old commit and current HEAD may include changes from the feature branch that were never actually in the current state, or miss files that reverted.
+
+With branch-aware tracking, this gets worse: you store `last_indexed_commit` as the main branch HEAD, but the developer's working copy might be on a different branch. The diff `stored_main_sha..HEAD` could span a merge, producing a massive diff that includes every file changed in the merged branch.
 
 **Why it happens:**
-Code search is a well-understood problem (Sourcegraph, GitHub search). It's tempting to build toward that because the patterns are clear. But the project's value isn't "search code" -- it's "understand architecture across 50 services."
+`git diff A..B` shows differences between two commits. If B is reachable from A through multiple paths (merge commits), the diff is the total change, which may include files that were changed and then changed back. It also doesn't account for files that exist at A and B identically but were modified in between.
 
-**How to avoid:**
-- Frame every feature as: "does this help answer architectural questions?" If not, cut it.
-- The queries to optimize for: "which services produce/consume X event?", "what's the schema for X?", "how do services A and B communicate?", "what does service X do?" -- NOT "find all usages of function Y."
-- File-level code search already exists (grep, ripgrep, GitHub). Don't rebuild it. Build the layer above it.
+**Consequences:**
+- Unnecessary re-extraction of unchanged files (performance hit but not correctness issue)
+- Missing files that should be re-extracted (correctness issue: file was changed, then reverted, but intermediate changes affected extractor output... actually no, if file content is the same, extraction is the same)
+- Massive diffs after merges causing unexpectedly long re-indexing
 
-**Warning signs:**
-- You're building a file content search feature
-- Your test queries are about finding specific code patterns rather than understanding architecture
-- The tool returns file paths and line numbers instead of service names and relationships
+**Prevention:**
+1. For branch-aware tracking: always diff against the main branch's HEAD, not the working copy. Use `git rev-parse origin/main` (or `origin/master`) to get the canonical reference.
+2. For the diff itself: consider `git diff --name-status` against the stored commit only if the stored commit is an ancestor of current HEAD (already checked via `isCommitReachable`). If not an ancestor (branch switch or force push), fall back to full re-index of that repo.
+3. Sanity check: if `getChangedFiles` returns more than N files (e.g., 200), fall back to full re-index. A surgical update of 200 files is likely slower than a full wipe-and-rewrite anyway.
+4. Track which branch was last indexed. If the branch changed, force full re-index.
 
-**Phase to address:**
-Phase 1 (MVP). This is a framing/scope decision that must be clear from the start.
+**Detection:**
+- After a merge commit, incremental re-index processes way more files than expected
+- `getChangedFiles` returns files that haven't actually changed in content (just touched by merge)
+
+**Phase to address:** Phase 1-2 of v1.1 (branch tracking + surgical updates). These features are tightly coupled.
+
+---
+
+### Pitfall 10: New Extractors Don't Populate `source_file` Correctly for Incremental Deletion
+
+**What goes wrong:**
+You add GraphQL, gRPC, and Ecto extractors. The surgical deletion path (`clearRepoFiles` in writer.ts:108) deletes entities by matching `file_id` (for modules) or `source_file` (for events and edges). If new extractors don't correctly set `source_file` or link to `file_id`, the incremental deletion can't clean up their entities when files change. You end up with stale entities that survive file deletions.
+
+**Why it happens:**
+The current extractors carefully track file paths: `ElixirModule.filePath`, `ProtoDefinition.filePath`, `EventRelationship.sourceFile`. New extractors need to follow the same pattern. But it's easy to store a processed/normalized path instead of the raw relative path, or to use absolute paths when the cleanup code expects relative ones.
+
+**Consequences:**
+- `clearRepoFiles` silently fails to delete entities from new extractors (no match on file path)
+- Deleted GraphQL/gRPC files leave phantom entities in the database
+- Gradual data quality degradation that's hard to diagnose
+
+**Prevention:**
+1. Establish a convention: all `filePath` / `source_file` values MUST be relative to repo root (same as `path.relative(repoPath, filePath)` used in existing extractors)
+2. Add a test for each new extractor: extract entities, delete the source file, run incremental re-index, verify entities are gone
+3. Consider adding a `source_extractor` column to entities so you can clear by extractor type during debugging
+4. All new entity types need a `source_file` or `file_id` column -- without it, surgical deletion is impossible for that entity type
+
+**Detection:**
+- After deleting a `.graphql` file and re-indexing, the GraphQL types still appear in search
+- `clearRepoFiles` runs without errors but entity counts don't decrease
+
+**Phase to address:** Phase 2 of v1.1 (surgical updates) and Phase 4 (new extractors). These must be designed together.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 11: MCP Tool Response Format Neglect
+---
+
+### Pitfall 11: Parallel Extraction Saturates File I/O, Not CPU
 
 **What goes wrong:**
-The MCP tool works but returns unstructured text that Claude struggles to incorporate into its reasoning. The tool is technically queryable but practically useless because the response format doesn't help the LLM reason about the results.
+You spawn N worker threads for parallel extraction, expecting N-fold speedup. But the extractors are I/O-bound (reading files from disk), not CPU-bound (regex is fast). On macOS with SSDs, file I/O is already fast, and N threads all reading from the filesystem actually compete for the same I/O bandwidth, yielding minimal speedup -- maybe 1.5-2x instead of the expected 4-8x.
 
-**How to avoid:**
-- Return structured JSON with clear field names. Include a `summary` field that's a natural language sentence the LLM can directly quote.
-- Test with actual Claude Code sessions, not just unit tests. The real question is: does Claude give better answers with this tool than without it?
+**Prevention:**
+- Benchmark before parallelizing. Time a single repo index: if 80% is file I/O and 20% is CPU, parallelism helps little.
+- Use `Promise.all` with a concurrency limiter (e.g., p-limit) rather than worker threads. Simpler, no IPC overhead, and async I/O already overlaps reads.
+- Worker threads are worth it only if extraction becomes CPU-heavy (e.g., future AST parsing or embedding generation).
 
-**Phase to address:**
-Phase 2 (post-MVP polish).
+**Phase to address:** Phase 3 of v1.1 (parallel execution). Profile first, optimize second.
 
 ---
 
-### Pitfall 12: Premature Abstraction of Extraction Pipelines
+### Pitfall 12: Schema Migration Breaks Existing v1.0 Databases
 
 **What goes wrong:**
-You build a generic "extractor framework" with plugins, registries, and abstract base classes before you've written a single concrete extractor. The framework adds complexity without value because you don't yet know what the extractors actually need.
+New extractors need new tables or columns (e.g., `graphql_types`, `ecto_schemas`, or new columns on `modules`). The migration system (`src/db/migrations.ts`) uses `SCHEMA_VERSION` and runs migrations sequentially. If a migration modifies an existing table incorrectly (ALTER TABLE in SQLite is limited -- no DROP COLUMN before 3.35, no ALTER COLUMN ever), existing users' databases break.
 
-**How to avoid:**
-- Write 3 concrete extractors first (mix.exs parser, proto file parser, README parser). Then look for the common pattern. Abstract only what's proven to be repeated.
-- For a hackathon: no abstractions. Just functions that parse files and return data.
+**Prevention:**
+1. SQLite ALTER TABLE only supports `ADD COLUMN` reliably. For schema changes to existing tables, add new columns with defaults rather than modifying existing ones.
+2. Test migrations against a real v1.0 database snapshot, not just a fresh database.
+3. Keep the migration idempotent: `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ADD COLUMN` wrapped in try/catch (SQLite throws if column already exists).
+4. Never delete or rename columns in migrations.
 
-**Phase to address:**
-Phase 1. Fight the urge to architect; just build.
+**Phase to address:** Any phase that adds new entity types. Plan the schema changes upfront.
 
 ---
 
-## Technical Debt Patterns
+### Pitfall 13: MCP Auto-Sync Conflicts with Manual Indexing
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| No embeddings, FTS only | Ships in hours, predictable results | Can't do fuzzy semantic queries ("services related to payments") | Always acceptable for MVP; add embeddings later as enhancement |
-| Regex parsing instead of AST | Works in Node.js without Elixir toolchain | Misses macro-generated code, fragile to formatting changes | Acceptable for hackathon; plan to improve extractors iteratively |
-| Single SQLite file, no migrations | Fast iteration, no schema migration tooling needed | Schema changes require full re-index or manual migration | Acceptable for MVP if re-index is fast (<10 min) |
-| No caching/incremental | Simpler code, full re-index each time | Wastes time on unchanged repos | Acceptable for hackathon demo; unacceptable for daily use |
-| Hardcoded repo paths | Works on your machine | Can't share or configure per-environment | Acceptable for hackathon if configurable via env var |
+**What goes wrong:**
+The MCP auto-sync (`src/mcp/sync.ts`) re-indexes up to 3 stale repos per query. If a user is running `kb index` at the same time (or another MCP query triggers sync), two processes/threads try to write to the same SQLite database simultaneously. The CLI process and the MCP server process have separate database connections, leading to `SQLITE_BUSY` errors or data races.
 
-## Integration Gotchas
+**Prevention:**
+1. Add a `indexing_lock` mechanism: a simple row in a `locks` table or a filesystem lock file. Before indexing, check the lock. If locked, MCP sync should skip (it's not urgent), and CLI should wait or warn.
+2. Alternatively, use SQLite's built-in `busy_timeout` pragma (already not set explicitly -- better-sqlite3 defaults to 0ms, meaning immediate SQLITE_BUSY). Set `db.pragma('busy_timeout = 5000')` in `openDatabase`.
+3. At minimum: wrap MCP sync writes in a try/catch that gracefully handles `SQLITE_BUSY` instead of crashing the MCP server.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| MCP Server | Returning too much data in tool responses | Cap response size, return summaries with drill-down option |
-| SQLite FTS5 | Using default tokenizer for code identifiers | Configure tokenizer for CamelCase/snake_case splitting |
-| Git (for staleness) | Shelling out to git for every query | Cache HEAD commit per repo, check periodically, not per-query |
-| Proto file parsing | Trying to build a full protobuf parser | Use regex for message/service names; full parsing is overkill |
-| Elixir file parsing | Attempting full AST analysis from Node.js | Target specific patterns (defmodule, schema, field) with regex |
+**Phase to address:** Phase 3 of v1.1 (parallel execution). This is an existing latent bug that becomes more likely with parallelism.
 
-## Performance Traps
+---
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Loading all indexed data into memory | Fast queries initially, OOM as index grows | Keep data in SQLite, query on demand | ~100+ repos or very large repos |
-| Synchronous full re-index | CLI hangs for minutes during re-index | Show progress, index per-repo, allow partial re-index | >20 repos |
-| FTS5 on unindexed columns | Queries take seconds instead of milliseconds | Ensure FTS virtual table covers all searchable fields | >10k indexed records |
-| Shelling out to git per query | 200ms+ per query just for staleness check | Cache git state, refresh on explicit re-index or startup | Any scale; git operations are surprisingly slow |
-| Large MCP responses | Claude context window fills up, degraded reasoning | Paginate, summarize, cap at 4KB per response | Always; even small responses waste tokens |
+### Pitfall 14: Absinthe Schema DSL Looks Nothing Like Standard GraphQL SDL
 
-## Security Mistakes
+**What goes wrong:**
+You build a GraphQL extractor that parses `.graphql` files. But Fresha's Elixir repos likely define GraphQL schemas using Absinthe macros in `.ex` files, not in separate `.graphql` SDL files. The Absinthe DSL uses Elixir syntax:
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Indexing `.env` files or secrets | Secrets stored in SQLite, queryable via MCP | Explicit ignore list: `.env`, `*.pem`, `credentials.*`, `secrets.*` |
-| No access control on MCP tool | Any Claude session can query all repos | Acceptable for local-only tool; flag if ever exposed over network |
-| Storing file contents verbatim | Large DB, potential secret leakage from code comments | Store extracted metadata and summaries, not raw source code |
+```elixir
+object :booking do
+  field :id, non_null(:id)
+  field :customer, :customer, resolve: &Resolvers.customer/3
+end
 
-## UX Pitfalls
+query do
+  field :booking, :booking do
+    arg :id, non_null(:id)
+    resolve &Resolvers.get_booking/3
+  end
+end
+```
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| No feedback during indexing | User thinks tool is hung | Show per-repo progress: "Indexing app-bookings (12/47)..." |
-| Binary search results (found/not found) | No sense of confidence or completeness | Include match quality and coverage metadata in results |
-| Requiring full re-index for any change | Users avoid re-indexing because it's slow | Incremental: re-index only repos with new commits since last index |
-| Cryptic error messages on parse failures | Users can't fix extractor issues | Log which file, which line, what was expected vs found |
-| No "what do you know?" command | Users can't verify the index is correct | `rkb status` showing per-repo index state, last indexed, record counts |
+This is completely different from SDL syntax and requires Elixir-specific regex patterns, not GraphQL parsers.
 
-## "Looks Done But Isn't" Checklist
+**Prevention:**
+1. Check your actual repos: `grep -r "use Absinthe" ~/Documents/Repos/*/lib/` to see if Absinthe is used. `find ~/Documents/Repos/ -name "*.graphql"` to see if SDL files exist.
+2. Write two extractor paths: one for `.graphql` SDL files, one for Absinthe macros in `.ex` files
+3. For Absinthe: extract `object :name`, `field :name, :type`, `query do`, `mutation do`, `subscription do` patterns
+4. The metadata extractor already detects `absinthe` in mix.exs deps (line 21) -- use this to conditionally run the Absinthe extractor only on repos that use it
 
-- [ ] **Search works:** Verify it returns correct results for the 5 most important query types, not just one happy-path test
-- [ ] **Event relationships:** Verify both producer AND consumer sides are captured, not just one direction
-- [ ] **Cross-repo queries:** Verify a query can return results spanning multiple repos, not silently scoped to one
-- [ ] **Staleness metadata:** Verify `last_indexed_commit` is stored and surfaced -- not just in the DB but in query responses
-- [ ] **Error isolation:** Verify one malformed repo doesn't break indexing of the other 49
-- [ ] **MCP response size:** Verify responses are under 8KB by testing with a query that has many matches
-- [ ] **Ignored files:** Verify `.env`, secrets, and binary files are excluded from indexing
+**Phase to address:** Phase 4 of v1.1 (new extractors). Validate which format your repos actually use before building.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Severity | Mitigation |
+|-------------|---------------|----------|------------|
+| Branch-aware git tracking | Detached HEAD crashes indexer | CRITICAL | Error handling + fallback to rev-parse HEAD |
+| Branch-aware git tracking | Wrong diff after branch switch | MODERATE | Fall back to full re-index when branch changed |
+| Surgical file updates | Orphaned FTS entries | CRITICAL | Clean FTS before entity deletion, within transaction |
+| Surgical file updates | Dangling cross-repo edges | CRITICAL | Delete edges referencing changed repo's entities |
+| Surgical file updates | New extractors missing source_file | MODERATE | Convention + test for each extractor |
+| Parallel execution | SQLite write lock contention | CRITICAL | Parallelize extraction only, serialize writes |
+| Parallel execution | I/O-bound not CPU-bound | MINOR | Profile first, use p-limit not worker threads |
+| Parallel execution | MCP sync conflicts with CLI | MODERATE | Add busy_timeout, lock mechanism |
+| GraphQL extractor | Absinthe DSL != standard SDL | MODERATE | Check actual repos, build both paths |
+| Ecto extractor | Duplicates existing module data | MODERATE | Enrich existing modules, don't create new entity type |
+| gRPC extractor | Proto services already extracted | MODERATE | Persist what's already there, then add client detection |
+| Event Catalog | No HTTP API -- SDK is filesystem-based | CRITICAL | Redesign as file-based integration, not HTTP |
+| Schema migration | ALTER TABLE limitations in SQLite | MODERATE | ADD COLUMN only, test against real v1.0 databases |
+
+## Integration Pitfalls Specific to v1.1
+
+| Integration Point | What Can Go Wrong | Correct Approach |
+|-------------------|-------------------|------------------|
+| Branch tracking + incremental index | Stored commit is on a different branch than current HEAD | Store branch name alongside commit SHA |
+| Surgical updates + FTS5 | FTS entries orphaned when entities get new IDs | Delete FTS entries BEFORE deleting entity rows |
+| Surgical updates + edges | Cross-repo edge target IDs become dangling | Delete edges pointing to re-indexed repo's entities |
+| Parallel extraction + DB writes | Multiple workers writing simultaneously | Extract in parallel, write from main thread only |
+| New extractors + clearRepoFiles | New entity types not cleaned up on file deletion | All entities must have source_file for cleanup |
+| EventCatalog + pipeline | Async SDK in synchronous pipeline | Parse catalog files directly, or await SDK calls |
+| GraphQL + Elixir extractor | Absinthe schemas in .ex files, not .graphql | Detect Absinthe usage, use Elixir regex patterns |
+| Ecto + Elixir extractor | Duplicate module entities for schemas | Enrich existing module records, don't duplicate |
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong chunking strategy | MEDIUM | Redesign schema, re-extract, re-index. ~4-8 hours if extraction code is modular |
-| Missing relationship model | HIGH | Schema redesign, new extractors, re-index. This is why it must be Phase 1 |
-| Index staleness (no tracking) | LOW | Add `indexed_commit` column, backfill with current HEAD, re-index |
-| Oversized MCP responses | LOW | Add truncation/pagination to response formatting. ~1-2 hours |
-| Wrong search approach (embeddings instead of structured) | HIGH | Fundamental architecture change. Easier to start with structured and add embeddings |
-| Secret leakage into index | MEDIUM | Add ignore list, delete and re-index affected repos. Audit what was exposed |
+| Orphaned FTS entries | LOW | Run `kb index --force` to do full wipe-and-rewrite |
+| Dangling cross-repo edges | LOW | `DELETE FROM edges WHERE target_id NOT IN (SELECT id FROM events)` then re-index |
+| SQLite write lock errors | NONE | Fix architecture (serialize writes), re-run |
+| Wrong branch diff | LOW | `kb index --force` for affected repos |
+| Duplicate entities from Ecto | MEDIUM | Schema migration to merge duplicates, fix extractor |
+| EventCatalog HTTP assumption | MEDIUM | Redesign to file-based, ~2-4 hours rework |
+| Absinthe not detected | LOW | Add Absinthe regex patterns, re-index repos with absinthe |
 
-## Pitfall-to-Phase Mapping
+## "Looks Done But Isn't" Checklist for v1.1
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Code-as-prose embedding trap | Phase 1 | Search returns structurally relevant results for test queries |
-| Wrong chunking granularity | Phase 1 | Each indexed record maps to one logical unit (module, event, schema) |
-| Index staleness | Phase 1 (data capture), Phase 2 (display) | `indexed_commit` exists in DB for every repo |
-| Over-engineering | Phase 1 | Working demo exists by end of day 1 |
-| Context window overflow | Phase 1 (basic), Phase 2 (refinement) | MCP responses under 8KB for worst-case queries |
-| Missing relationships | Phase 1 | Can answer "who produces/consumes event X?" correctly |
-| Elixir parsing traps | Phase 1 (basic), Phase 2 (advanced) | Extractors handle top 90% of module patterns |
-| FTS misconfiguration | Phase 1 | CamelCase and snake_case identifiers are searchable |
-| No graceful degradation | Phase 1 | Partial index failure doesn't crash full run |
-| Scope creep to code search | Phase 1 | No file-content-search features in MVP |
+- [ ] **Detached HEAD:** Test indexer against a repo in detached HEAD state -- does it index or skip gracefully?
+- [ ] **FTS consistency:** After incremental re-index, count FTS entries vs entity rows -- do they match?
+- [ ] **Cross-repo edges:** After re-indexing one producer repo, query its consumers -- are edges intact?
+- [ ] **Parallel writes:** Run `kb index` with parallel enabled while MCP server is active -- any SQLITE_BUSY errors?
+- [ ] **File path convention:** All new extractors use `path.relative(repoPath, filePath)` for source_file values?
+- [ ] **Changed file threshold:** Does surgical update fall back to full re-index for massive diffs (e.g., after a merge)?
+- [ ] **EventCatalog path:** Is the catalog path configurable, and does the integration work without an HTTP endpoint?
+- [ ] **Absinthe detection:** Does the GraphQL extractor handle Absinthe macros, not just SDL files?
+- [ ] **Proto services persisted:** Are proto services from the existing extractor now saved to the DB?
+- [ ] **Migration tested:** Does the v1.1 schema migration work on an existing v1.0 database without data loss?
 
 ## Sources
 
-- Training data only (web search unavailable). Confidence: MEDIUM.
-- Domain knowledge from widespread RAG/code-search projects (Cursor, Sourcegraph, Cody, Continue.dev, various open-source codebase indexers) as of early 2025.
-- Elixir-specific pitfalls from general knowledge of BEAM ecosystem patterns.
-- SQLite FTS5 behavior from SQLite documentation (well-established, unlikely to have changed).
+- [better-sqlite3 worker threads documentation](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/threads.md) - Official threading guidelines (HIGH confidence)
+- [SQLite WAL mode documentation](https://sqlite.org/wal.html) - Concurrent write limitations (HIGH confidence)
+- [SQLite concurrent writes and "database is locked" errors](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) - WAL write locking behavior (HIGH confidence)
+- [SQLite FTS5 documentation](https://sqlite.org/fts5.html) - FTS external content consistency (HIGH confidence)
+- [EventCatalog SDK documentation](https://www.eventcatalog.dev/docs/sdk) - File-based SDK, not HTTP (HIGH confidence)
+- [@eventcatalog/sdk npm package](https://www.npmjs.com/package/@eventcatalog/sdk) - SDK usage patterns (HIGH confidence)
+- [git-symbolic-ref documentation](https://git-scm.com/docs/git-symbolic-ref) - Detached HEAD behavior (HIGH confidence)
+- [git-rev-parse documentation](https://git-scm.com/docs/git-rev-parse) - Branch detection patterns (HIGH confidence)
+- [Scaling SQLite with Node worker threads](https://dev.to/lovestaco/scaling-sqlite-with-node-worker-threads-and-better-sqlite3-4189) - Worker thread patterns (MEDIUM confidence)
+- Source code analysis: `src/indexer/pipeline.ts`, `src/indexer/writer.ts`, `src/indexer/git.ts`, `src/db/fts.ts`, `src/mcp/sync.ts` (HIGH confidence - direct code review)
 
 ---
-*Pitfalls research for: Codebase knowledge base / semantic code search*
-*Researched: 2026-03-05*
+*Pitfalls research for: v1.1 Improved Reindexing and New Extractors*
+*Researched: 2026-03-06*
+*Supersedes: v1.0 pitfalls from 2026-03-05 (those remain valid; this document covers v1.1-specific additions)*
