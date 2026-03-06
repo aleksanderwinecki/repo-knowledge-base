@@ -122,11 +122,20 @@ export function clearRepoFiles(
       db.prepare('DELETE FROM modules WHERE id = ?').run(mod.id);
     }
 
-    // Remove events from this file
-    const events = db
-      .prepare('SELECT id FROM events WHERE repo_id = ? AND source_file = ?')
+    // Remove events from this file via file_id FK join (primary path)
+    const eventsViaFileId = db
+      .prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)')
+      .all(repoId, repoId, filePath) as { id: number }[];
+    for (const evt of eventsViaFileId) {
+      removeEntity(db, 'event', evt.id);
+      db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
+    }
+
+    // Fallback: remove events without file_id via source_file text match (backward compat for pre-v4 data)
+    const eventsViaSourceFile = db
+      .prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IS NULL AND source_file = ?')
       .all(repoId, filePath) as { id: number }[];
-    for (const evt of events) {
+    for (const evt of eventsViaSourceFile) {
       removeEntity(db, 'event', evt.id);
       db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
     }
@@ -189,14 +198,19 @@ export function persistRepoData(
       }
     }
 
-    // Insert events (from proto definitions)
+    // Insert events (from proto definitions) with file_id FK
     if (data.events) {
+      const insertEventFile = db.prepare(
+        'INSERT INTO files (repo_id, path, language) VALUES (?, ?, ?) ON CONFLICT(repo_id, path) DO UPDATE SET updated_at = datetime(\'now\') RETURNING id',
+      );
       const insertEvent = db.prepare(
-        'INSERT INTO events (repo_id, name, schema_definition, source_file) VALUES (?, ?, ?, ?)',
+        'INSERT INTO events (repo_id, name, schema_definition, source_file, file_id) VALUES (?, ?, ?, ?, ?)',
       );
 
       for (const evt of data.events) {
-        const evtInfo = insertEvent.run(repoId, evt.name, evt.schemaDefinition, evt.sourceFile);
+        const fileRow = insertEventFile.get(repoId, evt.sourceFile, null) as { id: number } | undefined;
+        const fileId = fileRow?.id ?? null;
+        const evtInfo = insertEvent.run(repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
         const evtId = Number(evtInfo.lastInsertRowid);
 
         // Index in FTS

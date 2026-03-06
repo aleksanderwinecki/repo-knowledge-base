@@ -226,8 +226,8 @@ describe('v3 migration', () => {
     closeDatabase(db);
     db = openDatabase(dbPath);
 
-    // Verify user_version is now 3
-    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    // Verify user_version is now current (v4, since openDatabase migrates to SCHEMA_VERSION)
+    expect(db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
 
     // Verify new columns exist on repos
     const repoCols = (db.pragma('table_info(repos)') as Array<{ name: string }>).map((c) => c.name);
@@ -287,7 +287,7 @@ describe('v3 migration', () => {
     expect(evtCols).toContain('owner_team');
   });
 
-  it('user_version pragma is 3 after migration', () => {
+  it('user_version pragma reaches current version after migration from v2', () => {
     dbPath = path.join(os.tmpdir(), `rkb-v3-version-${Date.now()}.db`);
     db = createV2Database(dbPath);
     expect(getCurrentVersion(db)).toBe(2);
@@ -295,6 +295,92 @@ describe('v3 migration', () => {
     closeDatabase(db);
     db = openDatabase(dbPath);
 
+    expect(getCurrentVersion(db)).toBe(SCHEMA_VERSION);
+  });
+});
+
+describe('v4 migration', () => {
+  let db: Database.Database;
+  let dbPath: string;
+
+  /**
+   * Create a raw v3 database by running only v1+v2+v3 migrations manually,
+   * then setting user_version to 3. This simulates an existing v3 database.
+   */
+  function createV3Database(filePath: string): Database.Database {
+    const rawDb = new BetterSqlite3(filePath);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('foreign_keys = ON');
+    runMigrations(rawDb, 0, 3);
+    setVersion(rawDb, 3);
+    return rawDb;
+  }
+
+  afterEach(() => {
+    if (db?.open) closeDatabase(db);
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('v4 migration adds file_id column to events table', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v4-fileid-${Date.now()}.db`);
+    db = createV3Database(dbPath);
+
+    // Verify file_id does NOT exist in v3
+    const colsBefore = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
+    expect(colsBefore).not.toContain('file_id');
+
+    // Close and reopen to trigger migration
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify file_id now exists
+    const colsAfter = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
+    expect(colsAfter).toContain('file_id');
+  });
+
+  it('v3 databases auto-migrate to v4 preserving existing event data', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v4-preserve-${Date.now()}.db`);
+    db = createV3Database(dbPath);
+
+    // Insert sample data into v3 tables
+    db.prepare("INSERT INTO repos (name, path) VALUES ('v4-test-repo', '/tmp/v4')").run();
+    const repo = db.prepare("SELECT id FROM repos WHERE name = 'v4-test-repo'").get() as { id: number };
+    db.prepare("INSERT INTO events (repo_id, name, schema_definition, source_file) VALUES (?, 'OrderPlaced', 'proto def', 'proto/order.proto')").run(repo.id);
+
     expect(getCurrentVersion(db)).toBe(3);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Should be v4 now
+    expect(getCurrentVersion(db)).toBe(4);
+
+    // Existing event data preserved
+    const evtRow = db.prepare("SELECT name, schema_definition, source_file, file_id FROM events WHERE name = 'OrderPlaced'").get() as {
+      name: string;
+      schema_definition: string;
+      source_file: string;
+      file_id: number | null;
+    };
+    expect(evtRow.name).toBe('OrderPlaced');
+    expect(evtRow.schema_definition).toBe('proto def');
+    expect(evtRow.source_file).toBe('proto/order.proto');
+    expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
+  });
+
+  it('SCHEMA_VERSION is 4', () => {
+    expect(SCHEMA_VERSION).toBe(4);
+  });
+
+  it('fresh database has file_id column on events', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v4-fresh-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    const evtCols = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
+    expect(evtCols).toContain('file_id');
   });
 });

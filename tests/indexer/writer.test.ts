@@ -7,6 +7,7 @@ import { search } from '../../src/db/fts.js';
 import {
   persistRepoData,
   clearRepoEntities,
+  clearRepoFiles,
 } from '../../src/indexer/writer.js';
 import type { RepoMetadata } from '../../src/indexer/metadata.js';
 import type Database from 'better-sqlite3';
@@ -179,6 +180,74 @@ describe('clearRepoEntities', () => {
     // FTS entries should be gone
     const results = search(db, 'unique fts module');
     expect(results.filter(r => r.entityType === 'module')).toHaveLength(0);
+  });
+});
+
+describe('clearRepoFiles with file_id', () => {
+  it('removes events via file_id FK when file_id is populated', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'ModA', type: 'module', filePath: 'lib/file_a.ex', summary: 'Module A' },
+      { name: 'ModB', type: 'module', filePath: 'lib/file_b.ex', summary: 'Module B' },
+    ];
+    const events = [
+      { name: 'EventA', schemaDefinition: 'proto A', sourceFile: 'lib/file_a.ex' },
+      { name: 'EventB', schemaDefinition: 'proto B', sourceFile: 'lib/file_b.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, events });
+
+    // Verify events have file_id populated
+    const evtA = db.prepare("SELECT file_id FROM events WHERE name = 'EventA'").get() as { file_id: number | null };
+    expect(evtA.file_id).not.toBeNull();
+
+    // Clear file_a only
+    clearRepoFiles(db, repoId, ['lib/file_a.ex']);
+
+    // EventA should be gone (cleared via file_id join)
+    const eventsAfter = db.prepare('SELECT name FROM events WHERE repo_id = ?').all(repoId) as { name: string }[];
+    expect(eventsAfter.map(e => e.name)).not.toContain('EventA');
+    // EventB should survive
+    expect(eventsAfter.map(e => e.name)).toContain('EventB');
+
+    // ModA should be gone, ModB should survive
+    const modsAfter = db.prepare('SELECT name FROM modules WHERE repo_id = ?').all(repoId) as { name: string }[];
+    expect(modsAfter.map(m => m.name)).not.toContain('ModA');
+    expect(modsAfter.map(m => m.name)).toContain('ModB');
+  });
+
+  it('removes events via source_file fallback when file_id is NULL', () => {
+    const metadata = makeMetadata();
+    const { repoId } = persistRepoData(db, { metadata });
+
+    // Manually insert an event without file_id (simulating pre-v4 data)
+    db.prepare(
+      "INSERT INTO events (repo_id, name, schema_definition, source_file) VALUES (?, 'LegacyEvent', 'legacy proto', 'lib/legacy.ex')"
+    ).run(repoId);
+
+    clearRepoFiles(db, repoId, ['lib/legacy.ex']);
+
+    const eventsAfter = db.prepare('SELECT name FROM events WHERE repo_id = ?').all(repoId) as { name: string }[];
+    expect(eventsAfter.map(e => e.name)).not.toContain('LegacyEvent');
+  });
+
+  it('removes FTS entries for cleared events', () => {
+    const metadata = makeMetadata();
+    const events = [
+      { name: 'UniqueCleanupEvent', schemaDefinition: 'unique cleanup proto', sourceFile: 'lib/cleanup.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, events });
+
+    // Verify FTS has the event
+    const resultsBefore = search(db, 'unique cleanup');
+    expect(resultsBefore.filter(r => r.entityType === 'event').length).toBeGreaterThan(0);
+
+    clearRepoFiles(db, repoId, ['lib/cleanup.ex']);
+
+    // FTS entry should be gone
+    const resultsAfter = search(db, 'unique cleanup');
+    expect(resultsAfter.filter(r => r.entityType === 'event')).toHaveLength(0);
   });
 });
 

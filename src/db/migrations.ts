@@ -33,6 +33,9 @@ export function runMigrations(
     if (fromVersion < 3 && toVersion >= 3) {
       migrateToV3(db);
     }
+    if (fromVersion < 4 && toVersion >= 4) {
+      migrateToV4(db);
+    }
   });
 
   migrate();
@@ -141,5 +144,15 @@ function migrateToV3(db: Database.Database): void {
     ALTER TABLE services ADD COLUMN service_type TEXT;
     ALTER TABLE events ADD COLUMN domain TEXT;
     ALTER TABLE events ADD COLUMN owner_team TEXT;
+  `);
+}
+
+/**
+ * V4: Add file_id FK to events table for surgical file-level cleanup.
+ * Existing events get NULL file_id (backfilled on next re-index).
+ */
+function migrateToV4(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE events ADD COLUMN file_id INTEGER REFERENCES files(id) ON DELETE SET NULL;
   `);
 }
