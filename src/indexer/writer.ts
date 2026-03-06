@@ -246,3 +246,93 @@ export function persistRepoData(
 
   return result;
 }
+
+/**
+ * Clear all edges sourced from a repo or its services, and remove
+ * consumer-created events (schema_definition LIKE 'consumed:%').
+ * Called during surgical persist to reset edges before re-insertion.
+ */
+export function clearRepoEdges(db: Database.Database, repoId: number): void {
+  // Clear edges where repo is source
+  db.prepare("DELETE FROM edges WHERE source_type = 'repo' AND source_id = ?").run(repoId);
+
+  // Clear service-sourced edges for this repo's services
+  db.prepare(
+    "DELETE FROM edges WHERE source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?)",
+  ).run(repoId);
+
+  // Clean up consumer-created events (will be re-created by insertEventEdges if still relevant)
+  const consumerEvents = db
+    .prepare("SELECT id FROM events WHERE repo_id = ? AND schema_definition LIKE 'consumed:%'")
+    .all(repoId) as { id: number }[];
+  for (const evt of consumerEvents) {
+    removeEntity(db, 'event', evt.id);
+    db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
+  }
+}
+
+/**
+ * Persist extracted data for only the changed files in a repo.
+ * Surgically clears entities from changed files, inserts new data,
+ * and clears all edges (caller re-inserts via insertEventEdges).
+ * Unchanged files' entities are left untouched.
+ */
+export function persistSurgicalData(
+  db: Database.Database,
+  data: {
+    repoId: number;
+    metadata: RepoMetadata;
+    changedFiles: string[];
+    modules: ModuleData[];
+    events: EventData[];
+  },
+): void {
+  const txn = db.transaction(() => {
+    // 1. Update repo metadata (commit SHA, description, etc.)
+    upsertRepo(db, data.metadata);
+
+    // 2. Clear entities from changed files only
+    clearRepoFiles(db, data.repoId, data.changedFiles);
+
+    // 3. Insert file records + modules for changed files
+    const insertFile = db.prepare(
+      "INSERT INTO files (repo_id, path, language) VALUES (?, ?, ?) ON CONFLICT(repo_id, path) DO UPDATE SET updated_at = datetime('now') RETURNING id",
+    );
+    const insertModule = db.prepare(
+      'INSERT INTO modules (repo_id, file_id, name, type, summary) VALUES (?, ?, ?, ?, ?)',
+    );
+
+    for (const mod of data.modules) {
+      const fileRow = insertFile.get(data.repoId, mod.filePath, null) as { id: number } | undefined;
+      const fileId = fileRow?.id ?? null;
+      const modInfo = insertModule.run(data.repoId, fileId, mod.name, mod.type, mod.summary);
+      indexEntity(db, {
+        type: 'module' as EntityType,
+        id: Number(modInfo.lastInsertRowid),
+        name: mod.name,
+        description: mod.summary,
+      });
+    }
+
+    // 4. Insert events for changed files (with file_id)
+    const insertEvent = db.prepare(
+      'INSERT INTO events (repo_id, name, schema_definition, source_file, file_id) VALUES (?, ?, ?, ?, ?)',
+    );
+
+    for (const evt of data.events) {
+      const fileRow = insertFile.get(data.repoId, evt.sourceFile, null) as { id: number } | undefined;
+      const fileId = fileRow?.id ?? null;
+      const evtInfo = insertEvent.run(data.repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
+      indexEntity(db, {
+        type: 'event' as EntityType,
+        id: Number(evtInfo.lastInsertRowid),
+        name: evt.name,
+        description: evt.schemaDefinition,
+      });
+    }
+
+    // 5. Clear ALL repo edges (caller will re-insert via insertEventEdges)
+    clearRepoEdges(db, data.repoId);
+  });
+  txn();
+}
