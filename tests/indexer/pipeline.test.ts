@@ -5,6 +5,7 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { indexAllRepos, indexSingleRepo } from '../../src/indexer/pipeline.js';
+import { search } from '../../src/db/fts.js';
 import type Database from 'better-sqlite3';
 
 let db: Database.Database;
@@ -1138,5 +1139,127 @@ end
     expect(ectoAfter).toBeDefined();
     expect(ectoAfter!.table_name).toBe('bookings');
     expect(ectoAfter!.schema_fields).toBeTruthy();
+  });
+});
+
+describe('end-to-end search integration', () => {
+  it('all new extractor data is searchable via FTS', () => {
+    const repoDir = createGitRepo('e2e-search', {
+      'mix.exs': 'defmodule E2eSearch.MixProject do\nend',
+      'proto/booking.proto': `
+syntax = "proto3";
+package booking.v1;
+
+service BookingService {
+  rpc CreateBooking (CreateBookingRequest) returns (CreateBookingResponse);
+  rpc CancelBooking (CancelBookingRequest) returns (CancelBookingResponse);
+}
+
+message CreateBookingRequest { string id = 1; }
+message CreateBookingResponse { string id = 1; }
+message CancelBookingRequest { string id = 1; }
+message CancelBookingResponse { string id = 1; }
+`,
+      'schema.graphql': `
+type Reservation {
+  id: ID!
+  guestName: String!
+  status: ReservationStatus!
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+}
+`,
+      'lib/appointment.ex': `
+defmodule E2eSearch.Appointment do
+  use Ecto.Schema
+
+  schema "appointments" do
+    field :title, :string
+    field :duration, :integer
+    belongs_to :client, E2eSearch.Client
+  end
+end
+`,
+      'lib/client.ex': `
+defmodule E2eSearch.Client do
+  use Ecto.Schema
+
+  schema "clients" do
+    field :name, :string
+    has_many :appointments, E2eSearch.Appointment
+  end
+end
+`,
+      'lib/schema.ex': `
+defmodule E2eSearch.Schema do
+  use Absinthe.Schema
+
+  query do
+    field :appointments, list_of(:appointment)
+  end
+
+  object :appointment do
+    field :id, :id
+    field :title, :string
+  end
+end
+`,
+    });
+
+    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Verify gRPC services
+    const grpcServices = db
+      .prepare("SELECT * FROM services WHERE service_type = 'grpc'")
+      .all() as { name: string; description: string }[];
+    expect(grpcServices).toHaveLength(1);
+    expect(grpcServices[0].name).toBe('BookingService');
+
+    // Verify Ecto schema modules with table_name and schema_fields
+    const ectoModules = db
+      .prepare("SELECT * FROM modules WHERE table_name IS NOT NULL")
+      .all() as { name: string; table_name: string; schema_fields: string }[];
+    expect(ectoModules.length).toBeGreaterThanOrEqual(2);
+    const appointmentMod = ectoModules.find(m => m.table_name === 'appointments');
+    expect(appointmentMod).toBeDefined();
+    expect(JSON.parse(appointmentMod!.schema_fields)).toContainEqual({ name: 'title', type: 'string' });
+
+    // Verify GraphQL type modules
+    const gqlModules = db
+      .prepare("SELECT * FROM modules WHERE type LIKE 'graphql_%'")
+      .all() as { name: string; type: string }[];
+    expect(gqlModules.length).toBeGreaterThanOrEqual(2);
+    const gqlNames = gqlModules.map(m => m.name).sort();
+    expect(gqlNames).toContain('Reservation');
+    expect(gqlNames).toContain('ReservationStatus');
+
+    // Verify Absinthe type modules
+    const absintheModules = db
+      .prepare("SELECT * FROM modules WHERE type LIKE 'absinthe_%'")
+      .all() as { name: string; type: string }[];
+    expect(absintheModules.length).toBeGreaterThanOrEqual(2);
+    expect(absintheModules.map(m => m.type)).toContain('absinthe_object');
+    expect(absintheModules.map(m => m.type)).toContain('absinthe_query');
+
+    // Verify Ecto association edges
+    const assocEdges = db
+      .prepare("SELECT relationship_type FROM edges WHERE relationship_type IN ('belongs_to', 'has_many')")
+      .all() as { relationship_type: string }[];
+    expect(assocEdges.length).toBeGreaterThanOrEqual(2);
+
+    // FTS: search for table name returns the Ecto schema module
+    const tableResults = search(db, 'appointments');
+    expect(tableResults.length).toBeGreaterThan(0);
+    const moduleResult = tableResults.find(r => r.entityType === 'module');
+    expect(moduleResult).toBeDefined();
+
+    // FTS: search for gRPC service name returns the service
+    const serviceResults = search(db, 'BookingService');
+    expect(serviceResults.length).toBeGreaterThan(0);
+    const serviceResult = serviceResults.find(r => r.entityType === 'service');
+    expect(serviceResult).toBeDefined();
   });
 });
