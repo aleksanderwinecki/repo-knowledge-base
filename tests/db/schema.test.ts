@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { SCHEMA_VERSION } from '../../src/db/schema.js';
+import { getCurrentVersion, setVersion, runMigrations } from '../../src/db/migrations.js';
+import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import os from 'os';
 import path from 'path';
@@ -49,6 +51,7 @@ describe('schema', () => {
     expect(colNames).toContain('path');
     expect(colNames).toContain('description');
     expect(colNames).toContain('last_indexed_commit');
+    expect(colNames).toContain('default_branch');
     expect(colNames).toContain('created_at');
     expect(colNames).toContain('updated_at');
   });
@@ -175,5 +178,123 @@ describe('schema', () => {
     const version = db2.pragma('user_version', { simple: true });
     expect(version).toBe(SCHEMA_VERSION);
     closeDatabase(db2);
+  });
+});
+
+describe('v3 migration', () => {
+  let db: Database.Database;
+  let dbPath: string;
+
+  /**
+   * Create a raw v2 database by running only v1+v2 migrations manually,
+   * then setting user_version to 2. This simulates an existing v2 database.
+   */
+  function createV2Database(filePath: string): Database.Database {
+    const rawDb = new BetterSqlite3(filePath);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('foreign_keys = ON');
+    // Run migrations up to v2 only
+    runMigrations(rawDb, 0, 2);
+    setVersion(rawDb, 2);
+    return rawDb;
+  }
+
+  afterEach(() => {
+    if (db?.open) closeDatabase(db);
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('migrates v2 database to v3 preserving data', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v3-migrate-${Date.now()}.db`);
+    db = createV2Database(dbPath);
+
+    // Insert sample data into v2 tables
+    db.prepare("INSERT INTO repos (name, path) VALUES ('test-repo', '/tmp/test')").run();
+    const repo = db.prepare("SELECT id FROM repos WHERE name = 'test-repo'").get() as { id: number };
+    db.prepare("INSERT INTO modules (repo_id, name, type) VALUES (?, 'MyModule', 'context')").run(repo.id);
+    db.prepare("INSERT INTO events (repo_id, name, schema_definition) VALUES (?, 'UserCreated', 'proto')").run(repo.id);
+    db.prepare("INSERT INTO services (repo_id, name) VALUES (?, 'my-service')").run(repo.id);
+
+    // Verify we're at v2
+    expect(getCurrentVersion(db)).toBe(2);
+
+    // Close and reopen via openDatabase, which should trigger v3 migration
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify user_version is now 3
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
+
+    // Verify new columns exist on repos
+    const repoCols = (db.pragma('table_info(repos)') as Array<{ name: string }>).map((c) => c.name);
+    expect(repoCols).toContain('default_branch');
+
+    // Verify new columns exist on modules
+    const modCols = (db.pragma('table_info(modules)') as Array<{ name: string }>).map((c) => c.name);
+    expect(modCols).toContain('table_name');
+    expect(modCols).toContain('schema_fields');
+
+    // Verify new columns exist on services
+    const svcCols = (db.pragma('table_info(services)') as Array<{ name: string }>).map((c) => c.name);
+    expect(svcCols).toContain('service_type');
+
+    // Verify new columns exist on events
+    const evtCols = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
+    expect(evtCols).toContain('domain');
+    expect(evtCols).toContain('owner_team');
+
+    // Verify existing data is preserved
+    const repoRow = db.prepare("SELECT name, path FROM repos WHERE name = 'test-repo'").get() as { name: string; path: string };
+    expect(repoRow.name).toBe('test-repo');
+    expect(repoRow.path).toBe('/tmp/test');
+
+    const modRow = db.prepare("SELECT name, type FROM modules WHERE name = 'MyModule'").get() as { name: string; type: string };
+    expect(modRow.name).toBe('MyModule');
+    expect(modRow.type).toBe('context');
+
+    const evtRow = db.prepare("SELECT name, schema_definition FROM events WHERE name = 'UserCreated'").get() as { name: string; schema_definition: string };
+    expect(evtRow.name).toBe('UserCreated');
+    expect(evtRow.schema_definition).toBe('proto');
+
+    const svcRow = db.prepare("SELECT name FROM services WHERE name = 'my-service'").get() as { name: string };
+    expect(svcRow.name).toBe('my-service');
+  });
+
+  it('fresh database has all v3 columns', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v3-fresh-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    // repos: default_branch
+    const repoCols = (db.pragma('table_info(repos)') as Array<{ name: string }>).map((c) => c.name);
+    expect(repoCols).toContain('default_branch');
+
+    // modules: table_name, schema_fields
+    const modCols = (db.pragma('table_info(modules)') as Array<{ name: string }>).map((c) => c.name);
+    expect(modCols).toContain('table_name');
+    expect(modCols).toContain('schema_fields');
+
+    // services: service_type
+    const svcCols = (db.pragma('table_info(services)') as Array<{ name: string }>).map((c) => c.name);
+    expect(svcCols).toContain('service_type');
+
+    // events: domain, owner_team
+    const evtCols = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
+    expect(evtCols).toContain('domain');
+    expect(evtCols).toContain('owner_team');
+  });
+
+  it('user_version pragma is 3 after migration', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v3-version-${Date.now()}.db`);
+    db = createV2Database(dbPath);
+    expect(getCurrentVersion(db)).toBe(2);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    expect(getCurrentVersion(db)).toBe(3);
   });
 });
