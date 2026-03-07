@@ -32,8 +32,8 @@
 - [x] **TF-04**: TextSearchResult includes subType field populated on all results
 - [x] **TF-05**: findEntity supports sub-type filtering in both exact-match and FTS paths
 - [x] **TF-06**: listAvailableTypes returns grouped sub-type counts from FTS table
-- [ ] **TF-07**: CLI --type flag accepts sub-types (schema, grpc, etc.) and --list-types discovers available types
-- [ ] **TF-08**: MCP tools support type parameter for filtering and kb_list_types for discovery
+- [x] **TF-07**: CLI --type flag accepts sub-types (schema, grpc, etc.) and --list-types discovers available types
+- [x] **TF-08**: MCP tools support type parameter for filtering and kb_list_types for discovery
 
 ### Ownership
 
@@ -74,8 +74,8 @@
 | TF-04 | Phase 10 | Complete |
 | TF-05 | Phase 10 | Complete |
 | TF-06 | Phase 10 | Complete |
-| TF-07 | Phase 10 | Pending |
-| TF-08 | Phase 10 | Pending |
+| TF-07 | Phase 10 | Complete |
+| TF-08 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 11 total, 11 complete

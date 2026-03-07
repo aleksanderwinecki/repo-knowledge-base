@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Search Type Filtering
-status: in_progress
-stopped_at: "Phase 10 Plan 01 complete"
-last_updated: "2026-03-07T12:24:00Z"
-last_activity: 2026-03-07 -- Phase 10 Plan 01 complete (FTS type filtering foundation)
+status: complete
+stopped_at: "Phase 10 Plan 02 complete"
+last_updated: "2026-03-07T12:32:07Z"
+last_activity: 2026-03-07 -- Phase 10 Plan 02 complete (CLI & MCP type filtering interfaces)
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 ## Current Position
 
 Phase: 10 of 10 (Search Type Filtering)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-03-07 -- Phase 10 Plan 01 complete (FTS type filtering foundation)
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-03-07 -- Phase 10 Plan 02 complete (CLI & MCP type filtering interfaces)
 
-Progress: [##################..] 91%
+Progress: [####################] 100%
 
 ## Performance Metrics
 
@@ -61,8 +61,9 @@ Progress: [##################..] 91%
 | 9. Parallel Execution | 2 | 2 | Complete |
 | Phase 09 P01 | 6min | 3 tasks | 6 files |
 | Phase 09 P02 | 3min | 1 tasks | 1 files |
-| 10. Search Type Filtering | 2 | 1 | In Progress |
+| 10. Search Type Filtering | 2 | 2 | Complete |
 | Phase 10 P01 | 9min | 2 tasks | 10 files |
+| Phase 10 P02 | 4min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,8 @@ Recent decisions affecting current work:
 - Phase 10-01: COARSE_TYPES set distinguishes parent types from granular sub-types for resolveTypeFilter
 - Phase 10-01: removeEntity uses LIKE pattern for safe composite matching across sub-types
 - Phase 10-01: Sub-type to parent mapping uses known sets (MODULE_SUB_TYPES, SERVICE_SUB_TYPES) with fallback
+- Phase 10-02: Import listAvailableTypes directly from db/fts.js in CLI (shorter path for CLI-only use)
+- Phase 10-02: outputError with MISSING_QUERY code when no query and no --list-types (explicit error vs silent help)
 
 ### Roadmap Evolution
 
@@ -125,6 +128,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T12:24:00Z
-Stopped at: Completed 10-01-PLAN.md
-Resume file: .planning/phases/10-search-type-filtering/10-02-PLAN.md
+Last session: 2026-03-07T12:32:07Z
+Stopped at: Completed 10-02-PLAN.md (Phase 10 complete)
+Resume file: None -- all plans complete
