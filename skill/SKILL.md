@@ -30,6 +30,8 @@ kb search "$ARGUMENTS"
 ```
 
 If results seem too broad, try adding `--repo <name>` or `--type module|event`.
+For granular filtering, use sub-types: `--type schema`, `--type grpc`, `--type graphql_query`.
+To discover available types: `kb search --list-types`.
 
 ### Dependencies
 ```bash

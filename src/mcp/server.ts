@@ -18,6 +18,7 @@ import { registerLearnTool } from './tools/learn.js';
 import { registerForgetTool } from './tools/forget.js';
 import { registerStatusTool } from './tools/status.js';
 import { registerCleanupTool } from './tools/cleanup.js';
+import { registerListTypesTool } from './tools/list-types.js';
 
 /**
  * Factory for creating a fully-wired MCP server.
@@ -32,6 +33,7 @@ export function createServer(db: Database.Database): McpServer {
   registerForgetTool(server, db);
   registerStatusTool(server, db);
   registerCleanupTool(server, db);
+  registerListTypesTool(server, db);
   return server;
 }
 

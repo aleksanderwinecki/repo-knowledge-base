@@ -13,17 +13,19 @@ import { checkAndSyncRepos } from '../sync.js';
 export function registerSearchTool(server: McpServer, db: Database.Database): void {
   server.tool(
     'kb_search',
-    'Full-text search across all indexed repos, modules, events, services, and learned facts',
+    'Full-text search across all indexed repos. Supports type filtering with --type for coarse (module, event) or granular (schema, grpc) filtering.',
     {
       query: z.string().describe('Search query (supports AND, OR, NOT, phrase matching)'),
       limit: z.number().min(1).max(50).optional().describe('Max results (default: 10)'),
       repo: z.string().optional().describe('Filter results to a specific repo'),
+      type: z.string().optional().describe('Filter by type: coarse (repo, module, event, service) or sub-type (schema, context, graphql_query, grpc, etc.)'),
     },
-    async ({ query, limit, repo }) => {
+    async ({ query, limit, repo, type }) => {
       try {
         let results = searchText(db, query, {
           limit: limit ?? 10,
           repoFilter: repo,
+          entityTypeFilter: type,
         });
 
         // Extract unique repo names and check for stale data
@@ -35,6 +37,7 @@ export function registerSearchTool(server: McpServer, db: Database.Database): vo
           results = searchText(db, query, {
             limit: limit ?? 10,
             repoFilter: repo,
+            entityTypeFilter: type,
           });
         }
 

@@ -16,7 +16,7 @@ export function registerEntityTool(server: McpServer, db: Database.Database): vo
     'Look up a structured entity card with relationships by name',
     {
       name: z.string().describe('Entity name to look up'),
-      type: z.string().optional().describe('Filter by entity type (repo, module, event, service)'),
+      type: z.string().optional().describe('Filter by type: coarse (repo, module, event, service) or sub-type (schema, graphql_query, grpc, etc.)'),
       repo: z.string().optional().describe('Filter by repo name'),
     },
     async ({ name, type, repo }) => {

@@ -21,6 +21,7 @@ import { registerLearnTool } from '../../src/mcp/tools/learn.js';
 import { registerForgetTool } from '../../src/mcp/tools/forget.js';
 import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
+import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
 
@@ -53,7 +54,7 @@ function insertRepo(name: string, repoPath: string, lastCommit: string | null): 
 }
 
 /** Insert a module for FTS/entity testing */
-function insertModule(repoId: number, name: string, summary: string | null): number {
+function insertModule(repoId: number, name: string, summary: string | null, subType?: string): number {
   const result = db.prepare(
     'INSERT INTO modules (repo_id, name, summary) VALUES (?, ?, ?)',
   ).run(repoId, name, summary);
@@ -61,9 +62,10 @@ function insertModule(repoId: number, name: string, summary: string | null): num
   // Also index in FTS (tokenize to match how searchText queries FTS)
   const tokenizedName = tokenizeForFts(name);
   const tokenizedSummary = summary ? tokenizeForFts(summary) : tokenizedName;
+  const compositeType = subType ? `module:${subType}` : 'module:module';
   db.prepare(
     'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)',
-  ).run(tokenizedName, tokenizedSummary, 'module', id);
+  ).run(tokenizedName, tokenizedSummary, compositeType, id);
   return id;
 }
 
@@ -81,6 +83,7 @@ beforeEach(() => {
   registerForgetTool(server, db);
   registerStatusTool(server, db);
   registerCleanupTool(server, db);
+  registerListTypesTool(server, db);
 
   vi.clearAllMocks();
   // Default: all repos have current commit (not stale)
@@ -270,6 +273,68 @@ describe('kb_cleanup', () => {
   });
 });
 
+describe('kb_search with type filter', () => {
+  it('filters results by sub-type', async () => {
+    const repoId = insertRepo('type-repo', tmpDir, 'current-commit');
+    insertModule(repoId, 'UserSchema', 'Ecto schema for users', 'schema');
+    insertModule(repoId, 'UserContext', 'Context module for users', 'context');
+
+    const result = await callTool('kb_search', { query: 'User', type: 'schema' });
+    const parsed = parseResponse(result);
+
+    expect(parsed.total).toBeGreaterThan(0);
+    const data = parsed.data as Array<Record<string, unknown>>;
+    // All results should be schema sub-type
+    for (const item of data) {
+      expect(item.subType).toBe('schema');
+    }
+  });
+
+  it('filters results by coarse type', async () => {
+    const repoId = insertRepo('coarse-repo', tmpDir, 'current-commit');
+    insertModule(repoId, 'CoarseModule', 'Test coarse filtering', 'schema');
+
+    const result = await callTool('kb_search', { query: 'CoarseModule', type: 'module' });
+    const parsed = parseResponse(result);
+
+    expect(parsed.total).toBeGreaterThan(0);
+    const data = parsed.data as Array<Record<string, unknown>>;
+    expect(data[0].entityType).toBe('module');
+  });
+});
+
+describe('kb_list_types', () => {
+  it('returns grouped type structure with counts', async () => {
+    const repoId = insertRepo('list-types-repo', tmpDir, 'current-commit');
+    insertModule(repoId, 'SchemaOne', 'First schema', 'schema');
+    insertModule(repoId, 'SchemaTwo', 'Second schema', 'schema');
+    insertModule(repoId, 'ContextOne', 'A context module', 'context');
+
+    const result = await callTool('kb_list_types');
+    const r = result as { content: Array<{ type: string; text: string }> };
+    const parsed = JSON.parse(r.content[0].text);
+
+    expect(parsed).toHaveProperty('module');
+    expect(Array.isArray(parsed.module)).toBe(true);
+
+    const schemaEntry = parsed.module.find((e: { subType: string }) => e.subType === 'schema');
+    expect(schemaEntry).toBeDefined();
+    expect(schemaEntry.count).toBe(2);
+
+    const contextEntry = parsed.module.find((e: { subType: string }) => e.subType === 'context');
+    expect(contextEntry).toBeDefined();
+    expect(contextEntry.count).toBe(1);
+  });
+
+  it('returns empty object for empty database', async () => {
+    const result = await callTool('kb_list_types');
+    const r = result as { content: Array<{ type: string; text: string }> };
+    const parsed = JSON.parse(r.content[0].text);
+
+    expect(parsed).toEqual({});
+  });
+});
+
 describe('all tools', () => {
   it('all tool responses are valid JSON under 4000 characters', async () => {
     const repoId = insertRepo('all-test-repo', tmpDir, 'current-commit');
@@ -283,6 +348,7 @@ describe('all tools', () => {
       { name: 'kb_forget', args: { id: 99999 } },
       { name: 'kb_status', args: {} },
       { name: 'kb_cleanup', args: {} },
+      { name: 'kb_list_types', args: {} },
     ];
 
     for (const { name, args } of tools) {
