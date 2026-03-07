@@ -79,7 +79,10 @@ Plans:
   3. All MCP tools return a consistent McpResponse shape -- response format does not vary tool-by-tool
   4. DB path resolution is a shared utility called by all tools -- no duplicated path logic across tool files
   5. learned_fact is a member of the EntityType union and FTS indexing for facts goes through db/fts.ts indexEntity -- no separate FTS path in knowledge/store.ts
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 13-01-PLAN.md — DB path utility, wrapToolHandler HOF, unified McpResponse format across all 8 tools
+- [ ] 13-02-PLAN.md — withAutoSync helper for 3 read tools, EntityType + FTS unification for learned facts
 
 ### Phase 14: Core Layer Dedup
 **Goal**: Core indexing, search, and persistence code is deduplicated so that changes to extraction, FTS indexing, entity queries, or edge operations only need to happen in one place
@@ -122,6 +125,6 @@ Plans:
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
-| 13. MCP Layer Dedup | v1.2 | 0/? | Not started | - |
+| 13. MCP Layer Dedup | v1.2 | 0/2 | Not started | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
