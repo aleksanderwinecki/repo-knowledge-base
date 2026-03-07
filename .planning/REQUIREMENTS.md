@@ -18,10 +18,10 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 - [x] **PERF-01**: SQLite pragma tuning (cache_size, temp_store, mmap_size) applied at connection open
 - [ ] **PERF-02**: Prepared statements hoisted out of hot loops in fts.ts, writer.ts, entity.ts, dependencies.ts, status.ts
 - [x] **PERF-03**: Missing database indexes added via V5 migration (modules, events, services name lookups)
-- [ ] **PERF-04**: FTS5 optimize command runs after bulk indexing operations
-- [ ] **PERF-05**: WAL checkpoint after index completes
+- [x] **PERF-04**: FTS5 optimize command runs after bulk indexing operations
+- [x] **PERF-05**: WAL checkpoint after index completes
 - [x] **PERF-06**: FTS5 prefix index configuration (prefix='2,3') for faster prefix searches
-- [ ] **PERF-07**: perf_hooks instrumentation for indexing and search benchmarking
+- [x] **PERF-07**: perf_hooks instrumentation for indexing and search benchmarking
 
 ### MCP Layer
 
@@ -84,10 +84,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-01 | Phase 12 | Complete |
 | PERF-02 | Phase 12 | Pending |
 | PERF-03 | Phase 12 | Complete |
-| PERF-04 | Phase 12 | Pending |
-| PERF-05 | Phase 12 | Pending |
+| PERF-04 | Phase 12 | Complete |
+| PERF-05 | Phase 12 | Complete |
 | PERF-06 | Phase 12 | Complete |
-| PERF-07 | Phase 12 | Pending |
+| PERF-07 | Phase 12 | Complete |
 | MCP-01 | Phase 13 | Pending |
 | MCP-02 | Phase 13 | Pending |
 | MCP-03 | Phase 13 | Pending |
