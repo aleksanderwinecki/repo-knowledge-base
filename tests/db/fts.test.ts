@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
-import { indexEntity, removeEntity, search, resolveTypeFilter, parseCompositeType, listAvailableTypes } from '../../src/db/fts.js';
+import { indexEntity, removeEntity, search, resolveTypeFilter, parseCompositeType, listAvailableTypes, executeFtsWithFallback } from '../../src/db/fts.js';
 import type Database from 'better-sqlite3';
 import os from 'os';
 import path from 'path';
@@ -291,6 +291,65 @@ describe('FTS5', () => {
       const result = parseCompositeType('service:grpc');
       expect(result.entityType).toBe('service');
       expect(result.subType).toBe('grpc');
+    });
+  });
+
+  describe('executeFtsWithFallback', () => {
+    it('returns results for valid FTS query', () => {
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService', description: 'Handles bookings' });
+
+      const sql = `
+        SELECT entity_type, entity_id, name, description, rank as relevance
+        FROM knowledge_fts
+        WHERE knowledge_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `;
+
+      const results = executeFtsWithFallback<{
+        entity_type: string; entity_id: number; name: string; description: string | null; relevance: number;
+      }>(db, sql, 'booking', (q) => [q, 20]);
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].entity_id).toBe(1);
+      expect(results[0].name).toContain('booking');
+    });
+
+    it('falls back to phrase query on syntax error (unbalanced quotes)', () => {
+      indexEntity(db, { type: 'event', id: 2, name: 'OrderCreated', description: 'order was created' });
+
+      const sql = `
+        SELECT entity_type, entity_id, name
+        FROM knowledge_fts
+        WHERE knowledge_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `;
+
+      // Unbalanced quote is an FTS5 syntax error -- helper should fall back to phrase query
+      const results = executeFtsWithFallback<{ entity_type: string; entity_id: number; name: string }>(
+        db, sql, '"order', (q) => [q, 20],
+      );
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].entity_id).toBe(2);
+    });
+
+    it('returns empty array when both attempts fail', () => {
+      // No data indexed -- query against empty FTS table with invalid SQL structure
+      const badSql = `
+        SELECT entity_type, entity_id, name
+        FROM knowledge_fts
+        WHERE knowledge_fts MATCH ?
+        AND nonexistent_column = ?
+        LIMIT ?
+      `;
+
+      const results = executeFtsWithFallback<{ entity_type: string; entity_id: number; name: string }>(
+        db, badSql, 'anything', (q) => [q, 'bad', 20],
+      );
+
+      expect(results).toEqual([]);
     });
   });
 
