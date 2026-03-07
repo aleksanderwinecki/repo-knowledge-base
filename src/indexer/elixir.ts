@@ -70,14 +70,16 @@ export function parseElixirFile(
   const modulePositions: { name: string; start: number }[] = [];
   let match;
   while ((match = defmoduleRe.exec(content)) !== null) {
-    modulePositions.push({ name: match[1], start: match.index });
+    const name = match[1];
+    if (!name) continue;
+    modulePositions.push({ name, start: match.index });
   }
 
   for (let i = 0; i < modulePositions.length; i++) {
-    const { name, start } = modulePositions[i];
+    const { name, start } = modulePositions[i]!;
     const end =
       i + 1 < modulePositions.length
-        ? modulePositions[i + 1].start
+        ? modulePositions[i + 1]!.start
         : content.length;
     const moduleContent = content.slice(start, end);
 
@@ -118,13 +120,13 @@ function extractModuledoc(content: string): string | null {
   // Heredoc: @moduledoc """..."""
   const heredocMatch = content.match(/@moduledoc\s+"""([\s\S]*?)"""/);
   if (heredocMatch) {
-    return heredocMatch[1].trim() || null;
+    return heredocMatch[1]?.trim() || null;
   }
 
   // Single-line: @moduledoc "..."
   const singleMatch = content.match(/@moduledoc\s+"([^"]*)"/);
   if (singleMatch) {
-    return singleMatch[1].trim() || null;
+    return singleMatch[1]?.trim() || null;
   }
 
   return null;
@@ -143,14 +145,15 @@ function extractPublicFunctions(content: string): string[] {
   let match;
   while ((match = defRe.exec(content)) !== null) {
     const fname = match[1];
-    const args = match[2].trim();
+    if (!fname) continue;
+    const args = match[2]?.trim() ?? '';
     const arity = args ? args.split(',').length : 0;
     functionSet.add(`${fname}/${arity}`);
   }
 
   // Match zero-arity functions without parens
   while ((match = defNoParenRe.exec(content)) !== null) {
-    const fname = match[1];
+    const fname = match[1]!;
     // Don't add if we already have it from the parens match
     if (!Array.from(functionSet).some((f) => f.startsWith(`${fname}/`))) {
       functionSet.add(`${fname}/0`);
@@ -196,13 +199,13 @@ function extractSchemaDetails(
 
     const fieldMatch = trimmed.match(fieldRe);
     if (fieldMatch) {
-      schemaFields.push({ name: fieldMatch[1], type: fieldMatch[2] });
+      schemaFields.push({ name: fieldMatch[1]!, type: fieldMatch[2]! });
       continue;
     }
 
     const assocMatch = trimmed.match(assocRe);
     if (assocMatch) {
-      associations.push({ kind: assocMatch[1], name: assocMatch[2], target: assocMatch[3] });
+      associations.push({ kind: assocMatch[1]!, name: assocMatch[2]!, target: assocMatch[3]! });
     }
   }
 
@@ -214,7 +217,7 @@ function extractSchemaDetails(
  */
 function extractSchemaTable(content: string): string | null {
   const match = content.match(/schema\s+"(\w+)"/);
-  return match ? match[1] : null;
+  return match ? match[1] ?? null : null;
 }
 
 /**
@@ -228,13 +231,13 @@ function extractAbsintheTypes(moduleContent: string): { kind: string; name: stri
   const namedRe = /(object|input_object)\s+:(\w+)\s+do\b/g;
   let m;
   while ((m = namedRe.exec(moduleContent)) !== null) {
-    types.push({ kind: m[1], name: m[2] });
+    types.push({ kind: m[1]!, name: m[2]! });
   }
 
   // Root macros: query do, mutation do (no atom name)
   const rootRe = /(query|mutation)\s+do\b/g;
   while ((m = rootRe.exec(moduleContent)) !== null) {
-    types.push({ kind: m[1], name: m[1] });
+    types.push({ kind: m[1]!, name: m[1]! });
   }
 
   return types;
@@ -254,13 +257,13 @@ function extractGrpcStubs(moduleContent: string): string[] {
   const rpcClientRe = /use\s+RpcClient\.(?:Client|MockableRpcClient)[\s\S]*?stub:\s*(\w+(?:\.\w+)*)/g;
   let m;
   while ((m = rpcClientRe.exec(moduleContent)) !== null) {
-    stubs.add(m[1]);
+    stubs.add(m[1]!);
   }
 
   // Pattern 2: ServiceName.Stub.method_name(
   const stubCallRe = /(\w+(?:\.\w+)*)\.Stub\.(\w+)\s*\(/g;
   while ((m = stubCallRe.exec(moduleContent)) !== null) {
-    stubs.add(`${m[1]}.Stub`);
+    stubs.add(`${m[1]!}.Stub`);
   }
 
   return Array.from(stubs);

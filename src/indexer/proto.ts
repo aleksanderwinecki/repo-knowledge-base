@@ -81,7 +81,7 @@ export function parseProtoFile(
  */
 function extractPackage(content: string): string | null {
   const match = content.match(/^package\s+([\w.]+)\s*;/m);
-  return match ? match[1] : null;
+  return match ? match[1] ?? null : null;
 }
 
 /**
@@ -93,7 +93,7 @@ function extractMessages(content: string): ProtoMessage[] {
 
   let match;
   while ((match = messageRe.exec(content)) !== null) {
-    const name = match[1];
+    const name = match[1]!;
     const braceStart = match.index + match[0].length - 1;
     const braceEnd = findMatchingBrace(content, braceStart);
 
@@ -119,11 +119,11 @@ function extractFields(body: string): ProtoField[] {
   let match;
   while ((match = fieldRe.exec(body)) !== null) {
     // Skip nested message/enum/oneof declarations
-    const type = match[1];
+    const type = match[1]!;
     if (['message', 'enum', 'oneof', 'reserved', 'option', 'extend'].includes(type)) {
       continue;
     }
-    fields.push({ type, name: match[2] });
+    fields.push({ type, name: match[2]! });
   }
 
   return fields;
@@ -138,7 +138,7 @@ function extractServices(content: string): ProtoService[] {
 
   let match;
   while ((match = serviceRe.exec(content)) !== null) {
-    const name = match[1];
+    const name = match[1]!;
     const braceStart = match.index + match[0].length - 1;
     const braceEnd = findMatchingBrace(content, braceStart);
 
@@ -164,9 +164,9 @@ function extractRpcs(body: string): ProtoRpc[] {
   let match;
   while ((match = rpcRe.exec(body)) !== null) {
     rpcs.push({
-      name: match[1],
-      inputType: match[2],
-      outputType: match[3],
+      name: match[1]!,
+      inputType: match[2]!,
+      outputType: match[3]!,
     });
   }
 

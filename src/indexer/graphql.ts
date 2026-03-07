@@ -57,8 +57,8 @@ export function parseGraphqlFile(filePath: string, content: string): GraphqlDefi
   let match;
   while ((match = braceRe.exec(content)) !== null) {
     const extended = !!match[1];
-    const kind = match[2];
-    const name = match[3];
+    const kind = match[2]!;
+    const name = match[3]!;
     const braceStart = match.index + match[0].length - 1;
     const braceEnd = findMatchingBrace(content, braceStart);
 
@@ -73,15 +73,15 @@ export function parseGraphqlFile(filePath: string, content: string): GraphqlDefi
   const unionRe = /^(extend\s+)?union\s+(\w+)\s*=\s*(.+)/gm;
   while ((match = unionRe.exec(content)) !== null) {
     const extended = !!match[1];
-    const name = match[2];
-    const body = match[3].trim();
+    const name = match[2]!;
+    const body = match[3]!.trim();
     types.push({ kind: 'union', name, body, extended });
   }
 
   // Extract scalar definitions: scalar Name
   const scalarRe = /^scalar\s+(\w+)/gm;
   while ((match = scalarRe.exec(content)) !== null) {
-    const name = match[1];
+    const name = match[1]!;
     types.push({ kind: 'scalar', name, body: '', extended: false });
   }
 

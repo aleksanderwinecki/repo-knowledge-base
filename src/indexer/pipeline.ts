@@ -359,8 +359,8 @@ export async function indexAllRepos(
 
   // === Phase 3: Serial persistence (DB writes) ===
   for (let i = 0; i < settled.length; i++) {
-    const item = workItems[i];
-    const result = settled[i];
+    const item = workItems[i]!;
+    const result = settled[i]!;
 
     if (result.status === 'fulfilled') {
       try {

@@ -11,7 +11,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
 
-  const yaml = match[1];
+  const yaml = match[1]!;
   const result: Record<string, unknown> = {};
 
   let currentKey = '';
@@ -19,7 +19,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
     // Match key: value pairs (key must start at beginning of line)
     const kvMatch = line.match(/^(\w[\w-]*):\s*(.*)?$/);
     if (kvMatch) {
-      currentKey = kvMatch[1];
+      currentKey = kvMatch[1]!;
       const rawValue = kvMatch[2]?.trim();
 
       if (rawValue && rawValue !== '>-') {
@@ -33,7 +33,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
       // Array item: "  - value" or "  - id: 'something'"
       const itemMatch = line.match(/^\s+-\s+(.+)/);
       if (itemMatch) {
-        const item = itemMatch[1].trim().replace(/^['"]|['"]$/g, '');
+        const item = itemMatch[1]!.trim().replace(/^['"]|['"]$/g, '');
         if (!Array.isArray(result[currentKey])) {
           result[currentKey] = [];
         }
@@ -223,7 +223,7 @@ function parseDomains(catalogSrc: string): Map<string, DomainInfo> {
           // Extract service IDs from array items like "id: 's:service-name'"
           const serviceIds = (servicesList || []).map((s) => {
             const idMatch = s.match(/id:\s*'?([^'"\s]+)'?/);
-            return idMatch ? idMatch[1] : s;
+            return idMatch ? idMatch[1] ?? s : s;
           });
 
           domains.set(domainId, { name: domainName, serviceIds });
@@ -266,7 +266,7 @@ function parseServices(catalogSrc: string): Map<string, ServiceInfo> {
           // Extract event IDs from array items like "id: 'event:payment-failed'"
           const eventIds = (sendsList || []).map((s) => {
             const idMatch = s.match(/id:\s*'?([^'"\s]+)'?/);
-            return idMatch ? idMatch[1] : s;
+            return idMatch ? idMatch[1] ?? s : s;
           });
 
           services.set(serviceId, { eventIds });

@@ -97,7 +97,7 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
       if (!content) continue;
 
       const moduleMatch = content.match(/defmodule\s+([\w.]+)/);
-      const handlerModule = moduleMatch ? moduleMatch[1] : null;
+      const handlerModule = moduleMatch ? moduleMatch[1] ?? null : null;
       const seen = new Set<string>();
 
       let match;
@@ -105,12 +105,14 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
       // Pattern 1: handle_event/handle_message
       handleEventRe.lastIndex = 0;
       while ((match = handleEventRe.exec(content)) !== null) {
-        const key = `handle:${match[1]}`;
+        const eventName = match[1];
+        if (!eventName) continue;
+        const key = `handle:${eventName}`;
         if (!seen.has(key)) {
           seen.add(key);
           consumers.push({
             type: 'consumes_event',
-            eventName: match[1],
+            eventName,
             sourceFile: filePath,
             handlerModule,
           });
@@ -120,12 +122,14 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
       // Pattern 2: handle_decoded_message with struct
       handleDecodedStructRe.lastIndex = 0;
       while ((match = handleDecodedStructRe.exec(content)) !== null) {
-        const key = `decoded:${match[1]}`;
+        const eventName = match[1];
+        if (!eventName) continue;
+        const key = `decoded:${eventName}`;
         if (!seen.has(key)) {
           seen.add(key);
           consumers.push({
             type: 'consumes_event',
-            eventName: match[1],
+            eventName,
             sourceFile: filePath,
             handlerModule,
           });
@@ -138,6 +142,7 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
         topicNameRe.lastIndex = 0;
         while ((match = topicNameRe.exec(content)) !== null) {
           const topic = match[1];
+          if (!topic) continue;
           const key = `topic:${topic}`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -154,6 +159,7 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
         schemaRe.lastIndex = 0;
         while ((match = schemaRe.exec(content)) !== null) {
           const schema = match[1];
+          if (!schema) continue;
           // Skip generic names that aren't real event types
           if (schema === 'Payload' || schema === 'Schema') continue;
           const key = `schema:${schema}`;
