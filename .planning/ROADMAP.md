@@ -87,7 +87,7 @@ Plans:
 
 ## Progress
 
-**Execution Order:** Phases execute in numeric order: 6 -> 7 -> 8 -> 9
+**Execution Order:** Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -100,3 +100,14 @@ Plans:
 | 7. Surgical File-Level Indexing | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
 | 9. Parallel Execution | v1.1 | 1/2 | In Progress | - |
+
+### Phase 10: Search Type Filtering
+
+**Goal:** Search results can be filtered by granular entity sub-types (schema, graphql_query, grpc, etc.) via CLI --type flag and MCP type parameter, with a --list-types discovery mechanism
+**Requirements**: TF-01, TF-02, TF-03, TF-04, TF-05, TF-06, TF-07, TF-08
+**Depends on:** Phase 9
+**Plans:** 2 plans
+
+Plans:
+- [ ] 10-01-PLAN.md -- FTS parent:subtype convention, search layer sub-type filtering, type discovery
+- [ ] 10-02-PLAN.md -- CLI --type extension, --list-types flag, MCP tools type parameter, kb_list_types tool
