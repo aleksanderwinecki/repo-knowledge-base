@@ -20,12 +20,12 @@ export function registerEntityTool(server: McpServer, db: Database.Database): vo
       type: z.string().optional().describe('Filter by type: coarse (repo, module, event, service) or sub-type (schema, graphql_query, grpc, etc.)'),
       repo: z.string().optional().describe('Filter by repo name'),
     },
-    wrapToolHandler('kb_entity', ({ name, type, repo }) => {
+    wrapToolHandler('kb_entity', async ({ name, type, repo }) => {
       const filters: { type?: string; repo?: string } = {};
       if (type) filters.type = type;
       if (repo) filters.repo = repo;
 
-      const results = withAutoSync(
+      const results = await withAutoSync(
         db,
         () => findEntity(db, name, filters as Parameters<typeof findEntity>[2]),
         (items) => [...new Set(items.map((r) => r.repoName))],

@@ -21,7 +21,7 @@ export function registerDepsTool(server: McpServer, db: Database.Database): void
       depth: z.number().min(1).max(10).optional().describe('Traversal depth (default: 1)'),
       repo: z.string().optional().describe('Filter dependencies to a specific repo'),
     },
-    wrapToolHandler('kb_deps', ({ name, direction, depth, repo }) => {
+    wrapToolHandler('kb_deps', async ({ name, direction, depth, repo }) => {
       let result = queryDependencies(db, name, { direction, depth, repo });
 
       if (!result || result.dependencies.length === 0) {
@@ -34,7 +34,7 @@ export function registerDepsTool(server: McpServer, db: Database.Database): void
       }
 
       // Sync stale repos and re-query if needed (only when we have results)
-      result = withAutoSync(
+      result = await withAutoSync(
         db,
         () => queryDependencies(db, name, { direction, depth, repo })!,
         (r) => [...new Set([r.entity.repoName, ...r.dependencies.map((d) => d.repoName)])],

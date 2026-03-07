@@ -54,7 +54,7 @@ afterEach(() => {
 });
 
 describe('indexSingleRepo', () => {
-  it('indexes an Elixir repo with modules', () => {
+  it('indexes an Elixir repo with modules', async () => {
     const repoDir = createGitRepo('booking-service', {
       'mix.exs': 'defmodule BookingService.MixProject do\nend',
       'lib/booking.ex': `
@@ -70,7 +70,7 @@ end
 `,
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.modules).toBe(2);
     expect(stats.protos).toBe(0);
@@ -92,7 +92,7 @@ end
     expect(names).toEqual(['BookingService.Booking', 'BookingService.Payment']);
   });
 
-  it('indexes proto files and creates events', () => {
+  it('indexes proto files and creates events', async () => {
     const repoDir = createGitRepo('events-service', {
       'mix.exs': 'defmodule Events.MixProject do\nend',
       'proto/booking.proto': `
@@ -110,7 +110,7 @@ message BookingCancelled {
 `,
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.protos).toBe(2);
 
@@ -123,7 +123,7 @@ message BookingCancelled {
     expect(eventNames).toEqual(['BookingCancelled', 'BookingCreated']);
   });
 
-  it('indexes a repo with both modules and protos', () => {
+  it('indexes a repo with both modules and protos', async () => {
     const repoDir = createGitRepo('full-service', {
       'mix.exs': 'defmodule Full.MixProject do\nend',
       'lib/handler.ex': `
@@ -138,18 +138,18 @@ message FullEvent {
 `,
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.modules).toBe(1);
     expect(stats.protos).toBe(1);
   });
 
-  it('records last_indexed_commit', () => {
+  it('records last_indexed_commit', async () => {
     const repoDir = createGitRepo('commit-check', {
       'mix.exs': 'defmodule CommitCheck.MixProject do\nend',
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const repo = db.prepare('SELECT last_indexed_commit FROM repos WHERE name = ?').get('commit-check') as {
       last_indexed_commit: string | null;
@@ -158,13 +158,13 @@ message FullEvent {
     expect(repo.last_indexed_commit).toHaveLength(40); // Full SHA
   });
 
-  it('handles repo with no Elixir or proto files', () => {
+  it('handles repo with no Elixir or proto files', async () => {
     const repoDir = createGitRepo('plain-repo', {
       'package.json': '{"name": "plain-repo"}',
       'src/index.ts': 'console.log("hello");',
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.modules).toBe(0);
     expect(stats.protos).toBe(0);
@@ -304,7 +304,7 @@ describe('indexAllRepos', () => {
     expect(results[0].skipReason).toContain('no main or master branch');
   });
 
-  it('indexes from main branch content, not feature branch', () => {
+  it('indexes from main branch content, not feature branch', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('branch-test', {
       'mix.exs': 'defmodule BranchTest.MixProject do\nend',
@@ -320,7 +320,7 @@ describe('indexAllRepos', () => {
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
     // Index while on feature branch
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir });
 
     // Should only have the main-branch module
     expect(stats.modules).toBe(1);
@@ -332,7 +332,7 @@ describe('indexAllRepos', () => {
     expect(modules[0].name).toBe('MainMod');
   });
 
-  it('populates default_branch in repos table', () => {
+  it('populates default_branch in repos table', async () => {
     const repoDir = createGitRepo('branch-col-test', {
       'mix.exs': 'defmodule BranchCol.MixProject do\nend',
     });
@@ -340,7 +340,7 @@ describe('indexAllRepos', () => {
     // Ensure it has a main branch
     try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const row = db.prepare('SELECT default_branch FROM repos WHERE name = ?').get('branch-col-test') as {
       default_branch: string | null;
@@ -348,7 +348,7 @@ describe('indexAllRepos', () => {
     expect(row.default_branch).toBe('main');
   });
 
-  it('handles detached HEAD state', () => {
+  it('handles detached HEAD state', async () => {
     const repoDir = createGitRepo('detached-head', {
       'mix.exs': 'defmodule Detached.MixProject do\nend',
       'lib/mod.ex': 'defmodule DetachedMod do\nend',
@@ -361,7 +361,7 @@ describe('indexAllRepos', () => {
     const sha = execSync('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf-8' }).trim();
     execSync(`git checkout ${sha}`, { cwd: repoDir, stdio: 'pipe' });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
     expect(stats.modules).toBe(1);
   });
 
@@ -410,7 +410,7 @@ describe('surgical indexing', () => {
     try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
   }
 
-  it('uses surgical mode when a single file is modified', () => {
+  it('uses surgical mode when a single file is modified', async () => {
     const repoDir = createGitRepo('surgical-modify', {
       'mix.exs': 'defmodule SurgicalModify.MixProject do\nend',
       'lib/alpha.ex': `
@@ -430,7 +430,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    const firstResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const firstResult = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
     expect(firstResult.mode).toBe('full');
     expect(firstResult.modules).toBe(2);
 
@@ -444,7 +444,7 @@ end
     execSync('git add -A && git commit -m "rename alpha"', { cwd: repoDir, stdio: 'pipe' });
 
     // Re-index without force -> should use surgical mode
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     // Beta should survive untouched, Alpha should be renamed
@@ -455,7 +455,7 @@ end
     expect(names).toEqual(['SurgicalModify.AlphaRenamed', 'SurgicalModify.Beta']);
   });
 
-  it('uses surgical mode when a file is added', () => {
+  it('uses surgical mode when a file is added', async () => {
     const repoDir = createGitRepo('surgical-add', {
       'mix.exs': 'defmodule SurgicalAdd.MixProject do\nend',
       'lib/existing.ex': `
@@ -468,7 +468,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Add new file and commit
     fs.writeFileSync(path.join(repoDir, 'lib', 'new_mod.ex'), `
@@ -479,7 +479,7 @@ end
 `);
     execSync('git add -A && git commit -m "add new"', { cwd: repoDir, stdio: 'pipe' });
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     const modules = db
@@ -490,7 +490,7 @@ end
     expect(names).toEqual(['SurgicalAdd.Existing', 'SurgicalAdd.NewMod']);
   });
 
-  it('uses surgical mode when a file is deleted', () => {
+  it('uses surgical mode when a file is deleted', async () => {
     const repoDir = createGitRepo('surgical-delete', {
       'mix.exs': 'defmodule SurgicalDelete.MixProject do\nend',
       'lib/keep.ex': `
@@ -508,7 +508,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const modulesBefore = db
       .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
@@ -519,7 +519,7 @@ end
     fs.unlinkSync(path.join(repoDir, 'lib', 'remove.ex'));
     execSync('git add -A && git commit -m "remove file"', { cwd: repoDir, stdio: 'pipe' });
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     const modulesAfter = db
@@ -529,7 +529,7 @@ end
     expect(modulesAfter[0].name).toBe('SurgicalDelete.Keep');
   });
 
-  it('produces identical results to full re-index (equivalence)', () => {
+  it('produces identical results to full re-index (equivalence)', async () => {
     const repoDir = createGitRepo('surgical-equiv', {
       'mix.exs': 'defmodule SurgicalEquiv.MixProject do\nend',
       'lib/mod_a.ex': `
@@ -549,7 +549,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Modify one file
     fs.writeFileSync(path.join(repoDir, 'lib', 'mod_a.ex'), `
@@ -561,7 +561,7 @@ end
     execSync('git add -A && git commit -m "update mod_a"', { cwd: repoDir, stdio: 'pipe' });
 
     // Surgical re-index
-    const surgicalResult = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const surgicalResult = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(surgicalResult.mode).toBe('surgical');
 
     // Snapshot surgical state
@@ -573,7 +573,7 @@ end
       .all('surgical-equiv') as { name: string }[];
 
     // Full re-index
-    const fullResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const fullResult = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
     expect(fullResult.mode).toBe('full');
 
     // Snapshot full state
@@ -589,7 +589,7 @@ end
     expect(surgicalEvents).toEqual(fullEvents);
   });
 
-  it('falls back to full mode for unreachable commit', () => {
+  it('falls back to full mode for unreachable commit', async () => {
     const repoDir = createGitRepo('surgical-unreachable', {
       'mix.exs': 'defmodule SurgicalUnreachable.MixProject do\nend',
       'lib/mod.ex': `
@@ -602,7 +602,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Overwrite last_indexed_commit with a fake SHA
     db.prepare("UPDATE repos SET last_indexed_commit = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' WHERE name = 'surgical-unreachable'").run();
@@ -616,11 +616,11 @@ end
     execSync('git add -A && git commit -m "update"', { cwd: repoDir, stdio: 'pipe' });
 
     // Re-index without force -- should fallback to full because commit is unreachable
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('full');
   });
 
-  it('falls back to full mode for large diff (>200 files or >50% changed)', () => {
+  it('falls back to full mode for large diff (>200 files or >50% changed)', async () => {
     // Create repo with many files
     const files: Record<string, string> = {
       'mix.exs': 'defmodule LargeDiff.MixProject do\nend',
@@ -634,7 +634,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Modify 6 of 10 files (>50%) and commit
     for (let i = 0; i < 6; i++) {
@@ -642,11 +642,11 @@ end
     }
     execSync('git add -A && git commit -m "bulk update"', { cwd: repoDir, stdio: 'pipe' });
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('full');
   });
 
-  it('force flag always uses full mode', () => {
+  it('force flag always uses full mode', async () => {
     const repoDir = createGitRepo('surgical-force', {
       'mix.exs': 'defmodule SurgicalForce.MixProject do\nend',
       'lib/mod.ex': `
@@ -659,7 +659,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Modify and commit
     fs.writeFileSync(path.join(repoDir, 'lib', 'mod.ex'), `
@@ -670,11 +670,11 @@ end
     execSync('git add -A && git commit -m "update"', { cwd: repoDir, stdio: 'pipe' });
 
     // Re-index WITH force -> should be full mode, not surgical
-    const result = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
     expect(result.mode).toBe('full');
   });
 
-  it('first index of a new repo uses full mode', () => {
+  it('first index of a new repo uses full mode', async () => {
     const repoDir = createGitRepo('surgical-first', {
       'mix.exs': 'defmodule SurgicalFirst.MixProject do\nend',
       'lib/mod.ex': `
@@ -686,7 +686,7 @@ end
 
     ensureMainBranch(repoDir);
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('full');
   });
 
@@ -728,7 +728,7 @@ end
     expect(results[0].mode).toBe('full');
   });
 
-  it('recalculates edges after surgical update using ALL files', () => {
+  it('recalculates edges after surgical update using ALL files', async () => {
     const repoDir = createGitRepo('surgical-edges', {
       'mix.exs': 'defmodule SurgicalEdges.MixProject do\nend',
       'proto/events.proto': `
@@ -749,7 +749,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    const firstResult = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const firstResult = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
     expect(firstResult.events).toBeGreaterThan(0);
 
     // Capture edge count after full
@@ -768,7 +768,7 @@ end
     execSync('git add -A && git commit -m "update handler"', { cwd: repoDir, stdio: 'pipe' });
 
     // Surgical re-index
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     // Edges should still be present (re-derived from ALL files, not just changed)
@@ -784,7 +784,7 @@ describe('new extractor wiring', () => {
     try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
   }
 
-  it('persists gRPC services from proto definitions to services table', () => {
+  it('persists gRPC services from proto definitions to services table', async () => {
     const repoDir = createGitRepo('grpc-service', {
       'mix.exs': 'defmodule GrpcService.MixProject do\nend',
       'proto/booking.proto': `
@@ -803,7 +803,7 @@ message CancelBookingResponse { string id = 1; }
 `,
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.services).toBeGreaterThan(0);
 
@@ -817,7 +817,7 @@ message CancelBookingResponse { string id = 1; }
     expect(services[0].description).toContain('CancelBooking');
   });
 
-  it('creates modules from GraphQL SDL files with graphql_ type prefix', () => {
+  it('creates modules from GraphQL SDL files with graphql_ type prefix', async () => {
     const repoDir = createGitRepo('graphql-service', {
       'mix.exs': 'defmodule GraphqlService.MixProject do\nend',
       'schema.graphql': `
@@ -838,7 +838,7 @@ enum BookingStatus {
 `,
     });
 
-    const stats = indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     expect(stats.graphqlTypes).toBeGreaterThan(0);
 
@@ -852,7 +852,7 @@ enum BookingStatus {
     expect(names).toEqual(['Booking', 'BookingStatus', 'CreateBookingInput']);
   });
 
-  it('populates modules.table_name and modules.schema_fields for Ecto schemas', () => {
+  it('populates modules.table_name and modules.schema_fields for Ecto schemas', async () => {
     const repoDir = createGitRepo('ecto-service', {
       'mix.exs': 'defmodule EctoService.MixProject do\nend',
       'lib/booking.ex': `
@@ -869,7 +869,7 @@ end
 `,
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const mod = db
       .prepare("SELECT name, table_name, schema_fields FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND table_name IS NOT NULL")
@@ -882,7 +882,7 @@ end
     expect(fields).toContainEqual({ name: 'status', type: 'string' });
   });
 
-  it('creates Absinthe type modules with absinthe_ type prefix', () => {
+  it('creates Absinthe type modules with absinthe_ type prefix', async () => {
     const repoDir = createGitRepo('absinthe-service', {
       'mix.exs': 'defmodule AbsintheService.MixProject do\nend',
       'lib/schema.ex': `
@@ -907,7 +907,7 @@ end
 `,
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const modules = db
       .prepare("SELECT name, type FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'absinthe_%'")
@@ -919,7 +919,7 @@ end
     expect(types).toContain('absinthe_query');
   });
 
-  it('creates calls_grpc edges from repo to services when gRPC stubs detected', () => {
+  it('creates calls_grpc edges from repo to services when gRPC stubs detected', async () => {
     const repoDir = createGitRepo('grpc-caller', {
       'mix.exs': 'defmodule GrpcCaller.MixProject do\nend',
       'proto/booking.proto': `
@@ -939,7 +939,7 @@ end
 `,
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const edges = db
       .prepare("SELECT relationship_type FROM edges WHERE relationship_type = 'calls_grpc'")
@@ -947,7 +947,7 @@ end
     expect(edges.length).toBeGreaterThan(0);
   });
 
-  it('creates Ecto association edges between modules', () => {
+  it('creates Ecto association edges between modules', async () => {
     const repoDir = createGitRepo('ecto-assoc', {
       'mix.exs': 'defmodule EctoAssoc.MixProject do\nend',
       'lib/booking.ex': `
@@ -983,7 +983,7 @@ end
 `,
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const edges = db
       .prepare("SELECT relationship_type, source_type, target_type FROM edges WHERE relationship_type IN ('belongs_to', 'has_many', 'has_one', 'many_to_many')")
@@ -996,7 +996,7 @@ end
     expect(belongsToEdges.length).toBeGreaterThan(0);
   });
 
-  it('surgical mode includes services in wipe-and-reinsert', () => {
+  it('surgical mode includes services in wipe-and-reinsert', async () => {
     const repoDir = createGitRepo('surgical-svc', {
       'mix.exs': 'defmodule SurgicalSvc.MixProject do\nend',
       'proto/svc.proto': `
@@ -1017,7 +1017,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Verify service exists
     const servicesBefore = db
@@ -1035,7 +1035,7 @@ end
     execSync('git add -A && git commit -m "update handler"', { cwd: repoDir, stdio: 'pipe' });
 
     // Surgical re-index
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     // Services should survive surgical mode (wipe-and-reinsert)
@@ -1046,7 +1046,7 @@ end
     expect(servicesAfter[0].name).toBe('TestService');
   });
 
-  it('surgical mode handles GraphQL modules', () => {
+  it('surgical mode handles GraphQL modules', async () => {
     const repoDir = createGitRepo('surgical-gql', {
       'mix.exs': 'defmodule SurgicalGql.MixProject do\nend',
       'schema.graphql': `
@@ -1064,7 +1064,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index first
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const gqlModsBefore = db
       .prepare("SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND type LIKE 'graphql_%'")
@@ -1080,7 +1080,7 @@ end
 `);
     execSync('git add -A && git commit -m "update mod"', { cwd: repoDir, stdio: 'pipe' });
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     // GraphQL modules should survive (unchanged file not in changedSet)
@@ -1090,7 +1090,7 @@ end
     expect(gqlModsAfter).toHaveLength(1);
   });
 
-  it('surgical mode handles Ecto fields', () => {
+  it('surgical mode handles Ecto fields', async () => {
     const repoDir = createGitRepo('surgical-ecto', {
       'mix.exs': 'defmodule SurgicalEcto.MixProject do\nend',
       'lib/schema.ex': `
@@ -1112,7 +1112,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     const ectoBefore = db
       .prepare("SELECT table_name, schema_fields FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?) AND table_name IS NOT NULL")
@@ -1129,7 +1129,7 @@ end
 `);
     execSync('git add -A && git commit -m "update other"', { cwd: repoDir, stdio: 'pipe' });
 
-    const result = indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
     expect(result.mode).toBe('surgical');
 
     // Ecto schema should survive with table_name and schema_fields
@@ -1143,7 +1143,7 @@ end
 });
 
 describe('end-to-end search integration', () => {
-  it('all new extractor data is searchable via FTS', () => {
+  it('all new extractor data is searchable via FTS', async () => {
     const repoDir = createGitRepo('e2e-search', {
       'mix.exs': 'defmodule E2eSearch.MixProject do\nend',
       'proto/booking.proto': `
@@ -1209,7 +1209,7 @@ end
 `,
     });
 
-    indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
 
     // Verify gRPC services
     const grpcServices = db

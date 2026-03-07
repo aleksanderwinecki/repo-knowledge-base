@@ -24,10 +24,10 @@ export interface SyncResult {
  * A repo is stale when its HEAD SHA differs from the stored last_indexed_commit.
  * Repos whose path no longer exists on disk or aren't in the DB are silently skipped.
  */
-export function checkAndSyncRepos(
+export async function checkAndSyncRepos(
   db: Database.Database,
   repoNames: string[],
-): SyncResult {
+): Promise<SyncResult> {
   const staleRepos: Array<{ name: string; repoPath: string }> = [];
 
   const getRepo = db.prepare(
@@ -59,7 +59,7 @@ export function checkAndSyncRepos(
   const toSkip = staleRepos.slice(MAX_SYNC_PER_QUERY);
 
   for (const repo of toSync) {
-    indexSingleRepo(db, repo.repoPath, {
+    await indexSingleRepo(db, repo.repoPath, {
       force: false,
       rootDir: path.dirname(repo.repoPath),
     });
@@ -75,14 +75,14 @@ export function checkAndSyncRepos(
  * Run a query, sync stale repos found in results, re-run if anything synced.
  * Generic over result type -- works with arrays (search, entity) and single objects (deps).
  */
-export function withAutoSync<T>(
+export async function withAutoSync<T>(
   db: Database.Database,
   queryFn: () => T,
   extractRepoNames: (result: T) => string[],
-): T {
+): Promise<T> {
   let result = queryFn();
   const repoNames = extractRepoNames(result);
-  const syncResult = checkAndSyncRepos(db, repoNames);
+  const syncResult = await checkAndSyncRepos(db, repoNames);
   if (syncResult.synced.length > 0) {
     result = queryFn();
   }

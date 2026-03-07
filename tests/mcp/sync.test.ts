@@ -48,19 +48,19 @@ function insertRepo(
 }
 
 describe('checkAndSyncRepos', () => {
-  it('returns 0 synced when no repos are stale', () => {
+  it('returns 0 synced when no repos are stale', async () => {
     // Repo exists with commit abc, HEAD is still abc
     insertRepo('fresh-repo', tmpDir, 'abc123');
     mockedGetCurrentCommit.mockReturnValue('abc123');
 
-    const result = checkAndSyncRepos(db, ['fresh-repo']);
+    const result = await checkAndSyncRepos(db, ['fresh-repo']);
 
     expect(result.synced).toHaveLength(0);
     expect(result.skipped).toHaveLength(0);
     expect(mockedIndexSingleRepo).not.toHaveBeenCalled();
   });
 
-  it('re-indexes 2 stale repos and returns synced count of 2', () => {
+  it('re-indexes 2 stale repos and returns synced count of 2', async () => {
     insertRepo('repo-a', tmpDir, 'old-a');
     insertRepo('repo-b', tmpDir, 'old-b');
 
@@ -69,7 +69,7 @@ describe('checkAndSyncRepos', () => {
       return 'new-commit';
     });
 
-    const result = checkAndSyncRepos(db, ['repo-a', 'repo-b']);
+    const result = await checkAndSyncRepos(db, ['repo-a', 'repo-b']);
 
     expect(result.synced).toHaveLength(2);
     expect(result.synced).toContain('repo-a');
@@ -77,45 +77,45 @@ describe('checkAndSyncRepos', () => {
     expect(mockedIndexSingleRepo).toHaveBeenCalledTimes(2);
   });
 
-  it('caps re-indexing at 3 repos when 5 are stale', () => {
+  it('caps re-indexing at 3 repos when 5 are stale', async () => {
     for (let i = 0; i < 5; i++) {
       insertRepo(`repo-${i}`, tmpDir, `old-${i}`);
     }
     mockedGetCurrentCommit.mockReturnValue('new-commit');
 
     const repoNames = Array.from({ length: 5 }, (_, i) => `repo-${i}`);
-    const result = checkAndSyncRepos(db, repoNames);
+    const result = await checkAndSyncRepos(db, repoNames);
 
     expect(result.synced).toHaveLength(3);
     expect(result.skipped).toHaveLength(2);
     expect(mockedIndexSingleRepo).toHaveBeenCalledTimes(3);
   });
 
-  it('skips repos whose path no longer exists on disk', () => {
+  it('skips repos whose path no longer exists on disk', async () => {
     const fakePath = '/nonexistent/path/to/repo';
     insertRepo('gone-repo', fakePath, 'old-commit');
     mockedGetCurrentCommit.mockReturnValue('new-commit');
 
-    const result = checkAndSyncRepos(db, ['gone-repo']);
+    const result = await checkAndSyncRepos(db, ['gone-repo']);
 
     expect(result.synced).toHaveLength(0);
     expect(mockedIndexSingleRepo).not.toHaveBeenCalled();
   });
 
-  it('skips repos not found in database', () => {
+  it('skips repos not found in database', async () => {
     mockedGetCurrentCommit.mockReturnValue('some-commit');
 
-    const result = checkAndSyncRepos(db, ['unknown-repo']);
+    const result = await checkAndSyncRepos(db, ['unknown-repo']);
 
     expect(result.synced).toHaveLength(0);
     expect(mockedIndexSingleRepo).not.toHaveBeenCalled();
   });
 
-  it('returns object with synced and skipped arrays', () => {
+  it('returns object with synced and skipped arrays', async () => {
     insertRepo('repo-a', tmpDir, 'old');
     mockedGetCurrentCommit.mockReturnValue('new');
 
-    const result = checkAndSyncRepos(db, ['repo-a']);
+    const result = await checkAndSyncRepos(db, ['repo-a']);
 
     expect(result).toHaveProperty('synced');
     expect(result).toHaveProperty('skipped');

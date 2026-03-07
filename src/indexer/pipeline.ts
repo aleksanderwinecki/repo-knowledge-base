@@ -450,19 +450,15 @@ function checkSkip(
  * Index a single repo from its default branch. Runs all extractors and persists results.
  * If branch is not provided, resolves it (used when called directly, not via indexAllRepos).
  *
- * Supports two modes:
- * - **full**: wipe all repo entities and re-insert from scratch
- * - **surgical**: only clear entities from changed files, leave others untouched
- *
- * Surgical mode is used when: not forced, commit is reachable, and the diff is small
- * (<=200 files changed AND <=50% of repo files). Otherwise falls back to full.
+ * Delegates to extractRepoData + persistExtractedData -- the same path used by indexAllRepos.
+ * Async because extractRepoData returns a Promise (for p-limit compatibility in indexAllRepos).
  */
-export function indexSingleRepo(
+export async function indexSingleRepo(
   db: Database.Database,
   repoPath: string,
   options: IndexOptions,
   branch?: string,
-): IndexStats & { mode: 'full' | 'surgical' } {
+): Promise<IndexStats & { mode: 'full' | 'surgical' }> {
   // Resolve branch if not provided
   if (!branch) {
     branch = resolveDefaultBranch(repoPath) ?? undefined;
@@ -471,181 +467,20 @@ export function indexSingleRepo(
     }
   }
 
-  // Step 1: Extract metadata from branch
-  const metadata = extractMetadata(repoPath, branch);
-  const repoName = metadata.name;
-
-  // Step 2: Determine indexing mode
+  // Build DB snapshot (same query as indexAllRepos Phase 1)
+  const repoName = path.basename(repoPath);
   const existingRow = db
     .prepare('SELECT id, last_indexed_commit FROM repos WHERE name = ?')
-    .get(repoName) as
-    | { id: number; last_indexed_commit: string | null }
-    | undefined;
+    .get(repoName) as { id: number; last_indexed_commit: string | null } | undefined;
 
-  const isIncremental =
-    !options.force &&
-    existingRow?.last_indexed_commit &&
-    metadata.currentCommit &&
-    existingRow.last_indexed_commit !== metadata.currentCommit &&
-    isCommitReachable(repoPath, existingRow.last_indexed_commit);
-
-  // Step 3: Determine surgical vs full mode
-  let useSurgical = false;
-  let changes: { added: string[]; modified: string[]; deleted: string[] } | null = null;
-
-  if (isIncremental && existingRow) {
-    changes = getChangedFilesSinceBranch(
-      repoPath,
-      existingRow.last_indexed_commit!,
-      branch,
-    );
-    const totalChanged = changes.added.length + changes.modified.length + changes.deleted.length;
-    const allFiles = listBranchFiles(repoPath, branch);
-    const changeRatio = totalChanged / Math.max(allFiles.length, 1);
-    useSurgical = totalChanged > 0 && totalChanged <= 200 && changeRatio <= 0.5;
-  }
-
-  // Step 4: Run extractors (all branch-aware) -- needed for both modes
-  const elixirModules = extractElixirModules(repoPath, branch);
-  const protoDefinitions = extractProtoDefinitions(repoPath, branch);
-  const graphqlDefinitions = extractGraphqlDefinitions(repoPath, branch);
-
-  // Map gRPC services from proto definitions (EXT-01)
-  const services: ServiceData[] = protoDefinitions.flatMap((proto) =>
-    proto.services.map((svc) => ({
-      name: svc.name,
-      description: `gRPC service with RPCs: ${svc.rpcs.map((r) => `${r.name}(${r.inputType}) -> ${r.outputType}`).join(', ')}`,
-      serviceType: 'grpc',
-    })),
-  );
-
-  // Map GraphQL types to modules (EXT-03)
-  const graphqlModules: ModuleData[] = graphqlDefinitions.flatMap((def) =>
-    def.types.map((t) => ({
-      name: t.name,
-      type: `graphql_${t.kind}`,
-      filePath: def.filePath,
-      summary: t.body || null,
-    })),
-  );
-
-  // Map Elixir modules to writer format, including Ecto fields (EXT-02)
-  const elixirModuleData: ModuleData[] = elixirModules.map((mod) => ({
-    name: mod.name,
-    type: mod.type,
-    filePath: mod.filePath,
-    summary: mod.moduledoc,
-    tableName: mod.tableName,
-    schemaFields: mod.schemaFields.length > 0 ? JSON.stringify(mod.schemaFields) : null,
-  }));
-
-  // Map Absinthe types to additional modules (EXT-04)
-  const absintheModules: ModuleData[] = elixirModules.flatMap((mod) =>
-    mod.absintheTypes.map((aType) => ({
-      name: aType.name,
-      type: `absinthe_${aType.kind}`,
-      filePath: mod.filePath,
-      summary: `Absinthe ${aType.kind} defined in ${mod.name}`,
-    })),
-  );
-
-  // Combine all modules
-  const allModules: ModuleData[] = [...elixirModuleData, ...graphqlModules, ...absintheModules];
-
-  // Total GraphQL type count for stats
-  const graphqlTypeCount = graphqlModules.length;
-
-  if (useSurgical && changes && existingRow) {
-    // === SURGICAL MODE ===
-    const allChangedFiles = [...changes.added, ...changes.modified, ...changes.deleted];
-    const changedSet = new Set([...changes.added, ...changes.modified]);
-
-    // Filter modules to changed files only
-    const surgicalModules: ModuleData[] = allModules.filter(m => changedSet.has(m.filePath));
-
-    const surgicalEvents: EventData[] = protoDefinitions
-      .filter(p => changedSet.has(p.filePath))
-      .flatMap(proto => proto.messages.map(msg => ({
-        name: msg.name,
-        schemaDefinition: `message ${msg.name} { ${msg.fields.map(f => `${f.type} ${f.name}`).join('; ')} }`,
-        sourceFile: proto.filePath,
-      })));
-
-    // Persist surgical data (clears changed files, inserts new entities, clears all edges)
-    // Services are always fully wiped and re-inserted (no file_id on services table)
-    persistSurgicalData(db, {
-      repoId: existingRow.id,
-      metadata,
-      changedFiles: allChangedFiles,
-      modules: surgicalModules,
-      events: surgicalEvents,
-      services,
-    });
-
-    // Re-derive ALL edges from full extractor output (not just changed files)
-    const eventRelationships = detectEventRelationships(repoPath, branch, protoDefinitions, elixirModules);
-    if (eventRelationships.length > 0) {
-      insertEventEdges(db, existingRow.id, eventRelationships);
-    }
-
-    // Insert gRPC client edges (EXT-06) and Ecto association edges (EXT-02)
-    insertGrpcClientEdges(db, existingRow.id, elixirModules);
-    insertEctoAssociationEdges(db, existingRow.id, elixirModules);
-
-    return {
-      modules: elixirModules.length,
-      protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
-      events: eventRelationships.length,
-      services: services.length,
-      graphqlTypes: graphqlTypeCount,
-      mode: 'surgical' as const,
-    };
-  }
-
-  // === FULL MODE ===
-
-  const events: EventData[] = protoDefinitions.flatMap((proto) =>
-    proto.messages.map((msg) => ({
-      name: msg.name,
-      schemaDefinition: `message ${msg.name} { ${msg.fields.map((f) => `${f.type} ${f.name}`).join('; ')} }`,
-      sourceFile: proto.filePath,
-    })),
-  );
-
-  const eventRelationships = detectEventRelationships(
-    repoPath,
-    branch,
-    protoDefinitions,
-    elixirModules,
-  );
-
-  // Full persist: wipe all repo entities and re-insert
-  const { repoId } = persistRepoData(db, {
-    metadata,
-    modules: allModules,
-    events,
-    services,
-  });
-
-  // Insert edges based on event relationships
-  if (eventRelationships.length > 0) {
-    insertEventEdges(db, repoId, eventRelationships);
-  }
-
-  // Insert gRPC client edges (EXT-06)
-  insertGrpcClientEdges(db, repoId, elixirModules);
-
-  // Insert Ecto association edges (EXT-02)
-  insertEctoAssociationEdges(db, repoId, elixirModules);
-
-  return {
-    modules: elixirModules.length,
-    protos: protoDefinitions.reduce((sum, p) => sum + p.messages.length, 0),
-    events: eventRelationships.length,
-    services: services.length,
-    graphqlTypes: graphqlTypeCount,
-    mode: 'full' as const,
+  const dbSnapshot: DbSnapshot = {
+    repoId: existingRow?.id,
+    lastCommit: existingRow?.last_indexed_commit ?? null,
   };
+
+  // Delegate to shared extraction and persistence
+  const extracted = await extractRepoData(repoPath, options, branch, dbSnapshot);
+  return persistExtractedData(db, extracted);
 }
 
 /**

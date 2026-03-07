@@ -21,8 +21,8 @@ export function registerSearchTool(server: McpServer, db: Database.Database): vo
       repo: z.string().optional().describe('Filter results to a specific repo'),
       type: z.string().optional().describe('Filter by type: coarse (repo, module, event, service) or sub-type (schema, context, graphql_query, grpc, etc.)'),
     },
-    wrapToolHandler('kb_search', ({ query, limit, repo, type }) => {
-      const results = withAutoSync(
+    wrapToolHandler('kb_search', async ({ query, limit, repo, type }) => {
+      const results = await withAutoSync(
         db,
         () => searchText(db, query, {
           limit: limit ?? 10,
