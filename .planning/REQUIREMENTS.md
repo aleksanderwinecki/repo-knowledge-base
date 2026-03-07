@@ -16,7 +16,7 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 ### Database Performance
 
 - [x] **PERF-01**: SQLite pragma tuning (cache_size, temp_store, mmap_size) applied at connection open
-- [ ] **PERF-02**: Prepared statements hoisted out of hot loops in fts.ts, writer.ts, entity.ts, dependencies.ts, status.ts
+- [x] **PERF-02**: Prepared statements hoisted out of hot loops in fts.ts, writer.ts, entity.ts, dependencies.ts, status.ts
 - [x] **PERF-03**: Missing database indexes added via V5 migration (modules, events, services name lookups)
 - [x] **PERF-04**: FTS5 optimize command runs after bulk indexing operations
 - [x] **PERF-05**: WAL checkpoint after index completes
@@ -82,7 +82,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-02 | Phase 11 | Complete |
 | SAFE-03 | Phase 11 | Complete |
 | PERF-01 | Phase 12 | Complete |
-| PERF-02 | Phase 12 | Pending |
+| PERF-02 | Phase 12 | Complete |
 | PERF-03 | Phase 12 | Complete |
 | PERF-04 | Phase 12 | Complete |
 | PERF-05 | Phase 12 | Complete |

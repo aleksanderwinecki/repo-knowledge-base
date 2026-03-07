@@ -33,7 +33,7 @@
 ### v1.2 Hardening & Quick Wins (In Progress)
 
 - [x] **Phase 11: Safety Net** - Contract tests, FTS golden tests, and CLI snapshot tests before any refactoring (completed 2026-03-07)
-- [ ] **Phase 12: Database Performance** - SQLite pragma tuning, prepared statements, indexes, FTS5 optimization, benchmarking
+- [x] **Phase 12: Database Performance** - SQLite pragma tuning, prepared statements, indexes, FTS5 optimization, benchmarking (completed 2026-03-07)
 - [ ] **Phase 13: MCP Layer Dedup** - Extract shared error handling, auto-sync, response format, and DB path patterns
 - [ ] **Phase 14: Core Layer Dedup** - Consolidate pipeline extraction, FTS indexing, entity hydration, writer, and edge operations
 - [ ] **Phase 15: TypeScript Hardening** - Enable noUncheckedIndexedAccess, remove dead code, extract shared patterns, fix silent catches
@@ -121,7 +121,7 @@ Plans:
 | 9. Parallel Execution | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
-| 12. Database Performance | 2/3 | In Progress|  | - |
+| 12. Database Performance | 3/3 | Complete   | 2026-03-07 | - |
 | 13. MCP Layer Dedup | v1.2 | 0/? | Not started | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |

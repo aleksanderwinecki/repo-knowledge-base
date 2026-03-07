@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
 status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-03-07T16:42:17.693Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-07T16:43:36.234Z"
 last_activity: 2026-03-07 -- Completed 12-03 FTS optimize + WAL checkpoint + CLI timing (437 tests)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 93
 ---
 
@@ -47,6 +47,7 @@ Progress: [█████████░] 93%
 | Phase 11 P02 | 5min | 3 tasks | 3 files |
 | 12-01 db-perf | 3min | 2 tasks | 7 files |
 | 12-03 db-perf | 2min | 2 tasks | 5 files |
+| Phase 12 P02 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,7 @@ Recent decisions affecting current work:
 - 12-01: V5 migration checks FTS table existence before SELECT to handle databases where initializeFts never ran
 - 12-03: FTS optimize is best-effort with try/catch -- non-critical failure does not break pipeline
 - 12-03: Timing marks always collected (cheap), only reported when --timing flag is set
+- [Phase 12]: Inline FTS DELETE in clearRepoEntities loops; closure-based statement factories for entity.ts lookups
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T16:42:17.692Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-03-07T16:43:32.681Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
