@@ -173,7 +173,7 @@ message FullEvent {
 });
 
 describe('indexAllRepos', () => {
-  it('indexes all discovered repos', () => {
+  it('indexes all discovered repos', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     fs.mkdirSync(rootDir, { recursive: true });
 
@@ -187,29 +187,29 @@ describe('indexAllRepos', () => {
       'lib/b.ex': 'defmodule B do\nend',
     });
 
-    const results = indexAllRepos(db, { force: true, rootDir });
+    const results = await indexAllRepos(db, { force: true, rootDir });
 
     expect(results).toHaveLength(2);
     expect(results.every((r) => r.status === 'success')).toBe(true);
   });
 
-  it('skips repos with unchanged commit', () => {
+  it('skips repos with unchanged commit', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('skip-test', {
       'mix.exs': 'defmodule SkipTest.MixProject do\nend',
     });
 
     // First index
-    indexAllRepos(db, { force: true, rootDir });
+    await indexAllRepos(db, { force: true, rootDir });
 
     // Second index without force should skip
-    const results = indexAllRepos(db, { force: false, rootDir });
+    const results = await indexAllRepos(db, { force: false, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('skipped');
     expect(results[0].skipReason).toBe('no new commits');
   });
 
-  it('re-indexes when commit changes', () => {
+  it('re-indexes when commit changes', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('reindex-test', {
       'mix.exs': 'defmodule Reindex.MixProject do\nend',
@@ -217,34 +217,34 @@ describe('indexAllRepos', () => {
     });
 
     // First index
-    indexAllRepos(db, { force: true, rootDir });
+    await indexAllRepos(db, { force: true, rootDir });
 
     // Add a new file and commit
     fs.writeFileSync(path.join(repoDir, 'lib', 'b.ex'), 'defmodule B do\nend');
     execSync('git add -A && git commit -m "add b"', { cwd: repoDir, stdio: 'pipe' });
 
     // Second index without force should re-index (commit changed)
-    const results = indexAllRepos(db, { force: false, rootDir });
+    const results = await indexAllRepos(db, { force: false, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('success');
   });
 
-  it('force flag bypasses skip check', () => {
+  it('force flag bypasses skip check', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     createGitRepo('force-test', {
       'mix.exs': 'defmodule Force.MixProject do\nend',
     });
 
     // First index
-    indexAllRepos(db, { force: true, rootDir });
+    await indexAllRepos(db, { force: true, rootDir });
 
     // Second index with force should re-index
-    const results = indexAllRepos(db, { force: true, rootDir });
+    const results = await indexAllRepos(db, { force: true, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('success');
   });
 
-  it('isolates errors per repo (IDX-07)', () => {
+  it('isolates errors per repo (IDX-07)', async () => {
     const rootDir = path.join(tmpDir, 'repos');
 
     // Create two valid repos
@@ -266,7 +266,7 @@ describe('indexAllRepos', () => {
     // but indexSingleRepo will fail because repoPath is now invalid
     fs.writeFileSync(anotherDir, 'not-a-directory');
 
-    const results = indexAllRepos(db, { force: true, rootDir });
+    const results = await indexAllRepos(db, { force: true, rootDir });
 
     // The pipeline should complete without crashing — that's the key IDX-07 guarantee
     // good-repo should succeed; another-repo should either error or not be discovered
@@ -278,15 +278,15 @@ describe('indexAllRepos', () => {
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('returns empty for root with no repos', () => {
+  it('returns empty for root with no repos', async () => {
     const emptyDir = path.join(tmpDir, 'empty-root');
     fs.mkdirSync(emptyDir, { recursive: true });
 
-    const results = indexAllRepos(db, { force: true, rootDir: emptyDir });
+    const results = await indexAllRepos(db, { force: true, rootDir: emptyDir });
     expect(results).toHaveLength(0);
   });
 
-  it('skips repo with no main or master branch', () => {
+  it('skips repo with no main or master branch', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = path.join(rootDir, 'no-default-branch');
     fs.mkdirSync(repoDir, { recursive: true });
@@ -298,7 +298,7 @@ describe('indexAllRepos', () => {
     fs.writeFileSync(path.join(repoDir, 'mix.exs'), 'defmodule Dev.MixProject do\nend');
     execSync('git add -A && git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
 
-    const results = indexAllRepos(db, { force: true, rootDir });
+    const results = await indexAllRepos(db, { force: true, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('skipped');
     expect(results[0].skipReason).toContain('no main or master branch');
@@ -365,7 +365,7 @@ describe('indexAllRepos', () => {
     expect(stats.modules).toBe(1);
   });
 
-  it('skip check compares against branch commit, not HEAD', () => {
+  it('skip check compares against branch commit, not HEAD', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('skip-branch-check', {
       'mix.exs': 'defmodule SkipBranch.MixProject do\nend',
@@ -375,7 +375,7 @@ describe('indexAllRepos', () => {
     try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
 
     // First index
-    indexAllRepos(db, { force: true, rootDir });
+    await indexAllRepos(db, { force: true, rootDir });
 
     // Create feature branch with new commit (HEAD changes but main doesn't)
     execSync('git checkout -b feature/x', { cwd: repoDir, stdio: 'pipe' });
@@ -383,7 +383,7 @@ describe('indexAllRepos', () => {
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
     // Re-index without force -- should skip because main hasn't changed
-    const results = indexAllRepos(db, { force: false, rootDir });
+    const results = await indexAllRepos(db, { force: false, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('skipped');
     expect(results[0].skipReason).toBe('no new commits');
@@ -690,7 +690,7 @@ end
     expect(result.mode).toBe('full');
   });
 
-  it('skipped repos have mode="skipped" in indexAllRepos result', () => {
+  it('skipped repos have mode="skipped" in indexAllRepos result', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('surgical-skip-mode', {
       'mix.exs': 'defmodule SurgicalSkipMode.MixProject do\nend',
@@ -699,16 +699,16 @@ end
     ensureMainBranch(repoDir);
 
     // First index
-    indexAllRepos(db, { force: true, rootDir });
+    await indexAllRepos(db, { force: true, rootDir });
 
     // Second index without force -- should skip
-    const results = indexAllRepos(db, { force: false, rootDir });
+    const results = await indexAllRepos(db, { force: false, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('skipped');
     expect(results[0].mode).toBe('skipped');
   });
 
-  it('successful repos have mode in indexAllRepos result', () => {
+  it('successful repos have mode in indexAllRepos result', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('surgical-mode-report', {
       'mix.exs': 'defmodule SurgicalModeReport.MixProject do\nend',
@@ -722,7 +722,7 @@ end
     ensureMainBranch(repoDir);
 
     // Full index
-    const results = indexAllRepos(db, { force: true, rootDir });
+    const results = await indexAllRepos(db, { force: true, rootDir });
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('success');
     expect(results[0].mode).toBe('full');

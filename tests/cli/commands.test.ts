@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { getDbPath, withDb } from '../../src/cli/db.js';
+import { getDbPath, withDb, withDbAsync } from '../../src/cli/db.js';
 import { output, outputError } from '../../src/cli/output.js';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { searchText } from '../../src/search/index.js';
@@ -226,14 +226,14 @@ describe('CLI index command integration', () => {
     fs.rmSync(tmpDir, { recursive: true });
   });
 
-  it('index with empty root returns empty results', () => {
+  it('index with empty root returns empty results', async () => {
     const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
 
     const emptyDir = path.join(tmpDir, 'empty-root');
     fs.mkdirSync(emptyDir);
 
-    withDb((db) => {
-      const results = indexAllRepos(db, {
+    await withDbAsync(async (db) => {
+      const results = await indexAllRepos(db, {
         rootDir: emptyDir,
         force: false,
       });
