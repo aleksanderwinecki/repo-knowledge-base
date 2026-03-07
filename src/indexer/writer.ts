@@ -78,6 +78,22 @@ function upsertRepo(db: Database.Database, metadata: RepoMetadata): number {
 }
 
 /**
+ * Clear FTS entries for all entities returned by a select statement.
+ * Shared helper to avoid repeating the select-then-delete-FTS pattern.
+ */
+function clearEntityFts(
+  selectStmt: Database.Statement,
+  deleteFtsStmt: Database.Statement,
+  ftsPrefix: string,
+  repoId: number,
+): void {
+  const entities = selectStmt.all(repoId) as { id: number }[];
+  for (const entity of entities) {
+    deleteFtsStmt.run(ftsPrefix, entity.id);
+  }
+}
+
+/**
  * Clear all entities associated with a repo.
  * Removes FTS entries before deleting records.
  */
@@ -93,23 +109,10 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const deleteFiles = db.prepare('DELETE FROM files WHERE repo_id = ?');
   const deleteServices = db.prepare('DELETE FROM services WHERE repo_id = ?');
 
-  // Remove FTS entries for modules (inline instead of removeEntity per iteration)
-  const modules = selectModules.all(repoId) as { id: number }[];
-  for (const mod of modules) {
-    deleteFts.run('module:%', mod.id);
-  }
-
-  // Remove FTS entries for events
-  const events = selectEvents.all(repoId) as { id: number }[];
-  for (const evt of events) {
-    deleteFts.run('event:%', evt.id);
-  }
-
-  // Remove FTS entries for services
-  const services = selectServices.all(repoId) as { id: number }[];
-  for (const svc of services) {
-    deleteFts.run('service:%', svc.id);
-  }
+  // Remove FTS entries for all entity types
+  clearEntityFts(selectModules, deleteFts, 'module:%', repoId);
+  clearEntityFts(selectEvents, deleteFts, 'event:%', repoId);
+  clearEntityFts(selectServices, deleteFts, 'service:%', repoId);
 
   // Remove FTS entry for the repo itself
   deleteFts.run('repo:%', repoId);
@@ -174,6 +177,92 @@ export function clearRepoFiles(
 }
 
 /**
+ * Insert a module record with its file record and FTS entry.
+ * Accepts pre-prepared statements to preserve hoisting optimization.
+ */
+function insertModuleWithFts(
+  insertFileStmt: Database.Statement,
+  insertModuleStmt: Database.Statement,
+  db: Database.Database,
+  repoId: number,
+  mod: ModuleData,
+): void {
+  const fileRow = insertFileStmt.get(repoId, mod.filePath, null) as { id: number } | undefined;
+  const fileId = fileRow?.id ?? null;
+  const modInfo = insertModuleStmt.run(repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
+  const modId = Number(modInfo.lastInsertRowid);
+
+  // Build FTS description: include table name for Ecto schema searchability
+  let ftsDescription = mod.summary;
+  if (mod.tableName) {
+    ftsDescription = mod.summary
+      ? `${mod.summary} table:${mod.tableName}`
+      : `Ecto schema table: ${mod.tableName}`;
+  }
+
+  indexEntity(db, {
+    type: 'module' as EntityType,
+    id: modId,
+    name: mod.name,
+    description: ftsDescription,
+    subType: mod.type ?? 'module',
+  });
+}
+
+/**
+ * Insert an event record with its file record and FTS entry.
+ * Accepts pre-prepared statements to preserve hoisting optimization.
+ */
+function insertEventWithFts(
+  insertFileStmt: Database.Statement,
+  insertEventStmt: Database.Statement,
+  db: Database.Database,
+  repoId: number,
+  evt: EventData,
+): void {
+  const fileRow = insertFileStmt.get(repoId, evt.sourceFile, null) as { id: number } | undefined;
+  const fileId = fileRow?.id ?? null;
+  const evtInfo = insertEventStmt.run(repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
+  const evtId = Number(evtInfo.lastInsertRowid);
+
+  indexEntity(db, {
+    type: 'event' as EntityType,
+    id: evtId,
+    name: evt.name,
+    description: evt.schemaDefinition,
+    subType: 'event',
+  });
+}
+
+/**
+ * Insert a service record with FTS entry.
+ * Accepts pre-prepared statement to preserve hoisting optimization.
+ * Uses named parameters (@repoId etc) matching the service INSERT pattern.
+ */
+function insertServiceWithFts(
+  insertServiceStmt: Database.Statement,
+  db: Database.Database,
+  repoId: number,
+  svc: ServiceData,
+): void {
+  const svcInfo = insertServiceStmt.run({
+    repoId,
+    name: svc.name,
+    description: svc.description,
+    serviceType: svc.serviceType,
+  });
+  const svcId = Number(svcInfo.lastInsertRowid);
+
+  indexEntity(db, {
+    type: 'service' as EntityType,
+    id: svcId,
+    name: svc.name,
+    description: svc.description,
+    subType: svc.serviceType ?? 'service',
+  });
+}
+
+/**
  * Persist all extracted data for a repo in a single transaction.
  * Upserts the repo, clears old data, inserts new data, and syncs FTS.
  */
@@ -207,29 +296,7 @@ export function persistRepoData(
       );
 
       for (const mod of data.modules) {
-        // Ensure file record exists
-        const fileRow = insertFile.get(repoId, mod.filePath, null) as { id: number } | undefined;
-        const fileId = fileRow?.id ?? null;
-
-        const modInfo = insertModule.run(repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
-        const modId = Number(modInfo.lastInsertRowid);
-
-        // Build FTS description: include table name for Ecto schema searchability
-        let ftsDescription = mod.summary;
-        if (mod.tableName) {
-          ftsDescription = mod.summary
-            ? `${mod.summary} table:${mod.tableName}`
-            : `Ecto schema table: ${mod.tableName}`;
-        }
-
-        // Index in FTS
-        indexEntity(db, {
-          type: 'module' as EntityType,
-          id: modId,
-          name: mod.name,
-          description: ftsDescription,
-          subType: mod.type ?? 'module',
-        });
+        insertModuleWithFts(insertFile, insertModule, db, repoId, mod);
       }
     }
 
@@ -243,19 +310,7 @@ export function persistRepoData(
       );
 
       for (const evt of data.events) {
-        const fileRow = insertEventFile.get(repoId, evt.sourceFile, null) as { id: number } | undefined;
-        const fileId = fileRow?.id ?? null;
-        const evtInfo = insertEvent.run(repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
-        const evtId = Number(evtInfo.lastInsertRowid);
-
-        // Index in FTS
-        indexEntity(db, {
-          type: 'event' as EntityType,
-          id: evtId,
-          name: evt.name,
-          description: evt.schemaDefinition,
-          subType: 'event',
-        });
+        insertEventWithFts(insertEventFile, insertEvent, db, repoId, evt);
       }
     }
 
@@ -271,22 +326,7 @@ export function persistRepoData(
       `);
 
       for (const svc of data.services) {
-        const svcInfo = insertService.run({
-          repoId,
-          name: svc.name,
-          description: svc.description,
-          serviceType: svc.serviceType,
-        });
-        const svcId = Number(svcInfo.lastInsertRowid);
-
-        // Index in FTS for searchability
-        indexEntity(db, {
-          type: 'service' as EntityType,
-          id: svcId,
-          name: svc.name,
-          description: svc.description,
-          subType: svc.serviceType ?? 'service',
-        });
+        insertServiceWithFts(insertService, db, repoId, svc);
       }
     }
 
@@ -374,25 +414,7 @@ export function persistSurgicalData(
     );
 
     for (const mod of data.modules) {
-      const fileRow = insertFile.get(data.repoId, mod.filePath, null) as { id: number } | undefined;
-      const fileId = fileRow?.id ?? null;
-      const modInfo = insertModule.run(data.repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
-
-      // Build FTS description: include table name for Ecto schema searchability
-      let ftsDescription = mod.summary;
-      if (mod.tableName) {
-        ftsDescription = mod.summary
-          ? `${mod.summary} table:${mod.tableName}`
-          : `Ecto schema table: ${mod.tableName}`;
-      }
-
-      indexEntity(db, {
-        type: 'module' as EntityType,
-        id: Number(modInfo.lastInsertRowid),
-        name: mod.name,
-        description: ftsDescription,
-        subType: mod.type ?? 'module',
-      });
+      insertModuleWithFts(insertFile, insertModule, db, data.repoId, mod);
     }
 
     // 4. Insert events for changed files (with file_id)
@@ -401,16 +423,7 @@ export function persistSurgicalData(
     );
 
     for (const evt of data.events) {
-      const fileRow = insertFile.get(data.repoId, evt.sourceFile, null) as { id: number } | undefined;
-      const fileId = fileRow?.id ?? null;
-      const evtInfo = insertEvent.run(data.repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
-      indexEntity(db, {
-        type: 'event' as EntityType,
-        id: Number(evtInfo.lastInsertRowid),
-        name: evt.name,
-        description: evt.schemaDefinition,
-        subType: 'event',
-      });
+      insertEventWithFts(insertFile, insertEvent, db, data.repoId, evt);
     }
 
     // 5. Wipe and re-insert services if provided (services have no file_id, so full replace)
@@ -437,19 +450,7 @@ export function persistSurgicalData(
       `);
 
       for (const svc of data.services) {
-        const svcInfo = insertService.run({
-          repoId: data.repoId,
-          name: svc.name,
-          description: svc.description,
-          serviceType: svc.serviceType,
-        });
-        indexEntity(db, {
-          type: 'service' as EntityType,
-          id: Number(svcInfo.lastInsertRowid),
-          name: svc.name,
-          description: svc.description,
-          subType: svc.serviceType ?? 'service',
-        });
+        insertServiceWithFts(insertService, db, data.repoId, svc);
       }
     }
 
