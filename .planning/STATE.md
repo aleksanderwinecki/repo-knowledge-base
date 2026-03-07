@@ -5,9 +5,9 @@ milestone_name: Hardening & Quick Wins
 status: active
 stopped_at: null
 last_updated: "2026-03-07"
-last_activity: 2026-03-07 -- Milestone v1.2 started
+last_activity: 2026-03-07 -- Roadmap created for v1.2
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,17 +18,32 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-07 after v1.2 milestone start)
+See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Defining requirements for v1.2
+**Current focus:** Phase 11 - Safety Net (ready to plan)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-07 — Milestone v1.2 started
+Phase: 11 of 15 (Safety Net)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-07 -- Roadmap created for v1.2 (5 phases, 27 requirements)
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0 (v1.2)
+- Average duration: --
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
 
 ## Accumulated Context
 
@@ -37,13 +52,9 @@ Last activity: 2026-03-07 — Milestone v1.2 started
 See PROJECT.md Key Decisions table for full log.
 
 Recent decisions affecting current work:
-- v1.1: No worker_threads -- p-limit + Promise.all sufficient; SQLite can't share connections across threads
-- v1.1: No AST parsing -- regex sufficient for well-structured Elixir/proto/GraphQL macros
-- v1.1: EventCatalog via filesystem parsing, not HTTP API (SDK is file-based)
-
-### Roadmap Evolution
-
-(none yet)
+- v1.2: Safety nets first -- contract tests, FTS golden tests, CLI snapshots before any refactoring
+- v1.2: Measure before optimizing -- performance baselines on unchanged code, then refactor
+- v1.2: No table rebuilds -- V5 migration restricted to ADD COLUMN and CREATE INDEX only
 
 ### Pending Todos
 
@@ -56,5 +67,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Milestone v1.2 initialization
+Stopped at: Roadmap created, Phase 11 ready to plan
 Resume file: None

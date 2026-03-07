@@ -78,39 +78,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SAFE-01 | TBD | Pending |
-| SAFE-02 | TBD | Pending |
-| SAFE-03 | TBD | Pending |
-| PERF-01 | TBD | Pending |
-| PERF-02 | TBD | Pending |
-| PERF-03 | TBD | Pending |
-| PERF-04 | TBD | Pending |
-| PERF-05 | TBD | Pending |
-| PERF-06 | TBD | Pending |
-| PERF-07 | TBD | Pending |
-| MCP-01 | TBD | Pending |
-| MCP-02 | TBD | Pending |
-| MCP-03 | TBD | Pending |
-| MCP-04 | TBD | Pending |
-| MCP-05 | TBD | Pending |
-| CORE-01 | TBD | Pending |
-| CORE-02 | TBD | Pending |
-| CORE-03 | TBD | Pending |
-| CORE-04 | TBD | Pending |
-| CORE-05 | TBD | Pending |
-| CORE-06 | TBD | Pending |
-| CORE-07 | TBD | Pending |
-| CORE-08 | TBD | Pending |
-| TS-01 | TBD | Pending |
-| TS-02 | TBD | Pending |
-| TS-03 | TBD | Pending |
-| TS-04 | TBD | Pending |
+| SAFE-01 | Phase 11 | Pending |
+| SAFE-02 | Phase 11 | Pending |
+| SAFE-03 | Phase 11 | Pending |
+| PERF-01 | Phase 12 | Pending |
+| PERF-02 | Phase 12 | Pending |
+| PERF-03 | Phase 12 | Pending |
+| PERF-04 | Phase 12 | Pending |
+| PERF-05 | Phase 12 | Pending |
+| PERF-06 | Phase 12 | Pending |
+| PERF-07 | Phase 12 | Pending |
+| MCP-01 | Phase 13 | Pending |
+| MCP-02 | Phase 13 | Pending |
+| MCP-03 | Phase 13 | Pending |
+| MCP-04 | Phase 13 | Pending |
+| MCP-05 | Phase 13 | Pending |
+| CORE-01 | Phase 14 | Pending |
+| CORE-02 | Phase 14 | Pending |
+| CORE-03 | Phase 14 | Pending |
+| CORE-04 | Phase 14 | Pending |
+| CORE-05 | Phase 14 | Pending |
+| CORE-06 | Phase 14 | Pending |
+| CORE-07 | Phase 14 | Pending |
+| CORE-08 | Phase 14 | Pending |
+| TS-01 | Phase 15 | Pending |
+| TS-02 | Phase 15 | Pending |
+| TS-03 | Phase 15 | Pending |
+| TS-04 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 27 total
-- Mapped to phases: 0
-- Unmapped: 27 ⚠️
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after initial definition*
+*Last updated: 2026-03-07 after roadmap creation*
