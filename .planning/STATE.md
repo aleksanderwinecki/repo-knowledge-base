@@ -4,7 +4,7 @@ milestone: v1.2
 milestone_name: Hardening & Quick Wins
 status: executing
 stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-03-07T16:43:36.234Z"
+last_updated: "2026-03-07T16:47:31.179Z"
 last_activity: 2026-03-07 -- Completed 12-03 FTS optimize + WAL checkpoint + CLI timing (437 tests)
 progress:
   total_phases: 5
