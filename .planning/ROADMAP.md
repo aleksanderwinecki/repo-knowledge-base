@@ -3,7 +3,8 @@
 ## Milestones
 
 - v1.0 MVP -- Phases 1-5 (shipped 2026-03-06)
-- v1.1 Improved Reindexing -- Phases 6-9 (in progress)
+- v1.1 Improved Reindexing -- Phases 6-9 (shipped 2026-03-07)
+- v1.2 Search Type Filtering -- Phase 10 (in progress)
 
 ## Phases
 
@@ -99,7 +100,8 @@ Plans:
 | 6. Branch-Aware Tracking & Schema Migration | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 7. Surgical File-Level Indexing | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
-| 9. Parallel Execution | v1.1 | 1/2 | In Progress | - |
+| 9. Parallel Execution | v1.1 | 2/2 | Complete | 2026-03-07 |
+| 10. Search Type Filtering | v1.2 | 1/2 | In Progress | - |
 
 ### Phase 10: Search Type Filtering
 
@@ -109,5 +111,5 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 10-01-PLAN.md -- FTS parent:subtype convention, search layer sub-type filtering, type discovery
+- [x] 10-01-PLAN.md -- FTS parent:subtype convention, search layer sub-type filtering, type discovery
 - [ ] 10-02-PLAN.md -- CLI --type extension, --list-types flag, MCP tools type parameter, kb_list_types tool

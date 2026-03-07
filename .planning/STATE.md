@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Improved Reindexing
-status: completed
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-07T11:59:38.872Z"
-last_activity: 2026-03-07 -- Phase 9 Plan 02 complete (Parallel indexing tests)
+milestone: v1.2
+milestone_name: Search Type Filtering
+status: in_progress
+stopped_at: "Phase 10 Plan 01 complete"
+last_updated: "2026-03-07T12:24:00Z"
+last_activity: 2026-03-07 -- Phase 10 Plan 01 complete (FTS type filtering foundation)
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_plans: 11
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 9 -- Parallel Execution
+**Current focus:** Phase 10 -- Search Type Filtering
 
 ## Current Position
 
-Phase: 9 of 9 (Parallel Execution)
-Plan: 2 of 2 complete
-Status: Complete
-Last activity: 2026-03-07 -- Phase 9 Plan 02 complete (Parallel indexing tests)
+Phase: 10 of 10 (Search Type Filtering)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-03-07 -- Phase 10 Plan 01 complete (FTS type filtering foundation)
 
-Progress: [####################] 100% (v1.1 Improved Reindexing milestone complete)
+Progress: [##################..] 91%
 
 ## Performance Metrics
 
@@ -61,6 +61,8 @@ Progress: [####################] 100% (v1.1 Improved Reindexing milestone comple
 | 9. Parallel Execution | 2 | 2 | Complete |
 | Phase 09 P01 | 6min | 3 tasks | 6 files |
 | Phase 09 P02 | 3min | 1 tasks | 1 files |
+| 10. Search Type Filtering | 2 | 1 | In Progress |
+| Phase 10 P01 | 9min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -103,6 +105,10 @@ Recent decisions affecting current work:
 - Phase 9-01: extractRepoData takes dbSnapshot instead of DB handle for thread safety
 - Phase 9-01: indexSingleRepo unchanged for MCP sync backward compatibility
 - [Phase 09]: Error isolation test uses directory-to-file replacement sabotage since pipeline is resilient to git corruption
+- Phase 10-01: FTS entity_type stores parent:subtype composite format with UNINDEXED to prevent MATCH pollution
+- Phase 10-01: COARSE_TYPES set distinguishes parent types from granular sub-types for resolveTypeFilter
+- Phase 10-01: removeEntity uses LIKE pattern for safe composite matching across sub-types
+- Phase 10-01: Sub-type to parent mapping uses known sets (MODULE_SUB_TYPES, SERVICE_SUB_TYPES) with fallback
 
 ### Roadmap Evolution
 
@@ -119,6 +125,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T11:59:38.870Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-search-type-filtering/10-CONTEXT.md
+Last session: 2026-03-07T12:24:00Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: .planning/phases/10-search-type-filtering/10-02-PLAN.md
