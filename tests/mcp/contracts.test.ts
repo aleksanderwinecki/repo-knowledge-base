@@ -201,3 +201,165 @@ describe('input schema contracts', () => {
     expect(params).toHaveLength(0);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// OUTPUT SHAPE CONTRACTS
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('output shape contracts', () => {
+  // Seed minimal data so search/entity/deps have something to return
+  beforeEach(() => {
+    const repoId = insertRepo('contract-repo', tmpDir, 'current-commit');
+    insertModule(repoId, 'ContractModule', 'Module for contract tests', 'schema');
+  });
+
+  it('kb_search: { summary (string), data (array), total (number), truncated (boolean) }', async () => {
+    const result = await callTool('kb_search', { query: 'ContractModule' });
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary', 'total', 'truncated']);
+
+    expect(typeof parsed.summary).toBe('string');
+    expect(Array.isArray(parsed.data)).toBe(true);
+    expect(typeof parsed.total).toBe('number');
+    expect(typeof parsed.truncated).toBe('boolean');
+  });
+
+  it('kb_entity: { summary (string), data (array), total (number), truncated (boolean) }', async () => {
+    const result = await callTool('kb_entity', { name: 'ContractModule' });
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary', 'total', 'truncated']);
+
+    expect(typeof parsed.summary).toBe('string');
+    expect(Array.isArray(parsed.data)).toBe(true);
+    expect(typeof parsed.total).toBe('number');
+    expect(typeof parsed.truncated).toBe('boolean');
+  });
+
+  it('kb_deps: { summary (string), data, total (number), truncated (boolean) }', async () => {
+    // With no edges, kb_deps still returns the standard 4-key shape
+    const result = await callTool('kb_deps', { name: 'contract-repo' });
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary', 'total', 'truncated']);
+
+    expect(typeof parsed.summary).toBe('string');
+    expect(typeof parsed.total).toBe('number');
+    expect(typeof parsed.truncated).toBe('boolean');
+  });
+
+  it('kb_learn: { summary (string), data: { id, content, repo, createdAt } }', async () => {
+    const result = await callTool('kb_learn', { content: 'contract test fact' });
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary']);
+    expect(typeof parsed.summary).toBe('string');
+
+    const data = parsed.data as Record<string, unknown>;
+    expect(Object.keys(data).sort()).toEqual(['content', 'createdAt', 'id', 'repo']);
+
+    expect(typeof data.id).toBe('number');
+    expect(typeof data.content).toBe('string');
+    // repo can be null
+    expect(typeof data.createdAt).toBe('string');
+  });
+
+  it('kb_forget: { summary (string), data: { deleted (boolean) } }', async () => {
+    // Learn then forget
+    const learnResult = await callTool('kb_learn', { content: 'ephemeral fact' });
+    const learnParsed = parseResponse(learnResult);
+    const factId = (learnParsed.data as Record<string, unknown>).id as number;
+
+    const result = await callTool('kb_forget', { id: factId });
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary']);
+    expect(typeof parsed.summary).toBe('string');
+
+    const data = parsed.data as Record<string, unknown>;
+    expect(Object.keys(data).sort()).toEqual(['deleted']);
+    expect(typeof data.deleted).toBe('boolean');
+    expect(data.deleted).toBe(true);
+
+    // Also verify shape for non-existent id
+    const result2 = await callTool('kb_forget', { id: 99999 });
+    const parsed2 = parseResponse(result2);
+    const data2 = parsed2.data as Record<string, unknown>;
+    expect(Object.keys(data2).sort()).toEqual(['deleted']);
+    expect(data2.deleted).toBe(false);
+  });
+
+  it('kb_status: { summary, data: { counts: {repos,modules,events,services,edges,files,learned_facts}, staleness: {checked,total,stale,missing,staleRepos} } }', async () => {
+    const result = await callTool('kb_status');
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary']);
+    expect(typeof parsed.summary).toBe('string');
+
+    const data = parsed.data as Record<string, unknown>;
+    expect(Object.keys(data).sort()).toEqual(['counts', 'staleness']);
+
+    const counts = data.counts as Record<string, unknown>;
+    expect(Object.keys(counts).sort()).toEqual([
+      'edges', 'events', 'files', 'learned_facts', 'modules', 'repos', 'services',
+    ]);
+    // All counts are numbers
+    for (const key of Object.keys(counts)) {
+      expect(typeof counts[key]).toBe('number');
+    }
+
+    const staleness = data.staleness as Record<string, unknown>;
+    expect(Object.keys(staleness).sort()).toEqual([
+      'checked', 'missing', 'stale', 'staleRepos', 'total',
+    ]);
+    expect(typeof staleness.checked).toBe('number');
+    expect(typeof staleness.total).toBe('number');
+    expect(typeof staleness.stale).toBe('number');
+    expect(typeof staleness.missing).toBe('number');
+    expect(Array.isArray(staleness.staleRepos)).toBe(true);
+  });
+
+  it('kb_cleanup: { summary, data: { deletedRepos (array), pruned (boolean), staleFacts (array) } }', async () => {
+    // Insert a repo with non-existent path to trigger detection
+    insertRepo('ghost-repo', '/nonexistent/contract/path', 'abc123');
+
+    const result = await callTool('kb_cleanup', {});
+    const parsed = parseResponse(result);
+
+    expect(Object.keys(parsed).sort()).toEqual(['data', 'summary']);
+    expect(typeof parsed.summary).toBe('string');
+
+    const data = parsed.data as Record<string, unknown>;
+    expect(Object.keys(data).sort()).toEqual(['deletedRepos', 'pruned', 'staleFacts']);
+
+    expect(Array.isArray(data.deletedRepos)).toBe(true);
+    expect(typeof data.pruned).toBe('boolean');
+    expect(Array.isArray(data.staleFacts)).toBe(true);
+  });
+
+  it('kb_list_types: plain object { [entityType]: [{ subType, count }] } (not formatResponse shape)', async () => {
+    const result = await callTool('kb_list_types');
+    const r = result as { content: Array<{ type: string; text: string }> };
+    const parsed = JSON.parse(r.content[0].text);
+
+    // With seeded data, should have 'module' key
+    expect(typeof parsed).toBe('object');
+    expect(parsed).not.toBeNull();
+
+    // It must NOT have the formatResponse keys
+    expect(parsed).not.toHaveProperty('summary');
+    expect(parsed).not.toHaveProperty('total');
+    expect(parsed).not.toHaveProperty('truncated');
+
+    // Verify structure: each key maps to array of { subType, count }
+    for (const [, entries] of Object.entries(parsed)) {
+      expect(Array.isArray(entries)).toBe(true);
+      for (const entry of entries as Array<Record<string, unknown>>) {
+        expect(Object.keys(entry).sort()).toEqual(['count', 'subType']);
+        expect(typeof entry.subType).toBe('string');
+        expect(typeof entry.count).toBe('number');
+      }
+    }
+  });
+});
