@@ -8,6 +8,7 @@ import { withDb } from '../db.js';
 import { searchText, findEntity } from '../../search/index.js';
 import { listAvailableTypes } from '../../db/fts.js';
 import { output, outputError } from '../output.js';
+import { withTiming, reportTimings } from '../timing.js';
 
 export function registerSearch(program: Command) {
   program
@@ -25,11 +26,13 @@ export function registerSearch(program: Command) {
       'structured entity query mode (returns entity cards with relationships)',
     )
     .option('--list-types', 'list available entity types with counts')
+    .option('--timing', 'report timing to stderr', false)
     .action((query, opts) => {
       withDb((db) => {
         if (opts.listTypes) {
-          const types = listAvailableTypes(db);
+          const types = withTiming('list-types', () => listAvailableTypes(db));
           output(types);
+          if (opts.timing) reportTimings();
           return;
         }
 
@@ -39,19 +42,24 @@ export function registerSearch(program: Command) {
         }
 
         if (opts.entity) {
-          const cards = findEntity(db, query, {
-            type: opts.type,
-            repo: opts.repo,
-          });
+          const cards = withTiming('find-entity', () =>
+            findEntity(db, query, {
+              type: opts.type,
+              repo: opts.repo,
+            }),
+          );
           output(cards);
         } else {
-          const results = searchText(db, query, {
-            limit: parseInt(opts.limit, 10),
-            repoFilter: opts.repo,
-            entityTypeFilter: opts.type,
-          });
+          const results = withTiming('search-text', () =>
+            searchText(db, query, {
+              limit: parseInt(opts.limit, 10),
+              repoFilter: opts.repo,
+              entityTypeFilter: opts.type,
+            }),
+          );
           output(results);
         }
+        if (opts.timing) reportTimings();
       });
     });
 }
