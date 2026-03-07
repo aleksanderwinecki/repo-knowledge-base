@@ -356,8 +356,8 @@ describe('v4 migration', () => {
     closeDatabase(db);
     db = openDatabase(dbPath);
 
-    // Should be v4 now
-    expect(getCurrentVersion(db)).toBe(4);
+    // Should be current version now (v3 -> openDatabase migrates to SCHEMA_VERSION)
+    expect(getCurrentVersion(db)).toBe(SCHEMA_VERSION);
 
     // Existing event data preserved
     const evtRow = db.prepare("SELECT name, schema_definition, source_file, file_id FROM events WHERE name = 'OrderPlaced'").get() as {

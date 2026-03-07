@@ -26,7 +26,8 @@ export function initializeFts(db: Database.Database): void {
       description,
       entity_type UNINDEXED,
       entity_id UNINDEXED,
-      tokenize = 'unicode61'
+      tokenize = 'unicode61',
+      prefix = '2,3'
     );
   `);
 }

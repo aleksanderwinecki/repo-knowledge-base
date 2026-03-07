@@ -22,8 +22,8 @@ describe('knowledge store', () => {
   });
 
   describe('schema migration', () => {
-    it('schema version is 4', () => {
-      expect(SCHEMA_VERSION).toBe(4);
+    it('schema version is 5', () => {
+      expect(SCHEMA_VERSION).toBe(5);
     });
 
     it('learned_facts table exists after migration', () => {

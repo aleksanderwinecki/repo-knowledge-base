@@ -36,6 +36,9 @@ export function runMigrations(
     if (fromVersion < 4 && toVersion >= 4) {
       migrateToV4(db);
     }
+    if (fromVersion < 5 && toVersion >= 5) {
+      migrateToV5(db);
+    }
   });
 
   migrate();
@@ -155,4 +158,55 @@ function migrateToV4(db: Database.Database): void {
   db.exec(`
     ALTER TABLE events ADD COLUMN file_id INTEGER REFERENCES files(id) ON DELETE SET NULL;
   `);
+}
+
+/**
+ * V5: Add B-tree indexes on name columns and compound indexes for repo+file lookups.
+ * Rebuild FTS5 virtual table with prefix='2,3' for faster prefix searches.
+ */
+function migrateToV5(db: Database.Database): void {
+  // Add B-tree indexes for name lookups and repo+file compound lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_modules_name ON modules(name);
+    CREATE INDEX IF NOT EXISTS idx_events_name ON events(name);
+    CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);
+    CREATE INDEX IF NOT EXISTS idx_modules_repo_file ON modules(repo_id, file_id);
+    CREATE INDEX IF NOT EXISTS idx_events_repo_file ON events(repo_id, file_id);
+  `);
+
+  // Check if knowledge_fts exists before attempting to save rows
+  const ftsExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_fts'"
+  ).get();
+
+  let ftsRows: Array<{ name: string; description: string | null; entity_type: string; entity_id: number }> = [];
+  if (ftsExists) {
+    // Save all existing FTS rows before rebuilding
+    ftsRows = db.prepare(
+      'SELECT name, description, entity_type, entity_id FROM knowledge_fts'
+    ).all() as typeof ftsRows;
+    db.exec('DROP TABLE IF EXISTS knowledge_fts');
+  }
+
+  // Create FTS5 table with prefix config
+  db.exec(`
+    CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+      name,
+      description,
+      entity_type UNINDEXED,
+      entity_id UNINDEXED,
+      tokenize = 'unicode61',
+      prefix = '2,3'
+    );
+  `);
+
+  // Re-insert saved rows
+  if (ftsRows.length > 0) {
+    const insert = db.prepare(
+      'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)'
+    );
+    for (const row of ftsRows) {
+      insert.run(row.name, row.description, row.entity_type, row.entity_id);
+    }
+  }
 }

@@ -19,6 +19,11 @@ export function openDatabase(dbPath: string): Database.Database {
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
 
+  // Performance tuning pragmas
+  db.pragma('cache_size = -64000');
+  db.pragma('temp_store = MEMORY');
+  db.pragma('mmap_size = 268435456');
+
   // Initialize schema (runs migrations if needed)
   initializeSchema(db);
 
