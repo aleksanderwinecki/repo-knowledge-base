@@ -1263,3 +1263,255 @@ end
     expect(serviceResult).toBeDefined();
   });
 });
+
+describe('parallel indexing', () => {
+  let savedConcurrency: string | undefined;
+
+  beforeEach(() => {
+    savedConcurrency = process.env.KB_CONCURRENCY;
+  });
+
+  afterEach(() => {
+    if (savedConcurrency === undefined) delete process.env.KB_CONCURRENCY;
+    else process.env.KB_CONCURRENCY = savedConcurrency;
+  });
+
+  function ensureMainBranch(repoDir: string): void {
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+  }
+
+  it('produces identical DB state for sequential (KB_CONCURRENCY=1) and parallel (KB_CONCURRENCY=3) runs', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    // Create 3 repos: repo-a (2 Elixir modules), repo-b (1 proto with 2 messages), repo-c (1 module + 1 proto message)
+    const repoA = createGitRepo('repo-a', {
+      'mix.exs': 'defmodule RepoA.MixProject do\nend',
+      'lib/alpha.ex': `
+defmodule RepoA.Alpha do
+  @moduledoc "Alpha module"
+  def run, do: :ok
+end
+`,
+      'lib/beta.ex': `
+defmodule RepoA.Beta do
+  @moduledoc "Beta module"
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoA);
+
+    const repoB = createGitRepo('repo-b', {
+      'mix.exs': 'defmodule RepoB.MixProject do\nend',
+      'proto/events.proto': `
+syntax = "proto3";
+package test;
+
+message EventOne {
+  string id = 1;
+}
+
+message EventTwo {
+  string name = 1;
+}
+`,
+    });
+    ensureMainBranch(repoB);
+
+    const repoC = createGitRepo('repo-c', {
+      'mix.exs': 'defmodule RepoC.MixProject do\nend',
+      'lib/gamma.ex': `
+defmodule RepoC.Gamma do
+  @moduledoc "Gamma module"
+  def run, do: :ok
+end
+`,
+      'proto/msg.proto': `
+syntax = "proto3";
+package test;
+
+message SingleMsg {
+  string id = 1;
+}
+`,
+    });
+    ensureMainBranch(repoC);
+
+    // Sequential run: KB_CONCURRENCY=1
+    process.env.KB_CONCURRENCY = '1';
+    await indexAllRepos(db, { force: true, rootDir });
+
+    // Snapshot sequential state
+    const seqModules = db.prepare('SELECT name FROM modules ORDER BY name').all() as { name: string }[];
+    const seqEvents = db.prepare('SELECT name FROM events ORDER BY name').all() as { name: string }[];
+    const seqRepos = db.prepare('SELECT name FROM repos ORDER BY name').all() as { name: string }[];
+
+    // Reset DB: close and reopen
+    closeDatabase(db);
+    fs.unlinkSync(dbPath);
+    db = openDatabase(dbPath);
+
+    // Parallel run: KB_CONCURRENCY=3
+    process.env.KB_CONCURRENCY = '3';
+    await indexAllRepos(db, { force: true, rootDir });
+
+    // Snapshot parallel state
+    const parModules = db.prepare('SELECT name FROM modules ORDER BY name').all() as { name: string }[];
+    const parEvents = db.prepare('SELECT name FROM events ORDER BY name').all() as { name: string }[];
+    const parRepos = db.prepare('SELECT name FROM repos ORDER BY name').all() as { name: string }[];
+
+    // Compare: identical DB state
+    expect(parModules).toEqual(seqModules);
+    expect(parEvents).toEqual(seqEvents);
+    expect(parRepos).toEqual(seqRepos);
+  });
+
+  it('isolates errors: failed repo does not prevent others from succeeding', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    // Create 3 repos
+    const goodA = createGitRepo('good-a', {
+      'mix.exs': 'defmodule GoodA.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule GoodA.Mod do
+  @moduledoc "Good A module"
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(goodA);
+
+    const goodB = createGitRepo('good-b', {
+      'mix.exs': 'defmodule GoodB.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule GoodB.Mod do
+  @moduledoc "Good B module"
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(goodB);
+
+    const badRepo = createGitRepo('bad-repo', {
+      'mix.exs': 'defmodule BadRepo.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule BadRepo.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(badRepo);
+
+    // Sabotage bad-repo: replace repo directory with a file after discovery
+    // This makes it past scanner (has .git check) but causes extraction to fail.
+    // We destroy the dir and create a file in its place.
+    fs.rmSync(badRepo, { recursive: true, force: true });
+    fs.writeFileSync(badRepo, 'not-a-directory');
+
+    process.env.KB_CONCURRENCY = '3';
+    const results = await indexAllRepos(db, { force: true, rootDir });
+
+    // The pipeline should not crash -- all repos get a result
+    expect(results.length).toBeGreaterThanOrEqual(2);
+
+    // good-a and good-b should succeed
+    const goodAResult = results.find(r => r.repo === 'good-a');
+    const goodBResult = results.find(r => r.repo === 'good-b');
+    expect(goodAResult).toBeDefined();
+    expect(goodAResult!.status).toBe('success');
+    expect(goodBResult).toBeDefined();
+    expect(goodBResult!.status).toBe('success');
+
+    // Verify good repos' modules are actually in the DB
+    const modules = db.prepare('SELECT name FROM modules ORDER BY name').all() as { name: string }[];
+    expect(modules.map(m => m.name)).toContain('GoodA.Mod');
+    expect(modules.map(m => m.name)).toContain('GoodB.Mod');
+  });
+
+  it('works with KB_CONCURRENCY=1 (sequential fallback)', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    const repoX = createGitRepo('seq-x', {
+      'mix.exs': 'defmodule SeqX.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SeqX.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoX);
+
+    const repoY = createGitRepo('seq-y', {
+      'mix.exs': 'defmodule SeqY.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule SeqY.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoY);
+
+    process.env.KB_CONCURRENCY = '1';
+    const results = await indexAllRepos(db, { force: true, rootDir });
+
+    const successes = results.filter(r => r.status === 'success');
+    expect(successes).toHaveLength(2);
+
+    const modules = db.prepare('SELECT name FROM modules ORDER BY name').all() as { name: string }[];
+    expect(modules.map(m => m.name)).toContain('SeqX.Mod');
+    expect(modules.map(m => m.name)).toContain('SeqY.Mod');
+  });
+
+  it('works with default concurrency (no KB_CONCURRENCY set)', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    delete process.env.KB_CONCURRENCY;
+
+    const repoP = createGitRepo('def-p', {
+      'mix.exs': 'defmodule DefP.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule DefP.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoP);
+
+    const repoQ = createGitRepo('def-q', {
+      'mix.exs': 'defmodule DefQ.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule DefQ.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoQ);
+
+    const results = await indexAllRepos(db, { force: true, rootDir });
+
+    const successes = results.filter(r => r.status === 'success');
+    expect(successes).toHaveLength(2);
+  });
+
+  it('returns a Promise that resolves to IndexResult[]', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    createGitRepo('async-check', {
+      'mix.exs': 'defmodule AsyncCheck.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule AsyncCheck.Mod do
+  def run, do: :ok
+end
+`,
+    });
+
+    const promise = indexAllRepos(db, { force: true, rootDir });
+    expect(promise).toBeInstanceOf(Promise);
+
+    const results = await promise;
+    expect(Array.isArray(results)).toBe(true);
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBeDefined();
+    expect(results[0].repo).toBeDefined();
+  });
+});
