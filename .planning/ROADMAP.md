@@ -125,6 +125,6 @@ Plans:
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
-| 13. MCP Layer Dedup | 2/2 | Complete   | 2026-03-07 | - |
+| 13. MCP Layer Dedup | 2/2 | Complete    | 2026-03-07 | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
