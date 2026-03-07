@@ -57,16 +57,20 @@ export function indexEntity(
     ? `${entity.type}:${entity.subType}`
     : `${entity.type}:${entity.type}`;
 
+  // Hoist prepared statements outside transaction closure
+  const deleteFts = db.prepare(
+    'DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?',
+  );
+  const insertFts = db.prepare(
+    'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)',
+  );
+
   const upsert = db.transaction(() => {
     // Remove existing entry if any (use LIKE to match any sub-type under this parent)
-    db.prepare(
-      'DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?',
-    ).run(`${entity.type}:%`, entity.id);
+    deleteFts.run(`${entity.type}:%`, entity.id);
 
     // Insert new entry with composite type
-    db.prepare(
-      'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)',
-    ).run(processedName, processedDescription, compositeType, entity.id);
+    insertFts.run(processedName, processedDescription, compositeType, entity.id);
   });
 
   upsert();
@@ -81,9 +85,10 @@ export function removeEntity(
   entityType: EntityType,
   entityId: number,
 ): void {
-  db.prepare(
+  const deleteFts = db.prepare(
     'DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?',
-  ).run(`${entityType}:%`, entityId);
+  );
+  deleteFts.run(`${entityType}:%`, entityId);
 }
 
 /**

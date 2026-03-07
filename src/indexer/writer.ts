@@ -82,43 +82,46 @@ function upsertRepo(db: Database.Database, metadata: RepoMetadata): number {
  * Removes FTS entries before deleting records.
  */
 export function clearRepoEntities(db: Database.Database, repoId: number): void {
-  // Remove FTS entries for modules
-  const modules = db
-    .prepare('SELECT id FROM modules WHERE repo_id = ?')
-    .all(repoId) as { id: number }[];
+  // Hoist all prepared statements above loops
+  const selectModules = db.prepare('SELECT id FROM modules WHERE repo_id = ?');
+  const selectEvents = db.prepare('SELECT id FROM events WHERE repo_id = ?');
+  const selectServices = db.prepare('SELECT id FROM services WHERE repo_id = ?');
+  const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
+  const deleteEdges = db.prepare("DELETE FROM edges WHERE (source_type = 'repo' AND source_id = ?) OR (source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?))");
+  const deleteModules = db.prepare('DELETE FROM modules WHERE repo_id = ?');
+  const deleteEvents = db.prepare('DELETE FROM events WHERE repo_id = ?');
+  const deleteFiles = db.prepare('DELETE FROM files WHERE repo_id = ?');
+  const deleteServices = db.prepare('DELETE FROM services WHERE repo_id = ?');
+
+  // Remove FTS entries for modules (inline instead of removeEntity per iteration)
+  const modules = selectModules.all(repoId) as { id: number }[];
   for (const mod of modules) {
-    removeEntity(db, 'module', mod.id);
+    deleteFts.run('module:%', mod.id);
   }
 
   // Remove FTS entries for events
-  const events = db
-    .prepare('SELECT id FROM events WHERE repo_id = ?')
-    .all(repoId) as { id: number }[];
+  const events = selectEvents.all(repoId) as { id: number }[];
   for (const evt of events) {
-    removeEntity(db, 'event', evt.id);
+    deleteFts.run('event:%', evt.id);
   }
 
   // Remove FTS entries for services
-  const services = db
-    .prepare('SELECT id FROM services WHERE repo_id = ?')
-    .all(repoId) as { id: number }[];
+  const services = selectServices.all(repoId) as { id: number }[];
   for (const svc of services) {
-    removeEntity(db, 'service', svc.id);
+    deleteFts.run('service:%', svc.id);
   }
 
   // Remove FTS entry for the repo itself
-  removeEntity(db, 'repo', repoId);
+  deleteFts.run('repo:%', repoId);
 
   // Delete edges (no FK constraint on polymorphic edges)
-  db.prepare(
-    "DELETE FROM edges WHERE (source_type = 'repo' AND source_id = ?) OR (source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?))",
-  ).run(repoId, repoId);
+  deleteEdges.run(repoId, repoId);
 
   // Delete dependent entities (CASCADE handles most, but be explicit)
-  db.prepare('DELETE FROM modules WHERE repo_id = ?').run(repoId);
-  db.prepare('DELETE FROM events WHERE repo_id = ?').run(repoId);
-  db.prepare('DELETE FROM files WHERE repo_id = ?').run(repoId);
-  db.prepare('DELETE FROM services WHERE repo_id = ?').run(repoId);
+  deleteModules.run(repoId);
+  deleteEvents.run(repoId);
+  deleteFiles.run(repoId);
+  deleteServices.run(repoId);
 }
 
 /**
@@ -130,39 +133,43 @@ export function clearRepoFiles(
   repoId: number,
   filePaths: string[],
 ): void {
+  // Hoist all prepared statements above the filePath loop
+  const selectModulesByFile = db.prepare('SELECT id FROM modules WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)');
+  const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
+  const deleteModuleById = db.prepare('DELETE FROM modules WHERE id = ?');
+  const selectEventsByFileId = db.prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)');
+  const deleteEventById = db.prepare('DELETE FROM events WHERE id = ?');
+  const selectEventsBySourceFile = db.prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IS NULL AND source_file = ?');
+  const deleteEdgesByFile = db.prepare('DELETE FROM edges WHERE source_file = ?');
+  const deleteFileRecord = db.prepare('DELETE FROM files WHERE repo_id = ? AND path = ?');
+
   for (const filePath of filePaths) {
     // Remove modules from this file
-    const modules = db
-      .prepare('SELECT id FROM modules WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)')
-      .all(repoId, repoId, filePath) as { id: number }[];
+    const modules = selectModulesByFile.all(repoId, repoId, filePath) as { id: number }[];
     for (const mod of modules) {
-      removeEntity(db, 'module', mod.id);
-      db.prepare('DELETE FROM modules WHERE id = ?').run(mod.id);
+      deleteFts.run('module:%', mod.id);
+      deleteModuleById.run(mod.id);
     }
 
     // Remove events from this file via file_id FK join (primary path)
-    const eventsViaFileId = db
-      .prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)')
-      .all(repoId, repoId, filePath) as { id: number }[];
+    const eventsViaFileId = selectEventsByFileId.all(repoId, repoId, filePath) as { id: number }[];
     for (const evt of eventsViaFileId) {
-      removeEntity(db, 'event', evt.id);
-      db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
+      deleteFts.run('event:%', evt.id);
+      deleteEventById.run(evt.id);
     }
 
     // Fallback: remove events without file_id via source_file text match (backward compat for pre-v4 data)
-    const eventsViaSourceFile = db
-      .prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IS NULL AND source_file = ?')
-      .all(repoId, filePath) as { id: number }[];
+    const eventsViaSourceFile = selectEventsBySourceFile.all(repoId, filePath) as { id: number }[];
     for (const evt of eventsViaSourceFile) {
-      removeEntity(db, 'event', evt.id);
-      db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
+      deleteFts.run('event:%', evt.id);
+      deleteEventById.run(evt.id);
     }
 
     // Remove edges from this file
-    db.prepare('DELETE FROM edges WHERE source_file = ?').run(filePath);
+    deleteEdgesByFile.run(filePath);
 
     // Remove the file record itself
-    db.prepare('DELETE FROM files WHERE repo_id = ? AND path = ?').run(repoId, filePath);
+    deleteFileRecord.run(repoId, filePath);
   }
 }
 
@@ -313,21 +320,24 @@ export function persistRepoData(
  * Called during surgical persist to reset edges before re-insertion.
  */
 export function clearRepoEdges(db: Database.Database, repoId: number): void {
+  // Hoist all prepared statements above loops
+  const deleteRepoEdges = db.prepare("DELETE FROM edges WHERE source_type = 'repo' AND source_id = ?");
+  const deleteServiceEdges = db.prepare("DELETE FROM edges WHERE source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?)");
+  const selectConsumerEvents = db.prepare("SELECT id FROM events WHERE repo_id = ? AND schema_definition LIKE 'consumed:%'");
+  const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
+  const deleteEventById = db.prepare('DELETE FROM events WHERE id = ?');
+
   // Clear edges where repo is source
-  db.prepare("DELETE FROM edges WHERE source_type = 'repo' AND source_id = ?").run(repoId);
+  deleteRepoEdges.run(repoId);
 
   // Clear service-sourced edges for this repo's services
-  db.prepare(
-    "DELETE FROM edges WHERE source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?)",
-  ).run(repoId);
+  deleteServiceEdges.run(repoId);
 
   // Clean up consumer-created events (will be re-created by insertEventEdges if still relevant)
-  const consumerEvents = db
-    .prepare("SELECT id FROM events WHERE repo_id = ? AND schema_definition LIKE 'consumed:%'")
-    .all(repoId) as { id: number }[];
+  const consumerEvents = selectConsumerEvents.all(repoId) as { id: number }[];
   for (const evt of consumerEvents) {
-    removeEntity(db, 'event', evt.id);
-    db.prepare('DELETE FROM events WHERE id = ?').run(evt.id);
+    deleteFts.run('event:%', evt.id);
+    deleteEventById.run(evt.id);
   }
 }
 
