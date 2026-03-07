@@ -48,7 +48,10 @@
   1. All 8 MCP tools have contract tests verifying their schema, parameter names, and response shapes -- a parameter rename or missing field fails the test suite
   2. A set of known search queries return expected results against snapshot data -- FTS tokenizer or ranking changes that degrade quality fail the test suite
   3. CLI commands produce JSON output matching snapshot expectations -- silent shape changes in JSON output fail the test suite
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — MCP tool contract tests (input schemas + output shapes for all 8 tools)
+- [ ] 11-02-PLAN.md — FTS golden query tests + CLI output shape snapshot tests
 
 ### Phase 12: Database Performance
 **Goal**: Indexing and search are measurably faster through SQLite tuning, statement reuse, proper indexes, and FTS5 optimization
@@ -113,7 +116,7 @@
 | 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
 | 9. Parallel Execution | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 11. Safety Net | v1.2 | 0/? | Not started | - |
+| 11. Safety Net | v1.2 | 0/2 | Not started | - |
 | 12. Database Performance | v1.2 | 0/? | Not started | - |
 | 13. MCP Layer Dedup | v1.2 | 0/? | Not started | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
