@@ -35,9 +35,9 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 
 - [ ] **CORE-01**: Pipeline extraction logic deduplicated between indexSingleRepo and extractRepoData (~130 lines)
 - [ ] **CORE-02**: FTS indexing paths unified — knowledge/store.ts uses db/fts.ts indexEntity()
-- [ ] **CORE-03**: Entity hydration pattern consolidated across search modules
-- [ ] **CORE-04**: Entity query switch statement deduplicated
-- [ ] **CORE-05**: FTS query fallback logic shared between text.ts and entity.ts
+- [x] **CORE-03**: Entity hydration pattern consolidated across search modules
+- [x] **CORE-04**: Entity query switch statement deduplicated
+- [x] **CORE-05**: FTS query fallback logic shared between text.ts and entity.ts
 - [x] **CORE-06**: clearRepoEntities batch cleanup optimized
 - [x] **CORE-07**: Writer insert helpers extracted for shared persistence patterns
 - [ ] **CORE-08**: Edge operations (insertEventEdges, insertGrpcClientEdges, insertEctoAssociationEdges) consolidated
@@ -95,9 +95,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MCP-05 | Phase 13 | Complete |
 | CORE-01 | Phase 14 | Pending |
 | CORE-02 | Phase 14 | Pending |
-| CORE-03 | Phase 14 | Pending |
-| CORE-04 | Phase 14 | Pending |
-| CORE-05 | Phase 14 | Pending |
+| CORE-03 | Phase 14 | Complete |
+| CORE-04 | Phase 14 | Complete |
+| CORE-05 | Phase 14 | Complete |
 | CORE-06 | Phase 14 | Complete |
 | CORE-07 | Phase 14 | Complete |
 | CORE-08 | Phase 14 | Pending |
