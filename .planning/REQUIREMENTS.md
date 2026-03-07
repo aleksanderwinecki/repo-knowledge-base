@@ -26,10 +26,10 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 ### MCP Layer
 
 - [x] **MCP-01**: Error handling extracted to wrapToolHandler HOF, eliminating 48 lines of duplication across 8 tools
-- [ ] **MCP-02**: Auto-sync pattern extracted to withAutoSync helper, eliminating 36 lines across 3 tools
+- [x] **MCP-02**: Auto-sync pattern extracted to withAutoSync helper, eliminating 36 lines across 3 tools
 - [x] **MCP-03**: Consistent McpResponse format across all MCP tools
 - [x] **MCP-04**: DB path resolution deduplicated (shared utility)
-- [ ] **MCP-05**: learned_fact added to EntityType union, FTS indexing unified through db/fts.ts
+- [x] **MCP-05**: learned_fact added to EntityType union, FTS indexing unified through db/fts.ts
 
 ### Core Deduplication
 
@@ -89,10 +89,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-06 | Phase 12 | Complete |
 | PERF-07 | Phase 12 | Complete |
 | MCP-01 | Phase 13 | Complete |
-| MCP-02 | Phase 13 | Pending |
+| MCP-02 | Phase 13 | Complete |
 | MCP-03 | Phase 13 | Complete |
 | MCP-04 | Phase 13 | Complete |
-| MCP-05 | Phase 13 | Pending |
+| MCP-05 | Phase 13 | Complete |
 | CORE-01 | Phase 14 | Pending |
 | CORE-02 | Phase 14 | Pending |
 | CORE-03 | Phase 14 | Pending |

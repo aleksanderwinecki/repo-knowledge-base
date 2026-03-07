@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
 status: executing
-stopped_at: Completed 13-01 MCP shared infrastructure
-last_updated: "2026-03-07T17:25:51Z"
-last_activity: 2026-03-07 -- Completed 13-01 MCP shared infrastructure (wrapToolHandler HOF, resolveDbPath, formatSingleResponse)
+stopped_at: Completed 13-02 MCP auto-sync dedup + FTS unification
+last_updated: "2026-03-07T17:31:58Z"
+last_activity: 2026-03-07 -- Completed 13-02 MCP auto-sync dedup + FTS unification (withAutoSync helper, EntityType learned_fact, V6 migration)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
-  percent: 95
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,21 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 13 - MCP Layer Dedup (in progress, 1/2 plans done)
+**Current focus:** Phase 13 - MCP Layer Dedup (complete, 2/2 plans done)
 
 ## Current Position
 
 Phase: 13 of 15 (MCP Layer Dedup)
-Plan: 1 of 2
-Status: In progress
-Last activity: 2026-03-07 -- Completed 13-01 MCP shared infrastructure (wrapToolHandler HOF, resolveDbPath, formatSingleResponse)
+Plan: 2 of 2
+Status: Complete
+Last activity: 2026-03-07 -- Completed 13-02 MCP auto-sync dedup + FTS unification (withAutoSync helper, EntityType learned_fact, V6 migration)
 
-Progress: [█████████░] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6 (v1.2)
+- Total plans completed: 7 (v1.2)
 - Average duration: 4min
 - Total execution time: 0.38 hours
 
@@ -49,6 +49,7 @@ Progress: [█████████░] 95%
 | 12-03 db-perf | 2min | 2 tasks | 5 files |
 | Phase 12 P02 | 4min | 2 tasks | 4 files |
 | 13-01 mcp-dedup | 7min | 2 tasks | 15 files |
+| 13-02 mcp-dedup | 3min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - 13-01: wrapToolHandler inner handler is sync (returns string) since better-sqlite3 is synchronous; outer wrapper async for MCP SDK
 - 13-01: formatSingleResponse wraps single objects as data[0] for unified McpResponse shape across all tools
 - 13-01: getDbPath() kept for backward compat, delegates to shared resolveDbPath()
+- 13-02: withAutoSync is generic over T (not array-restricted) so deps tool can pass single result objects
+- 13-02: V6 migration normalizes bare 'learned_fact' to 'learned_fact:learned_fact' for removeEntity LIKE pattern compat
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T17:25:51Z
-Stopped at: Completed 13-01 MCP shared infrastructure
-Resume file: .planning/phases/13-mcp-layer-dedup/13-01-SUMMARY.md
+Last session: 2026-03-07T17:31:58Z
+Stopped at: Completed 13-02 MCP auto-sync dedup + FTS unification
+Resume file: .planning/phases/13-mcp-layer-dedup/13-02-SUMMARY.md
