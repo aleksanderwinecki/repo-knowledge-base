@@ -125,58 +125,28 @@ function findLinkedRepos(
   );
   const repoByIdStmt = db.prepare('SELECT id, name FROM repos WHERE id = ?');
 
-  if (direction === 'upstream') {
-    // Step 1: Find events this repo consumes
-    const consumedEdges = consumedEdgesStmt.all(repoId) as Array<{ target_id: number; relationship_type: string }>;
+  // Parameterized traversal: select statements based on direction
+  const sourceEdgesStmt = direction === 'upstream' ? consumedEdgesStmt : producedEdgesStmt;
+  const targetEdgesStmt = direction === 'upstream' ? producerEdgesStmt : consumerEdgesStmt;
+  const mechanismKey = direction === 'upstream' ? 'consumes_event' : 'produces_event';
 
-    for (const edge of consumedEdges) {
-      const eventId = edge.target_id;
-      const event = eventNameStmt.get(eventId) as { name: string } | undefined;
-      if (!event) continue;
+  const edges = sourceEdgesStmt.all(repoId) as Array<{ target_id: number; relationship_type: string }>;
 
-      // Step 2: Find who produces this event
-      const producerEdges = producerEdgesStmt.all(eventId) as Array<{ source_id: number }>;
+  for (const edge of edges) {
+    const event = eventNameStmt.get(edge.target_id) as { name: string } | undefined;
+    if (!event) continue;
 
-      for (const producer of producerEdges) {
-        const producerRepo = repoByIdStmt.get(producer.source_id) as {
-          id: number; name: string;
-        } | undefined;
-        if (!producerRepo) continue;
+    const targetEdges = targetEdgesStmt.all(edge.target_id) as Array<{ source_id: number }>;
+    for (const target of targetEdges) {
+      const repo = repoByIdStmt.get(target.source_id) as { id: number; name: string } | undefined;
+      if (!repo) continue;
 
-        results.push({
-          repoId: producerRepo.id,
-          repoName: producerRepo.name,
-          eventName: event.name,
-          mechanism: `${MECHANISM_LABELS['consumes_event']} (${event.name})`,
-        });
-      }
-    }
-  } else {
-    // downstream
-    // Step 1: Find events this repo produces
-    const producedEdges = producedEdgesStmt.all(repoId) as Array<{ target_id: number; relationship_type: string }>;
-
-    for (const edge of producedEdges) {
-      const eventId = edge.target_id;
-      const event = eventNameStmt.get(eventId) as { name: string } | undefined;
-      if (!event) continue;
-
-      // Step 2: Find who consumes this event
-      const consumerEdges = consumerEdgesStmt.all(eventId) as Array<{ source_id: number }>;
-
-      for (const consumer of consumerEdges) {
-        const consumerRepo = repoByIdStmt.get(consumer.source_id) as {
-          id: number; name: string;
-        } | undefined;
-        if (!consumerRepo) continue;
-
-        results.push({
-          repoId: consumerRepo.id,
-          repoName: consumerRepo.name,
-          eventName: event.name,
-          mechanism: `${MECHANISM_LABELS['produces_event']} (${event.name})`,
-        });
-      }
+      results.push({
+        repoId: repo.id,
+        repoName: repo.name,
+        eventName: event.name,
+        mechanism: `${MECHANISM_LABELS[mechanismKey] ?? mechanismKey} (${event.name})`,
+      });
     }
   }
 
