@@ -10,8 +10,8 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 ### Safety Net
 
 - [x] **SAFE-01**: MCP tool contract tests verify all 8 tool schemas, parameter names, and response shapes
-- [ ] **SAFE-02**: FTS golden tests verify search quality for known queries against snapshot data
-- [ ] **SAFE-03**: CLI output format snapshot tests prevent silent JSON shape changes
+- [x] **SAFE-02**: FTS golden tests verify search quality for known queries against snapshot data
+- [x] **SAFE-03**: CLI output format snapshot tests prevent silent JSON shape changes
 
 ### Database Performance
 
@@ -79,8 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SAFE-01 | Phase 11 | Complete |
-| SAFE-02 | Phase 11 | Pending |
-| SAFE-03 | Phase 11 | Pending |
+| SAFE-02 | Phase 11 | Complete |
+| SAFE-03 | Phase 11 | Complete |
 | PERF-01 | Phase 12 | Pending |
 | PERF-02 | Phase 12 | Pending |
 | PERF-03 | Phase 12 | Pending |

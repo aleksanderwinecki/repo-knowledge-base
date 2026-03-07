@@ -32,7 +32,7 @@
 
 ### v1.2 Hardening & Quick Wins (In Progress)
 
-- [ ] **Phase 11: Safety Net** - Contract tests, FTS golden tests, and CLI snapshot tests before any refactoring
+- [x] **Phase 11: Safety Net** - Contract tests, FTS golden tests, and CLI snapshot tests before any refactoring (completed 2026-03-07)
 - [ ] **Phase 12: Database Performance** - SQLite pragma tuning, prepared statements, indexes, FTS5 optimization, benchmarking
 - [ ] **Phase 13: MCP Layer Dedup** - Extract shared error handling, auto-sync, response format, and DB path patterns
 - [ ] **Phase 14: Core Layer Dedup** - Consolidate pipeline extraction, FTS indexing, entity hydration, writer, and edge operations
@@ -116,7 +116,7 @@ Plans:
 | 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
 | 9. Parallel Execution | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 11. Safety Net | 1/2 | In Progress|  | - |
+| 11. Safety Net | 2/2 | Complete   | 2026-03-07 | - |
 | 12. Database Performance | v1.2 | 0/? | Not started | - |
 | 13. MCP Layer Dedup | v1.2 | 0/? | Not started | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
