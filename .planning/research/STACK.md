@@ -1,239 +1,606 @@
-# Technology Stack: v1.1 Additions
+# Technology Stack: v1.2 Hardening & Optimization
 
-**Project:** repo-knowledge-base v1.1 — Improved Reindexing & New Extractors
-**Researched:** 2026-03-06
-**Scope:** Only NEW dependencies/changes for v1.1 features. Existing stack (better-sqlite3, TypeScript, commander, vitest, @modelcontextprotocol/sdk, zod) is validated and unchanged.
+**Project:** repo-knowledge-base
+**Researched:** 2026-03-07
+**Focus:** Stack-level optimizations for the existing Node.js/TypeScript/SQLite/FTS5 stack. No new dependencies recommended.
 
-## Recommended Additions
+---
 
-### GraphQL Schema Parsing
+## 1. SQLite Pragma Tuning
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| graphql | ^16.13.1 | Parse `.graphql`/`.gql` SDL files | The official reference implementation. `buildSchema()` parses SDL into a `GraphQLSchema` object, then `getTypeMap()` extracts all types with fields, and `schema.getQueryType()` / `schema.getMutationType()` / `schema.getSubscriptionType()` give direct access to root operation types. No alternatives worth considering — this IS the GraphQL spec implementation. |
+### Current State
 
-**Why not regex?** GraphQL SDL has nested types, directives, interfaces, unions, input types, and enums. A regex approach would be fragile and incomplete. `graphql` parses SDL in ~1ms per file with full fidelity. At 2.3MB install size, it's well worth it.
-
-**Integration point:** New `src/indexer/graphql.ts` extractor. Scan for `*.graphql` and `*.gql` files, parse with `buildSchema()`, walk `getTypeMap()` to extract types/fields, extract queries/mutations/subscriptions from root types. Map output to existing `ModuleData` (type name = module name, type = "graphql_type"/"graphql_query"/"graphql_mutation") and `EventData` (subscriptions as events).
-
-**Confidence:** HIGH — graphql 16.x is stable (latest 16.13.1 published March 2026), the parse/introspect API has been unchanged since v15.
-
-### gRPC/Proto Service Extraction
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| *(none — enhance existing regex)* | — | Better gRPC service extraction | The existing `proto.ts` already parses proto files with regex and extracts `ProtoService` with RPCs. The data just isn't being persisted to the `services` table. No new dependency needed. |
-
-**Current gap (code-level, not stack-level):** The existing proto extractor already captures `ProtoService[]` with full RPC signatures. But `pipeline.ts` line 169 only maps `protoDefinitions` to `events` (messages). It completely ignores `proto.services`. The fix is wiring, not a new library.
-
-**Enhancements to existing regex (no new deps):**
-- Add streaming detection: `rpc Method(stream Input) returns (stream Output)` — extend the existing `extractRpcs` regex to capture `stream` keyword
-- Add proto `option` extraction for things like `option (google.api.http)` for REST gateway mappings
-- Persist services to the existing `services` table and create `edges` from services to their request/response message types
-
-**Confidence:** HIGH — verified by reading the existing source code. This is pure wiring work.
-
-### Ecto Schema Extraction
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| *(none — enhance existing regex)* | — | Deeper Ecto schema field/association extraction | The existing `elixir.ts` already detects `schema "table_name"` and sets `type: 'schema'`. Deepening to extract fields and associations is a regex enhancement, not a new library. |
-
-**Current state:** `elixir.ts` extracts module name, type, public functions, @moduledoc, and table name. It classifies modules with `schema` as type "schema".
-
-**What's missing (all doable with regex, no AST parser needed):**
-- **Field extraction:** `field :name, :type` patterns — straightforward regex: `/field\s+:(\w+),\s+:?(\w+(?:\.\w+)*)/g`
-- **Association extraction:** `belongs_to :assoc, Module` / `has_many :assocs, Module` / `has_one :assoc, Module` / `many_to_many :assocs, Module` — regex: `/(?:belongs_to|has_many|has_one|many_to_many)\s+:(\w+),\s+([\w.]+)/g`
-- **Embedded schemas:** `embeds_one`/`embeds_many` follow the same pattern
-- **Timestamps detection:** presence of `timestamps()` macro
-
-**Why not tree-sitter?** Tree-sitter-elixir exists but adds a native addon dependency, ~30MB download, and node-gyp build requirement. The Ecto schema DSL is deliberately simple and repetitive — regex handles it with HIGH reliability. The existing regex approach in `elixir.ts` is already proven against ~50 production repos.
-
-**Confidence:** HIGH — Ecto schema syntax is macro-based with rigid patterns. Verified against official Ecto.Schema docs.
-
-### Event Catalog Integration
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| gray-matter | ^4.0.3 | Parse YAML frontmatter from EventCatalog `.mdx` files | Battle-tested frontmatter parser (used by Gatsby, Astro, VitePress, etc.). Handles YAML frontmatter delimited by `---`. Returns `{ data, content }` where `data` is the parsed YAML object. CJS package but works fine with ESM via esModuleInterop (already enabled in tsconfig). |
-
-**Why gray-matter over raw js-yaml?** EventCatalog files are Markdown with YAML frontmatter, not pure YAML. gray-matter handles the delimiter extraction + YAML parsing in one step. Rolling our own `---` splitter + `js-yaml` call is trivially more code for no benefit, and gray-matter handles edge cases (JSON frontmatter, excerpts, custom delimiters).
-
-**Why not `@eventcatalog/sdk`?** EventCatalog's SDK is designed for building catalog UIs, not for extracting data from catalog files. We need to read the raw files from disk, not interact with a running catalog instance.
-
-**EventCatalog directory structure to parse:**
-```
-eventcatalog/
-  domains/{DomainName}/index.mdx          # frontmatter: id, name, version, summary
-  domains/{DomainName}/services/{Name}/index.mdx  # frontmatter: id, name, version, sends, receives
-  events/{EventName}/index.mdx            # frontmatter: id, name, version, summary, owners
-  commands/{CommandName}/index.mdx        # same pattern
-  queries/{QueryName}/index.mdx           # same pattern
-```
-
-**Key frontmatter fields for extraction:**
-- Services: `id`, `name`, `sends` (array of message refs), `receives` (array of message refs)
-- Events: `id`, `name`, `version`, `summary`
-- Domains: `id`, `name`, `summary`, containing services/events
-
-**Integration point:** New `src/indexer/eventcatalog.ts`. Discover EventCatalog repo by checking for `eventcatalog.config.js` in scanned repos. Walk directory structure, parse `.mdx` files with gray-matter, map to existing entity types: domains as modules (type: "domain"), services to `services` table, events to `events` table, sends/receives to `edges` table.
-
-**Confidence:** MEDIUM — EventCatalog directory conventions verified via official docs, but frontmatter field names may vary between EventCatalog v2 and v3. Needs validation against the actual catalog repo during implementation.
-
-### Parallel Repo Indexing
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| p-limit | ^7.3.0 | Concurrency limiter for parallel indexing | Pure ESM (compatible — project already uses `"type": "module"`). Tiny (2KB), zero dependencies, 4800+ dependents. Wraps async functions with a concurrency cap. Perfect for "run N repos in parallel" without worker_threads complexity. |
-
-**Why p-limit over worker_threads?** The bottleneck in repo indexing is file I/O (scanning directories, reading files) and git operations (execSync calls), not CPU. Worker threads add complexity (separate DB connections required, message serialization overhead, can't share better-sqlite3 instances across threads) for minimal gain. p-limit with `Promise.all` and concurrency of 4-6 gives most of the speedup by overlapping I/O waits across repos.
-
-**Why not `@supercharge/promise-pool`?** p-limit is smaller, more focused, and more widely adopted. promise-pool adds iterator semantics we don't need.
-
-**Critical constraint: better-sqlite3 is NOT thread-safe.** A single better-sqlite3 `Database` instance cannot be shared across worker threads. Since all extractors call `persistRepoData` which writes to the DB, true parallelism would require:
-- Each worker opens its own DB connection
-- WAL mode enabled for concurrent reads/writes
-- Coordination for transaction conflicts
-
-This is significant complexity for ~50 repos. The simpler approach: parallelize the EXTRACTION phase (file scanning, git ops, regex parsing — all pure computation/I/O), then SERIALIZE the DB writes on the main thread. p-limit handles this perfectly.
-
-**Implementation pattern:**
 ```typescript
-import pLimit from 'p-limit';
+// database.ts — existing pragmas
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+db.pragma('synchronous = NORMAL');
+```
 
-const limit = pLimit(4); // 4 concurrent repos
+This is already a solid baseline. WAL + synchronous=NORMAL is the correct choice for a single-writer local tool.
 
-const results = await Promise.all(
-  repos.map(repo => limit(() => extractRepoData(repo)))  // parallel extraction
-);
+### Recommended Additions
 
-// Sequential DB writes (single-threaded, safe)
-for (const data of results) {
-  persistRepoData(db, data);
+| Pragma | Value | Why | Impact | Confidence |
+|--------|-------|-----|--------|------------|
+| `cache_size` | `-32000` (32 MB) | Default is -2000 (2 MB). With ~50 repos of indexed data, a larger page cache keeps more of the DB in memory, reducing disk reads during search hydration and dependency traversal | **MEDIUM** — search queries that JOIN across repos/modules/events will hit cache more often | HIGH |
+| `temp_store` | `memory` | Temp tables and sort spills go to RAM instead of disk. Relevant during large indexing transactions that create intermediate results | **LOW-MEDIUM** — only matters during indexing, not search | HIGH |
+| `mmap_size` | `268435456` (256 MB) | Memory-maps the DB file, letting the OS manage page caching via virtual memory instead of syscalls. For a DB that's likely 5-50 MB, this maps the entire file | **MEDIUM** — reduces syscall overhead on reads. Most impactful for repeated search queries | HIGH |
+| `optimize` | Run on close | `PRAGMA optimize` analyzes which tables would benefit from updated statistics, then runs ANALYZE selectively. Since SQLite 3.46.0, this is fast even on large DBs | **LOW-MEDIUM** — helps query planner pick optimal paths for JOINs in entity.ts and dependencies.ts | HIGH |
+
+### Pragmas to NOT Add
+
+| Pragma | Why Not |
+|--------|---------|
+| `synchronous = OFF` | Risks corruption on power loss. NORMAL is already safe + fast in WAL mode |
+| `locking_mode = EXCLUSIVE` | Would prevent concurrent reads (e.g., MCP server + CLI simultaneously) |
+| `journal_mode = MEMORY` | WAL is strictly better for this workload |
+
+### Implementation
+
+```typescript
+// database.ts — updated openDatabase()
+export function openDatabase(dbPath: string): Database.Database {
+  const dir = path.dirname(dbPath);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const db = new Database(dbPath);
+
+  // Performance and safety pragmas
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('synchronous = NORMAL');
+
+  // NEW: Memory and cache tuning
+  db.pragma('cache_size = -32000');    // 32 MB page cache
+  db.pragma('temp_store = memory');     // Temp tables in RAM
+  db.pragma('mmap_size = 268435456');   // 256 MB mmap
+
+  initializeSchema(db);
+  return db;
+}
+
+// UPDATED: Run PRAGMA optimize before closing
+export function closeDatabase(db: Database.Database): void {
+  if (db.open) {
+    db.pragma('optimize');
+    db.close();
+  }
 }
 ```
 
-**Confidence:** HIGH — p-limit 7.3.0 verified as latest. ESM compatibility confirmed (project is ESM). Pattern is well-established.
+**Confidence:** HIGH. These are well-established SQLite best practices from official docs and multiple production guides.
 
-### Branch-Aware Git Tracking
+**Sources:**
+- [SQLite PRAGMA official docs](https://sqlite.org/pragma.html)
+- [SQLite Performance Tuning (phiresky)](https://phiresky.github.io/blog/2020/sqlite-performance-tuning/)
+- [SQLite Pragma Cheatsheet (cj.rs)](https://cj.rs/blog/sqlite-pragma-cheatsheet-for-performance-and-consistency/)
+- [Forward Email SQLite Optimization Guide](https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide)
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| *(none — use existing `child_process.execSync`)* | — | Detect and track default branch | The existing `git.ts` already uses `execSync` for git operations. Branch detection is 2-3 additional git commands, not a library. |
+---
 
-**Git commands needed (no new deps):**
-1. **Detect default branch:** `git rev-parse --abbrev-ref refs/remotes/origin/HEAD` returns `origin/main` or `origin/master`. Fallback: check if `main` or `master` branch exists.
-2. **Get commit on default branch:** `git rev-parse origin/main` (or whatever the default branch is) — use this instead of `HEAD` for the indexed commit, so PR branch checkouts don't trigger reindexing.
-3. **Get changed files on default branch:** `git diff --name-status <last-commit>..origin/main` instead of `..HEAD`.
-4. **Check if working copy is on default branch:** `git rev-parse --abbrev-ref HEAD` — if it's not the default branch, still index from the default branch tip.
+## 2. Prepared Statement Reuse
 
-**Schema change needed:** Add `default_branch TEXT` column to `repos` table (migration V3). Cache the detected default branch to avoid repeated remote HEAD lookups.
+### Current Problem
 
-**Why not simple-git?** simple-git wraps git commands in a Node.js API with promise support. But we're making 2-3 synchronous calls per repo. The existing `execSync` pattern is simpler, has zero dependencies, and the codebase already uses it consistently. Adding simple-git for branch detection would be inconsistent.
+better-sqlite3 does **not** cache prepared statements internally. Every `db.prepare()` call compiles the SQL string into a new statement object. The codebase has **72 `db.prepare()` calls across 11 files**, many inside functions that run per-entity or per-result.
 
-**Confidence:** HIGH — git commands verified against git documentation. Pattern is standard.
+Worst offenders (called in tight loops):
 
-## No New Dependencies Needed For
+| File | Function | Calls Per Invocation | Issue |
+|------|----------|---------------------|-------|
+| `fts.ts` | `indexEntity()` | 2x per entity (DELETE + INSERT) | Called for every module, event, service during indexing. With ~2000 entities across 50 repos, that's ~4000 unnecessary prepare() calls |
+| `fts.ts` | `removeEntity()` | 1x per entity | Called during clearRepoEntities loops |
+| `writer.ts` | `clearRepoFiles()` | 5-6x per file path | Nested loop: per-file, then per-entity-type |
+| `search/entity.ts` | `getRelationships()` | 2x per entity card | Called for every search result — outgoing + incoming edge queries |
+| `search/dependencies.ts` | `findLinkedRepos()` | 3-4x per BFS hop | Nested: per-edge, then per-event, then per-repo |
+| `mcp/tools/status.ts` | handler | 8x per invocation | 7 COUNT queries + 1 repo list, all separately prepared every call |
 
-| Feature | Why No New Dep |
-|---------|----------------|
-| gRPC service extraction | Existing `proto.ts` regex already parses services. Just need to wire output to DB. |
-| Ecto schema fields/associations | Regex patterns on top of existing `elixir.ts`. Ecto DSL is rigid enough. |
-| Branch-aware git tracking | 2-3 additional `execSync` calls in existing `git.ts`. |
-| Surgical file-level reindexing | Existing `getChangedFiles()` + `clearRepoFiles()` already support this. Need to route changed files to appropriate extractors instead of re-running all extractors. |
+### Recommended Fix: Hoist Statements Out of Hot Loops
 
-## Complete New Dependencies
+**Pattern A: Factory function (for write paths with multiple cooperating statements)**
 
-```bash
-# New production dependencies for v1.1
-npm install graphql gray-matter p-limit
+```typescript
+// fts.ts — BEFORE: prepares 2 statements per entity call
+export function indexEntity(db, entity) {
+  const upsert = db.transaction(() => {
+    db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?')
+      .run(`${entity.type}:%`, entity.id);
+    db.prepare('INSERT INTO knowledge_fts ...')
+      .run(processedName, processedDescription, compositeType, entity.id);
+  });
+  upsert();
+}
 
-# New dev dependencies: none needed
+// fts.ts — AFTER: create once, call many times
+export function createFtsWriter(db: Database.Database) {
+  const deleteStmt = db.prepare(
+    'DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?'
+  );
+  const insertStmt = db.prepare(
+    'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)'
+  );
+  const upsertTxn = db.transaction(
+    (type: string, id: number, name: string, desc: string | null, compositeType: string) => {
+      deleteStmt.run(`${type}:%`, id);
+      insertStmt.run(name, desc, compositeType, id);
+    }
+  );
+
+  return {
+    indexEntity(entity: { type: string; id: number; name: string;
+                          description?: string | null; subType?: string }) {
+      const processedName = tokenizeForFts(entity.name);
+      const processedDesc = entity.description ? tokenizeForFts(entity.description) : null;
+      const compositeType = entity.subType
+        ? `${entity.type}:${entity.subType}`
+        : `${entity.type}:${entity.type}`;
+      upsertTxn(entity.type, entity.id, processedName, processedDesc, compositeType);
+    },
+    removeEntity(entityType: string, entityId: number) {
+      deleteStmt.run(`${entityType}:%`, entityId);
+    },
+  };
+}
 ```
 
-**Total new deps: 3 packages.** This is deliberately minimal. The codebase's regex-based extraction approach is working well for Elixir/proto and extending it to Ecto schemas is the right call. GraphQL is the one domain where a real parser is justified (complex nested syntax). gray-matter is the minimal correct tool for frontmatter. p-limit is the simplest concurrency primitive.
+**Pattern B: Pre-compile at registration (for MCP tools called repeatedly)**
 
-## Alternatives Considered
+```typescript
+// mcp/tools/status.ts — prepare statements ONCE at registration
+export function registerStatusTool(server: McpServer, db: Database.Database): void {
+  const countRepos = db.prepare('SELECT COUNT(*) as c FROM repos');
+  const countModules = db.prepare('SELECT COUNT(*) as c FROM modules');
+  const countEvents = db.prepare('SELECT COUNT(*) as c FROM events');
+  const countServices = db.prepare('SELECT COUNT(*) as c FROM services');
+  const countEdges = db.prepare('SELECT COUNT(*) as c FROM edges');
+  const countFiles = db.prepare('SELECT COUNT(*) as c FROM files');
+  const countFacts = db.prepare('SELECT COUNT(*) as c FROM learned_facts');
+  const listRepos = db.prepare(
+    'SELECT name, path, last_indexed_commit FROM repos LIMIT ?'
+  );
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| GraphQL parsing | graphql (official) | Regex | GraphQL SDL is too complex for regex (nested types, directives, interfaces, unions). The official parser is 2.3MB and battle-tested. |
-| GraphQL parsing | graphql (official) | @graphql-tools/load | Overkill — we're parsing SDL files from disk, not loading from URLs or merging schemas. `buildSchema()` from the core package is all we need. |
-| Proto parsing | Existing regex | protobufjs | protobufjs (67MB!) is for serialization/deserialization, not just parsing definitions. Our regex handles the extraction use case fine. |
-| Proto parsing | Existing regex | proto-parser | Tiny npm package for proto parsing, but the existing regex is already proven and handles our patterns. Adding a dep for marginal improvement isn't worth it. |
-| Ecto parsing | Regex | tree-sitter-elixir | Adds native addon, node-gyp build, ~30MB. Ecto macros are simple enough for regex. |
-| EventCatalog | gray-matter | js-yaml + manual splitting | gray-matter handles frontmatter delimiter edge cases. ~5 lines saved isn't worth potential bugs. |
-| EventCatalog | gray-matter | @eventcatalog/sdk | SDK is for building catalog UIs, not reading catalog files from disk. |
-| Parallelism | p-limit | worker_threads | better-sqlite3 isn't thread-safe. Parallelizing I/O with promises is sufficient for ~50 repos. Worker threads add DB connection management complexity. |
-| Parallelism | p-limit | Promise.allSettled (no lib) | Works but no concurrency limit. Running 50 repos simultaneously would exhaust file descriptors and git subprocesses. Need bounded concurrency. |
-| Git operations | execSync (existing) | simple-git | Adds dependency for 2-3 simple commands. Inconsistent with existing codebase patterns. |
-| YAML parsing | gray-matter (includes js-yaml) | yaml (npm) | gray-matter already bundles YAML parsing and adds frontmatter awareness. Separate YAML lib is redundant. |
+  server.tool('kb_status', '...', {}, async () => {
+    const counts = {
+      repos: (countRepos.get() as { c: number }).c,
+      modules: (countModules.get() as { c: number }).c,
+      // ... reuse pre-compiled statements
+    };
+    // ...
+  });
+}
+```
 
-## What NOT to Add
+**Pattern C: Hoist within function scope (for search paths called per-query)**
 
-| Avoid | Why |
-|-------|-----|
-| protobufjs | 67MB install for proto parsing we already handle with regex. Overkill. |
-| tree-sitter / tree-sitter-elixir | Native addon requiring node-gyp. Ecto schema DSL is simple enough for regex. Adds build complexity for marginal gain. |
-| simple-git | Wraps `child_process` git calls we already do directly. Adding abstraction for 2-3 new commands is pointless churn. |
-| @graphql-tools/* | The guild's tool suite is for building GraphQL servers. We just need to parse SDL, which core `graphql` does fine. |
-| worker_threads | better-sqlite3 can't be shared across threads. The parallelism we need (overlapping I/O across repos) is better served by async promises with p-limit. |
-| glob / fast-glob | The existing `collectFiles()` recursive scanner works fine. No need to add a glob library for the same directory walking. |
-| chalk | CLI output is JSON (`INTF-03`). Colored output doesn't apply. |
+```typescript
+// search/dependencies.ts — prepare statements once per queryDependencies() call
+export function queryDependencies(db, entityName, options) {
+  // Prepare all statements used in the BFS loop ONCE
+  const findConsumedEdges = db.prepare(
+    "SELECT target_id FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'consumes_event'"
+  );
+  const findEventName = db.prepare('SELECT name FROM events WHERE id = ?');
+  const findProducerEdges = db.prepare(
+    "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'produces_event'"
+  );
+  const findRepoById = db.prepare('SELECT id, name FROM repos WHERE id = ?');
 
-## Version Compatibility Matrix
+  // BFS loop now reuses these statements instead of preparing each iteration
+  // ...
+}
+```
 
-| New Package | Node.js | ESM | TypeScript | Notes |
-|-------------|---------|-----|------------|-------|
-| graphql ^16.13.1 | 16+ | Yes (dual CJS/ESM) | Built-in types | Stable since 2022. v17 is alpha — do not use. |
-| gray-matter ^4.0.3 | 12+ | CJS (works with esModuleInterop) | @types/gray-matter available but may be outdated; type assertions may be needed | Last published 2022 but rock-solid. No breaking changes expected. |
-| p-limit ^7.3.0 | 18+ | Pure ESM only | Built-in types | Must use dynamic import or ESM. Project is ESM, so this works. |
+### Impact Estimate
 
-## Integration Points with Existing Code
+| Scenario | Before (prepare calls) | After | Reduction |
+|----------|----------------------|-------|-----------|
+| Full index of 50 repos (~2000 entities) | ~4000 for FTS alone | ~2 total | ~2000x fewer |
+| Single search query (20 results) | ~60 | ~5 | ~12x fewer |
+| kb_status MCP call | 8 | 0 (pre-compiled) | Eliminated |
+| Dependency query (3 hops, 10 edges) | ~40 | ~4 | ~10x fewer |
 
-### Pipeline Changes (`pipeline.ts`)
+Wall-clock improvement during indexing: estimated **10-30%** on write paths. For search queries: **a few ms saved per query** (less dramatic since queries are already fast).
 
-Current flow: `discoverRepos() -> for each: checkSkip() -> indexSingleRepo()` (synchronous loop)
+**Confidence:** HIGH. This is the single most impactful code-level optimization available. The pattern is well-documented and fundamental to SQLite performance.
 
-v1.1 flow:
-1. `discoverRepos()` — unchanged
-2. For each repo: `detectDefaultBranch()` — new, uses cached `default_branch` from DB
-3. `checkSkip()` — modified to compare against default branch commit, not HEAD
-4. **Parallel extraction phase:** `p-limit` wraps extraction (file scanning + parsing), returns `ExtractedData[]`
-5. **Sequential persist phase:** iterate `ExtractedData[]`, call `persistRepoData()` for each
+**Sources:**
+- [better-sqlite3 API docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md)
+- [SQLite prepared statements performance](https://visualstudiomagazine.com/articles/2014/03/01/sqlite-performance-and-prepared-statements.aspx)
 
-### New Extractors
+---
 
-| Extractor | Input | Output | Maps To |
-|-----------|-------|--------|---------|
-| `graphql.ts` | `.graphql`/`.gql` files | Types, queries, mutations, subscriptions | `ModuleData` (types), `EventData` (subscriptions) |
-| `eventcatalog.ts` | `.mdx` files with frontmatter | Domains, services, events, commands | `ModuleData`, services table, `EventData`, `EdgeData` |
-| Enhanced `elixir.ts` | Same `.ex` files | Additional field/association data | Enrich existing `ModuleData` summary |
-| Enhanced `proto.ts` | Same `.proto` files | Streaming RPCs, service metadata | `services` table, `EdgeData` |
+## 3. FTS5 Tuning
 
-### Schema Migration (V3)
+### Current FTS5 Configuration
 
 ```sql
-ALTER TABLE repos ADD COLUMN default_branch TEXT;
-ALTER TABLE modules ADD COLUMN metadata TEXT; -- JSON blob for type-specific data (fields, associations, etc.)
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+  name,
+  description,
+  entity_type UNINDEXED,
+  entity_id UNINDEXED,
+  tokenize = 'unicode61'
+);
 ```
 
-The `metadata` column avoids schema explosion — GraphQL types have different data than Ecto schemas, but both can store structured info as JSON in one column.
+The `entity_type UNINDEXED` decision is already smart.
+
+### 3a. Add Prefix Index
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+  name,
+  description,
+  entity_type UNINDEXED,
+  entity_id UNINDEXED,
+  tokenize = 'unicode61',
+  prefix = '2,3'
+);
+```
+
+**Why:** Without prefix indexes, FTS5 prefix queries (e.g., `book*`) require a merge of all terms starting with "book". With `prefix='2,3'`, two- and three-character prefix lookups use a dedicated index. Since the tokenizer splits CamelCase into short tokens ("booking", "created"), prefix searches on short strings are common.
+
+**Trade-off:** Increases FTS index size by ~20-40%. For a KB-sized DB, this is negligible.
+
+**Impact:** LOW-MEDIUM. Faster prefix searches. Requires FTS table rebuild.
+
+**Confidence:** HIGH. Official SQLite FTS5 documentation.
+
+### 3b. Consider Porter Stemming (Layered)
+
+```sql
+tokenize = 'porter unicode61'
+```
+
+**Why:** The porter tokenizer wraps unicode61 and applies English stemming. "booking" and "booked" would match "book" queries. Since entity names are English-language identifiers, stemming improves recall.
+
+**Trade-off:** May cause false positives for similarly-stemmed technical terms. Needs testing against the actual knowledge base before committing.
+
+**Impact:** LOW-MEDIUM. Better recall for natural language queries. Potential false positives.
+
+**Confidence:** MEDIUM. Beneficial in theory, needs validation with real data.
+
+### 3c. Run FTS5 Optimize After Bulk Indexing
+
+```typescript
+// After indexAllRepos completes:
+db.exec("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')");
+```
+
+**Why:** After bulk inserts, FTS5 may accumulate many small b-tree segments. The `optimize` command merges them into a single segment, reducing read amplification on subsequent searches.
+
+**When:** Once after `indexAllRepos()`, not after every entity insert.
+
+**Impact:** MEDIUM. Faster subsequent FTS5 queries, smaller FTS index on disk.
+
+**Confidence:** HIGH. Official FTS5 documentation.
+
+### 3d. NOT Recommended
+
+| Option | Why Not |
+|--------|---------|
+| `detail=none` | Restricts tokens to max 3 characters. Entity names are longer. Would break search |
+| `detail=column` | Limits phrase queries. Unnecessary for KB-sized data |
+| `content=''` (contentless) | Current search reads name/description directly from FTS before hydrating. Contentless would force an extra JOIN per result |
+| `columnsize=0` | Saves minimal space, breaks BM25 ranking accuracy |
+
+**Sources:**
+- [SQLite FTS5 Extension docs](https://www.sqlite.org/fts5.html)
+- [FTS5 index structure analysis](https://darksi.de/13.sqlite-fts5-structure/)
+
+---
+
+## 4. Missing Database Indexes
+
+### Current Indexes
+
+Only the edges table has explicit indexes:
+```sql
+CREATE INDEX idx_edges_source ON edges(source_type, source_id);
+CREATE INDEX idx_edges_target ON edges(target_type, target_id);
+CREATE INDEX idx_edges_relationship ON edges(relationship_type);
+```
+
+Plus implicit indexes from UNIQUE constraints:
+- `repos(name)` — UNIQUE
+- `files(repo_id, path)` — UNIQUE
+- `services(repo_id, name)` — UNIQUE
+
+### Missing Indexes That Would Help
+
+| Index | Query Pattern Used | Where Used | Priority |
+|-------|-------------------|------------|----------|
+| `modules(repo_id, name)` | `WHERE repo_id = ? AND name = ?` | `entity.ts:getEntitiesByExactName`, `pipeline.ts:insertEctoAssociationEdges` | **HIGH** — entity lookup is the core search path |
+| `modules(name)` | `WHERE name = ?` | `entity.ts:getEntitiesByExactName` (no repo filter), `pipeline.ts:insertEctoAssociationEdges` (cross-repo fallback) | **HIGH** — cross-repo name resolution |
+| `events(name, repo_id)` | `WHERE name = ? AND repo_id = ?` | `pipeline.ts:insertEventEdges` | **MEDIUM** — affects indexing speed, not search |
+| `events(repo_id)` | `WHERE repo_id = ?` | `writer.ts:clearRepoEntities`, `writer.ts:persistSurgicalData` | **LOW** — only during re-index |
+| `modules(repo_id)` | `WHERE repo_id = ?` | `writer.ts:clearRepoEntities` | **LOW** — only during re-index |
+| `services(name)` | `WHERE name = ?` or `WHERE name LIKE ?` | `pipeline.ts:insertGrpcClientEdges` | **MEDIUM** — gRPC edge resolution |
+
+### Recommended Migration (V5)
+
+```sql
+-- High priority: entity search path
+CREATE INDEX IF NOT EXISTS idx_modules_repo_name ON modules(repo_id, name);
+CREATE INDEX IF NOT EXISTS idx_modules_name ON modules(name);
+
+-- Medium priority: indexing and edge resolution
+CREATE INDEX IF NOT EXISTS idx_events_name_repo ON events(name, repo_id);
+CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);
+
+-- Low priority: cleanup operations
+CREATE INDEX IF NOT EXISTS idx_events_repo ON events(repo_id);
+```
+
+**Impact:** Entity exact-name lookups (`findEntity` with `--entity` flag) currently do full table scans on modules and events. With thousands of rows across 50 repos, these indexes turn O(n) scans into O(log n) lookups. The `modules(name)` index is the highest-impact single addition since `--entity` searches hit it on every call.
+
+**Confidence:** HIGH. Standard database optimization. Query patterns are directly observable in the source code.
+
+---
+
+## 5. TypeScript Strict Mode Hardening
+
+### Current tsconfig.json
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true
+  }
+}
+```
+
+`strict: true` already enables the core strict family.
+
+### Recommended Addition
+
+| Option | What It Does | Why | Risk |
+|--------|-------------|-----|------|
+| `noUncheckedIndexedAccess` | Adds `\| undefined` to array index and record property access | Catches cases where code accesses `arr[i]` or `obj[key]` without checking for undefined. The codebase uses `as` casts on DB results which bypass this, but array access patterns and dynamic object lookups would benefit | MEDIUM effort — likely 5-15 fix sites |
+
+### NOT Recommended
+
+| Option | Why Not |
+|--------|---------|
+| `exactOptionalPropertyTypes` | Low value for this codebase. Most optional fields are simple `string \| undefined` patterns |
+| `noPropertyAccessFromIndexSignature` | Codebase doesn't use many index signatures. Minimal benefit |
+| `verbatimModuleSyntax` | Would require converting `import type` syntax. High churn, low value |
+
+### Implementation
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  }
+}
+```
+
+**Fix count estimate:** ~5-15 locations. Most DB query results use explicit `as` casts which bypass the check. The flag primarily catches array element access and dynamic property lookups.
+
+**Confidence:** HIGH. Standard TypeScript hardening for 2025+.
+
+**Sources:**
+- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
+- [The Strictest TypeScript Config](https://whatislove.dev/articles/the-strictest-typescript-config/)
+
+---
+
+## 6. Vitest Coverage Configuration
+
+### Current State
+
+```typescript
+// vitest.config.ts — no coverage config
+export default defineConfig({
+  test: {
+    globals: true,
+    include: ['tests/**/*.test.ts'],
+  },
+});
+```
+
+388 tests across 25 files. Zero visibility into what's covered.
+
+### Recommended Configuration
+
+```typescript
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    include: ['tests/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'lcov'],
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/types.ts',
+        'src/**/index.ts',
+      ],
+      // Set thresholds after measuring baseline — ratchet pattern
+      // thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
+    },
+  },
+});
+```
+
+**Why V8 over Istanbul:** As of Vitest 3.2+, V8 coverage uses AST-based remapping for accuracy matching Istanbul, but runs faster because no upfront instrumentation is needed. Since the project uses Vitest 3.x, V8 is the right choice.
+
+**Install:** `@vitest/coverage-v8` ships with vitest 3.x. Just run `npx vitest run --coverage`.
+
+**Approach:**
+1. Add coverage config, run once to get baseline numbers
+2. Set thresholds at current levels (ratchet — prevent regression)
+3. Add npm script: `"test:coverage": "vitest run --coverage"`
+
+**Confidence:** HIGH.
+
+**Sources:**
+- [Vitest Coverage Guide](https://vitest.dev/guide/coverage.html)
+- [Vitest Coverage Config](https://vitest.dev/config/coverage)
+
+---
+
+## 7. Node.js Performance Profiling
+
+### Recommended: Built-in `perf_hooks` Instrumentation
+
+The project's performance-critical paths are:
+1. **Indexing** — `execSync` git commands (I/O bound), regex parsing (CPU bound), SQLite writes (I/O bound)
+2. **Search** — FTS5 queries + hydration JOINs (SQLite I/O bound)
+
+External profiling tools (clinic.js, 0x) are overkill for a CLI tool. The codebase already has clear pipeline phases. The right move is lightweight instrumentation with Node.js built-in APIs.
+
+```typescript
+import { performance } from 'node:perf_hooks';
+
+// pipeline.ts — instrument the three indexing phases
+performance.mark('phase1-start');
+// Phase 1: Sequential preparation
+performance.mark('phase1-end');
+performance.measure('Phase 1: Preparation', 'phase1-start', 'phase1-end');
+
+performance.mark('phase2-start');
+// Phase 2: Parallel extraction
+performance.mark('phase2-end');
+performance.measure('Phase 2: Extraction', 'phase2-start', 'phase2-end');
+
+performance.mark('phase3-start');
+// Phase 3: Serial persistence
+performance.mark('phase3-end');
+performance.measure('Phase 3: Persistence', 'phase3-start', 'phase3-end');
+
+// Log results
+const entries = performance.getEntriesByType('measure');
+for (const entry of entries) {
+  console.log(`${entry.name}: ${entry.duration.toFixed(0)}ms`);
+}
+```
+
+**When to reach for heavier tools:**
+- `node --inspect kb index --force` + Chrome DevTools Performance tab — if `perf_hooks` shows Phase 2 (extraction) is slow and you need a CPU flame graph to identify which regex is the bottleneck
+- `node --inspect kb search "booking"` — if search latency is unexpectedly high and you need to see where time is spent between FTS5 and hydration
+
+**Not recommended:**
+- `clinic.js` — designed for long-running servers, not CLI tools. The overhead of generating reports exceeds the profiling value for sub-10-second operations
+- Continuous performance monitoring — this is a local dev tool, not a production service
+
+**Confidence:** HIGH. Built-in Node.js APIs, zero dependencies.
+
+**Sources:**
+- [Node.js Performance Measurement APIs](https://nodejs.org/api/perf_hooks.html)
+- [Node.js Profiling Guide](https://nodejs.org/en/learn/getting-started/profiling)
+
+---
+
+## 8. WAL Checkpoint After Indexing
+
+### Recommendation
+
+```typescript
+// After indexAllRepos() completes in pipeline.ts:
+db.pragma('wal_checkpoint(TRUNCATE)');
+```
+
+**Why:** After bulk indexing (~50 repos worth of writes), the WAL file can grow to several MB. SQLite auto-checkpoints at 1000 pages (~4 MB), but an explicit TRUNCATE checkpoint resets the WAL to zero length, reclaiming disk space.
+
+**Why TRUNCATE over PASSIVE:** No concurrent readers are expected during the indexing CLI operation. TRUNCATE is safe and provides the cleanest result.
+
+**Impact:** LOW. Disk hygiene, not performance. Prevents WAL file bloat that might confuse users looking at `~/.kb/` directory size.
+
+**Confidence:** HIGH.
+
+---
+
+## 9. Dependency Updates
+
+### Current vs Latest
+
+| Package | Pinned Range | Recommended Action | Notes |
+|---------|-------------|-------------------|-------|
+| `better-sqlite3` | `^12.0.0` | Update to 12.6.2 | Bug fixes, SQLite engine updates. Semver-compatible |
+| `vitest` | `^3.0.0` | Update to latest 3.x | Coverage accuracy improvements in 3.2+ (AST-based V8 coverage) |
+| `typescript` | `^5.7.0` | Update to latest 5.x | tsc performance improvements |
+| `@modelcontextprotocol/sdk` | `^1.27.1` | Check for latest 1.x | MCP SDK improvements |
+| `zod` | `^4.3.6` | Check for latest 4.x | Zod 4 is recent |
+
+All are semver-compatible range updates. Run `npm update` to pull latest within ranges.
+
+### NOT Recommended
+
+| Package | Why Not |
+|---------|---------|
+| Node.js built-in `node:sqlite` | Still experimental (stability 1.1 as of Node 22). Would be a regression from battle-tested better-sqlite3 |
+| Bun's `bun:sqlite` | Would lock to Bun runtime |
+
+**Confidence:** MEDIUM. Exact latest versions need verification against npm.
+
+---
+
+## 10. Priority-Ordered Optimization Checklist
+
+| Priority | Optimization | Effort | Impact | Risk |
+|----------|-------------|--------|--------|------|
+| **P0** | Prepared statement reuse (Section 2) | Medium | **HIGH** — eliminates thousands of redundant SQL compilations during indexing | LOW |
+| **P0** | Missing database indexes (Section 4) | Low | **HIGH** — O(n) to O(log n) for entity lookups | LOW |
+| **P1** | SQLite pragma tuning (Section 1) | Low | **MEDIUM** — better memory utilization | LOW |
+| **P1** | FTS5 optimize after indexing (Section 3c) | Low | **MEDIUM** — faster search after bulk indexing | LOW |
+| **P1** | Vitest coverage setup (Section 6) | Low | **MEDIUM** — test gap visibility | LOW |
+| **P2** | FTS5 prefix indexes (Section 3a) | Low | **LOW-MEDIUM** — faster prefix search | LOW (requires FTS rebuild) |
+| **P2** | WAL checkpoint after indexing (Section 8) | Low | **LOW** — disk hygiene | LOW |
+| **P2** | `noUncheckedIndexedAccess` (Section 5) | Medium | **LOW-MEDIUM** — compile-time bug prevention | LOW |
+| **P3** | Porter stemming (Section 3b) | Low | **LOW** — better recall, needs testing | MEDIUM (false positives) |
+| **P3** | `perf_hooks` instrumentation (Section 7) | Medium | **LOW** — diagnostic, not optimization | LOW |
+| **P3** | Dependency updates (Section 9) | Low | **LOW** — bug fixes, marginal perf | LOW |
+
+---
+
+## Migration Notes
+
+**Schema changes requiring V5 migration:**
+- New indexes on modules, events, services tables
+- Optionally: FTS5 table rebuild with `prefix='2,3'`
+
+FTS5 table changes (`prefix`, `tokenize`) require **dropping and recreating** the FTS virtual table, then re-populating it. This means `kb index --force` is needed after the migration. The regular tables and their data are unaffected.
+
+**No new dependencies.** All optimizations use existing packages or built-in Node.js APIs.
+
+```bash
+# After implementing changes:
+npm run build
+kb index --force   # Required if FTS5 config changes
+```
+
+---
 
 ## Sources
 
-- graphql npm: [npm registry](https://www.npmjs.com/package/graphql) — v16.13.1 confirmed (HIGH confidence)
-- graphql-js utilities: [graphql.org/graphql-js/utilities](https://graphql.org/graphql-js/utilities/) (HIGH confidence)
-- p-limit: [npm registry](https://www.npmjs.com/package/p-limit) — v7.3.0 confirmed (HIGH confidence)
-- p-limit GitHub: [sindresorhus/p-limit](https://github.com/sindresorhus/p-limit) (HIGH confidence)
-- gray-matter: [npm registry](https://www.npmjs.com/package/gray-matter) (HIGH confidence)
-- EventCatalog directory structure: [eventcatalog.dev/docs](https://www.eventcatalog.dev/docs/development/getting-started/project-structure) (MEDIUM confidence — verified v3 structure, may differ from actual instance)
-- EventCatalog event API: [eventcatalog.dev/docs/api/event-api](https://www.eventcatalog.dev/docs/api/event-api) (MEDIUM confidence)
-- EventCatalog service API: [eventcatalog.dev/docs/api/service-api](https://www.eventcatalog.dev/docs/api/service-api) (MEDIUM confidence)
-- Ecto.Schema docs: [hexdocs.pm/ecto/Ecto.Schema](https://hexdocs.pm/ecto/Ecto.Schema.html) — field/association syntax verified (HIGH confidence)
-- better-sqlite3 concurrency: [WiseLibs/better-sqlite3 performance.md](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/performance.md) (HIGH confidence)
-- git rev-parse docs: [git-scm.com](https://git-scm.com/docs/git-rev-parse) (HIGH confidence)
-
----
-*Stack research for: repo-knowledge-base v1.1 improved reindexing and new extractors*
-*Researched: 2026-03-06*
+- [SQLite PRAGMA docs](https://sqlite.org/pragma.html)
+- [SQLite FTS5 Extension](https://www.sqlite.org/fts5.html)
+- [better-sqlite3 API](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md)
+- [SQLite Performance Tuning (phiresky)](https://phiresky.github.io/blog/2020/sqlite-performance-tuning/)
+- [SQLite Pragma Cheatsheet (cj.rs)](https://cj.rs/blog/sqlite-pragma-cheatsheet-for-performance-and-consistency/)
+- [Forward Email SQLite Guide](https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide)
+- [Vitest Coverage Guide](https://vitest.dev/guide/coverage.html)
+- [Vitest Coverage Config](https://vitest.dev/config/coverage)
+- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
+- [The Strictest TypeScript Config](https://whatislove.dev/articles/the-strictest-typescript-config/)
+- [Node.js perf_hooks API](https://nodejs.org/api/perf_hooks.html)
+- [Node.js Profiling Guide](https://nodejs.org/en/learn/getting-started/profiling)
+- [FTS5 Index Structure](https://darksi.de/13.sqlite-fts5-structure/)
+- [PowerSync SQLite Optimizations](https://www.powersync.com/blog/sqlite-optimizations-for-ultra-high-performance)

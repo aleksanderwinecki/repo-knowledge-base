@@ -1,176 +1,191 @@
 # Project Research Summary
 
-**Project:** repo-knowledge-base v1.1 -- Improved Reindexing & New Extractors
-**Domain:** Codebase knowledge base / code intelligence for local microservice indexing
-**Researched:** 2026-03-06
+**Project:** repo-knowledge-base v1.2
+**Domain:** Hardening & optimization of existing Node.js/TypeScript CLI + MCP tool with SQLite/FTS5 backend
+**Researched:** 2026-03-07
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This is a v1.1 iteration of an existing, functional knowledge base CLI (8,193 LOC, 236 tests) that indexes ~50 Elixir/gRPC microservice repos into a searchable SQLite database. The v1.1 work splits cleanly into two tracks: **pipeline infrastructure** (branch-aware tracking, surgical file-level reindexing, parallel execution) and **new extractors** (GraphQL/Absinthe, gRPC service persistence, Ecto schema enrichment, Event Catalog integration). The existing codebase is well-layered -- new extractors are pure additions -- but the surgical indexing work requires reworking the core pipeline's wipe-and-rewrite model, making it the highest-risk, highest-impact change.
+This is a hardening milestone for a working 5.7K LOC codebase (46 source files, 388 tests) that indexes microservice repos into a SQLite/FTS5 knowledge base. The existing stack is correct and does not need replacing -- the work is about making what exists faster, DRYer, and more defensible. The research identified zero new dependencies to add and zero architectural restructuring needed. Every improvement is a tighten-in-place fix.
 
-The recommended approach is to fix the indexing pipeline first, then layer new extractors on top. The current pipeline has a critical design flaw: despite having incremental detection (`getChangedFiles`) and per-file deletion (`clearRepoFiles`), it always does full extraction and full wipe-and-rewrite via `clearRepoEntities`. Surgical indexing is not a tweak -- it is a pipeline mode change. Branch-aware tracking must come first as a prerequisite. Parallel execution should come last since it is an optimization on top of an already-improved pipeline. New extractors are independent of each other and can be built in any order once the schema migration is designed.
+The highest-impact work falls into two buckets: **performance** (prepared statement reuse, missing DB indexes, SQLite pragma tuning, FTS5 optimization) and **code quality** (130-line pipeline.ts duplication, 8 duplicated MCP error handlers, divergent FTS indexing paths, test setup boilerplate). The performance bucket delivers measurable gains: prepared statement hoisting alone eliminates ~4000 redundant SQL compilations during a 50-repo index. The code quality bucket prevents bugs: the pipeline.ts duplication means any extractor change must be applied in two places or it silently diverges.
 
-The key risks are: (1) orphaned FTS entries during surgical updates when entity IDs change but FTS references are not cleaned, (2) dangling cross-repo edges when one repo is re-indexed and its entity IDs change but other repos' edges still point to old IDs, and (3) SQLite write lock contention if parallelism is not architectured as parallel-extraction + serial-writes. All three are solvable with known patterns, but all three will cause silent data corruption if not addressed deliberately. The recovery strategy is always `kb index --force` (full wipe-and-rewrite), which means these bugs degrade gracefully rather than catastrophically.
+The primary risk is breaking working code during refactoring. Five critical pitfalls were identified, all specific to refactoring-not-building: pipeline consolidation that breaks parallel/serial isolation, MCP schema changes that silently break AI consumers, FTS tokenizer changes that degrade search quality, schema migrations that require table rebuilds, and test "cleanup" that reduces coverage. The mitigation strategy is: contract tests first, golden FTS tests, no table rebuilds, monotonically increasing test count.
 
 ## Key Findings
 
-### Recommended Stack
+### Recommended Stack Optimizations
 
-Only 3 new npm dependencies needed. The existing regex-based extraction approach is sound for Elixir/proto patterns, and most v1.1 features are wiring changes or regex extensions, not new library integrations.
+No new dependencies. All optimizations use the existing Node.js/TypeScript/SQLite/better-sqlite3 stack.
 
-**New dependencies:**
-- `graphql` (^16.13.1): Parse `.graphql` SDL files -- the official reference parser, justified because GraphQL SDL is too complex for regex (nested types, directives, interfaces, unions)
-- `gray-matter` (^4.0.3): Parse YAML frontmatter from EventCatalog `.mdx` files -- battle-tested, handles delimiter edge cases
-- `p-limit` (^7.3.0): Bounded concurrency for parallel repo indexing -- pure ESM, 2KB, zero deps
+**Core changes:**
+- **SQLite pragma tuning** (`cache_size`, `temp_store`, `mmap_size`, `optimize` on close): 3 lines of code, better memory utilization for search-heavy workloads
+- **Prepared statement reuse**: Hoist `db.prepare()` out of hot loops in fts.ts, writer.ts, entity.ts, dependencies.ts, status.ts. Eliminates thousands of redundant SQL compilations during indexing (estimated 10-30% wall-clock improvement on writes)
+- **Missing DB indexes**: `modules(repo_id, name)`, `modules(name)`, `events(name, repo_id)`, `services(name)`. Turns entity lookup from O(n) table scan to O(log n) index lookup
+- **FTS5 tuning**: Prefix index `prefix='2,3'`, `optimize` command after bulk indexing, WAL checkpoint after index
+- **Vitest coverage**: V8 provider, ratchet thresholds from baseline
+- **TypeScript `noUncheckedIndexedAccess`**: ~5-15 fix sites, catches array/record access bugs at compile time
 
-**No new dependencies needed for:** gRPC service extraction (existing `proto.ts` already parses services), Ecto schema fields/associations (regex extension of `elixir.ts`), branch-aware git tracking (`execSync` calls), surgical file-level reindexing (existing `clearRepoFiles` + `getChangedFiles`).
+See STACK.md for full priority-ordered optimization checklist (P0-P3).
 
-**Explicitly avoid:** `protobufjs` (67MB overkill), `tree-sitter-elixir` (native addon + node-gyp for marginal gain), `simple-git` (wraps 2-3 commands we already do), `worker_threads` (better-sqlite3 not thread-safe).
+### Expected Features (Refactoring Items)
 
-### Expected Features
+**Must have (table stakes -- 10 items):**
+- TS-04: Pipeline extraction dedup (~130 duplicated lines, highest bug risk)
+- TS-01: MCP error handling wrapper (48 lines duplicated across 8 tools)
+- TS-02: MCP auto-sync pattern dedup (36 lines across 3 tools)
+- TS-07: FTS query fallback dedup (shared retry logic in 2 search modules)
+- TS-03: DB path resolution dedup (trivial 5-minute fix)
+- TS-05: Entity hydration pattern consolidation
+- TS-06: Entity query switch statement dedup
+- TS-08: clearRepoEntities batch cleanup
+- TS-09: Consistent MCP response format
+- TS-10: Prepared statement hoisting (also in STACK.md as P0)
 
-**Must have (table stakes):**
-- Branch-aware git tracking -- v1.0 indexes whatever branch is checked out, polluting the KB with WIP code
-- Surgical file-level re-indexing -- v1.0 wipes and rewrites ALL entities on every incremental index, defeating the purpose of `getChangedFiles`
-- Parallel repo indexing -- sequential indexing of 50+ repos is slow for a release focused on "improved reindexing"
-- Ecto schema field/association extraction -- low-hanging fruit given existing regex infrastructure
+**Should have (differentiators -- 8 items):**
+- DF-05: Add `learned_fact` to EntityType union (fixes unsafe casts, unifies FTS paths)
+- DF-01: git.ts dead code removal / dedup
+- DF-07: Writer insert dedup between persist functions
+- DF-08: Edge insertion function sharing in pipeline.ts
+- DF-04: Dependencies upstream/downstream symmetry extraction
+- DF-06: Shared status module between CLI and MCP
+- DF-03: Type-safe entity registry (config-driven, eliminates scattered switches)
+- DF-02: metadata.ts FileReader strategy pattern
 
-**Should have (differentiators):**
-- GraphQL/Absinthe schema extraction -- answers "what API surface does this service expose?"
-- gRPC service definition persistence -- the parser already extracts this data, it is just never stored
-- Event Catalog integration -- enriches the KB with curated domain ownership, event descriptions, team assignments
+**Defer (v2+):**
+- DF-03 entity registry: High value but medium complexity. Better when adding a new entity type.
+- DF-02 metadata strategy: Works fine as-is. Only needed if adding a third I/O source.
+- Porter stemming for FTS: Needs validation against real data. Risk of false positives.
 
-**Defer (anti-features for v1.1):**
-- Worker thread parallelism (better-sqlite3 constraint)
-- Full AST parsing for Elixir (tree-sitter overhead not justified)
-- GraphQL introspection from running services (violates local-only constraint)
-- Real-time file watching (on-demand indexing is sufficient)
+See FEATURES.md for dependency graph and MVP recommendation order.
 
 ### Architecture Approach
 
-The v1.1 architecture introduces a dual-mode pipeline: full wipe-and-rewrite (existing behavior, for new repos or `--force`) and surgical file-scoped updates (for incremental changes). Extraction is separated from persistence to enable parallel execution -- extractors run concurrently across repos (CPU/IO-bound work), then results are persisted sequentially from the main thread (SQLite single-writer constraint).
+The architecture is clean and should be preserved. Three layers (interface -> core -> DB) with unidirectional dependencies and no circular imports. The module coupling analysis found only LOW-severity layer violations (search re-exporting from db/fts, knowledge/store bypassing fts.ts). The `db/database.ts`, `db/tokenizer.ts`, `cli/db.ts`, `mcp/format.ts`, `mcp/server.ts`, all pure parsers, and `search/dependencies.ts` are explicitly marked as "leave alone."
 
-**Major components:**
-1. **Branch resolver** (`git.ts`) -- determines default branch per repo, resolves to main/master SHA regardless of checked-out branch
-2. **Dual-mode pipeline** (`pipeline.ts`) -- orchestrates full vs. surgical indexing based on commit ancestry, routes changed files to extractors
-3. **File-scoped writer** (`writer.ts`) -- new `persistFileData` function that clears+reinserts entities for specific files only, maintaining FTS consistency
-4. **New extractors** (`graphql.ts`, `grpc.ts`, enhanced `elixir.ts`, `eventcatalog.ts`) -- hook into the pipeline at the standard extraction point, all must set `source_file` correctly for surgical deletion
-5. **Parallel orchestrator** (`pipeline.ts`) -- `p-limit` wrapping extraction phase with concurrency of 4, sequential persistence on main thread
+**Work areas by review order:**
+1. `indexer/pipeline.ts` -- Dedup extraction logic (~200 LOC reduction)
+2. `db/fts.ts` + `knowledge/store.ts` -- Unify FTS indexing paths
+3. `indexer/writer.ts` + edge operations -- Consolidate edge CRUD
+4. Test helpers -- Extract DB setup boilerplate (~100 lines saved across 18+ test files)
+5. Extractor interface -- Share `listBranchFiles` result, optional ExtractorContext
+6. `search/text.ts` + `search/entity.ts` -- Statement preparation, minor cleanup
+7. Error handling -- Add structured logging for silent catch blocks
+
+See ARCHITECTURE.md for full module coupling analysis, data flow diagrams, and anti-patterns.
 
 ### Critical Pitfalls
 
-1. **Orphaned FTS entries during surgical updates** -- When entities are deleted and re-created with new IDs, FTS references become stale. Prevention: delete FTS entries BEFORE deleting entity rows, within the same transaction. The existing `clearRepoFiles` partially handles this but needs extension for modified (not just deleted) files.
-
-2. **Dangling cross-repo edges after partial re-index** -- The `edges` table uses polymorphic IDs without foreign keys. When repo A's entities get new IDs, repo B's edges pointing at repo A's old entity IDs become dangling. Prevention: when re-indexing a repo, also delete edges in other repos that target this repo's entities. Or better: use stable identifiers (`repo_name + entity_name`) instead of auto-increment IDs for cross-repo references.
-
-3. **SQLite write lock contention** -- better-sqlite3 connections cannot be shared across threads, and even in WAL mode only one writer is allowed at a time. Prevention: parallelize extraction only, serialize all DB writes on the main thread. Do not open separate DB connections in workers.
-
-4. **Detached HEAD crashes indexer** -- `git symbolic-ref` fails on detached HEAD. Prevention: use `git rev-parse refs/heads/main` instead of `symbolic-ref`, with fallback chain main -> master -> HEAD.
-
-5. **EventCatalog has no HTTP API** -- The `@eventcatalog/sdk` is file-based, not network-based. The integration must parse local `.mdx` files with frontmatter, not call an HTTP endpoint. Prevention: use `gray-matter` to parse frontmatter directly from the catalog repo's filesystem.
+1. **Pipeline consolidation breaks parallel isolation** -- `extractRepoData` (parallel, no DB access) and `indexSingleRepo` (serial, inline DB reads) look duplicated but have different DB isolation guarantees. Any shared helper MUST be pure. Write a test asserting identical output from both paths. See Pitfall #1.
+2. **MCP tool schema changes silently break AI consumers** -- The 8 MCP tools are the primary API surface. Parameter names and response shapes are a public contract. Create contract tests BEFORE any refactoring. See Pitfall #2.
+3. **FTS tokenizer changes degrade search without test failures** -- Production DB has pre-tokenized text. Changing `tokenizeForFts()` without a full re-index causes partial search breakage. Write golden tests. See Pitfall #5.
+4. **Schema migration with table rebuild** -- SQLite ALTER TABLE limitations mean table rebuilds are destructive. Restrict v1.2 to `ADD COLUMN` and `CREATE INDEX`. No table rebuilds. See Pitfall #4.
+5. **Quick win scope creep** -- Performance optimizations in DB-heavy code rarely stay localized. Time-box every optimization to 2 hours. If it's not done, it's not a quick win. See Pitfall #8.
 
 ## Implications for Roadmap
 
 Based on research, suggested phase structure:
 
-### Phase 1: Foundation -- Branch-Aware Tracking & Schema Migration
+### Phase 1: Safety Net Setup
 
-**Rationale:** Smallest change, immediately valuable, and is a hard prerequisite for surgical indexing. Also the right time to design and implement the V3 schema migration that all subsequent phases need.
-**Delivers:** Repos always indexed from main/master branch regardless of local checkout state. New `default_branch` and `metadata` columns in the database.
-**Features:** Branch-aware git tracking (table stake)
-**Avoids:** Detached HEAD crash (Pitfall 1), wrong diff after branch switch (Pitfall 9)
-**Stack:** No new dependencies -- `execSync` calls in `git.ts`
+**Rationale:** Every research file agrees: establish contract tests, golden FTS tests, API snapshot tests, and coverage baseline BEFORE touching anything. The pitfalls research is emphatic -- refactoring without these guarantees is how you break working code.
+**Delivers:** Contract tests for MCP tools, API export snapshot test, FTS golden test, Vitest coverage configuration with baseline thresholds, test helper extraction (db setup, fixtures)
+**Addresses:** TS-10 awareness (coverage setup from STACK.md Section 6), test architecture from ARCHITECTURE.md Finding #7
+**Avoids:** Pitfalls #2 (MCP contract breakage), #3 (public API rename), #5 (FTS regression), #6 (test coverage reduction)
 
-### Phase 2: Core Pipeline -- Surgical File-Level Indexing
+### Phase 2: Database Performance
 
-**Rationale:** The highest-impact infrastructure change and the most architecturally complex. Must come before parallelism because parallel full-wipe is pointless. This is where the dual-mode pipeline is built: the full path stays as-is, the surgical path routes changed files to extractors and uses `persistFileData` for file-scoped writes.
-**Delivers:** Incremental reindexing that only touches changed files. Dramatically faster re-index for repos with small changes.
-**Features:** Surgical file-level re-indexing (table stake)
-**Avoids:** Orphaned FTS entries (Pitfall 2), dangling cross-repo edges (Pitfall 4), missing source_file convention (Pitfall 10)
-**Stack:** No new dependencies -- refactors `pipeline.ts`, `writer.ts`, and adds `changedFiles` filter parameter to all extractors
+**Rationale:** The two P0 optimizations (prepared statements, missing indexes) are independent of code refactoring and have the highest measurable impact. Do them first while the codebase is still unchanged from v1.1 -- this makes before/after benchmarking clean.
+**Delivers:** SQLite pragma tuning, prepared statement hoisting, new DB indexes (V5 migration), FTS5 optimize after indexing, WAL checkpoint, `perf_hooks` instrumentation for benchmarking
+**Uses:** STACK.md Sections 1-4, 7-8 (all P0 and P1 optimizations)
+**Avoids:** Pitfalls #4 (safe migration -- indexes only, no table rebuilds), #10 (safe pragma additions only)
 
-### Phase 3: New Extractors
+### Phase 3: Code Deduplication -- MCP Layer
 
-**Rationale:** Independent of each other, all hook into the pipeline at the same extension point. Can be shipped incrementally. Grouped together because they all need the V3 schema migration from Phase 1 and should follow the file-scoped conventions established in Phase 2.
-**Delivers:** GraphQL types/queries/mutations, gRPC service entities + client/server edges, Ecto schema fields/associations, Event Catalog domain/team/event enrichment
-**Features:** All differentiator features -- GraphQL extraction, gRPC persistence, Ecto enrichment, Event Catalog integration
+**Rationale:** The MCP layer refactoring items (TS-01, TS-02, TS-09) are low-risk, low-complexity, and establish patterns used by later phases. Error wrapper and auto-sync dedup touch all 8 MCP tools, so doing them in isolation prevents merge conflicts with other work. Contract tests from Phase 1 protect against regressions.
+**Delivers:** `wrapToolHandler` HOF, `withAutoSync` helper, consistent `McpResponse` across all tools, DB path dedup (TS-03)
+**Addresses:** TS-01, TS-02, TS-03, TS-09, DF-05 (learned_fact EntityType)
+**Avoids:** Pitfall #2 (contract tests already exist from Phase 1)
 
-Suggested sub-ordering within Phase 3:
-1. **gRPC service persistence** -- nearly free, data already extracted, just needs DB wiring
-2. **Ecto schema enrichment** -- extends existing `elixir.ts`, straightforward regex additions
-3. **GraphQL/Absinthe extraction** -- new extractor file, requires `graphql` npm package for SDL and Elixir-specific regex for Absinthe
-4. **Event Catalog integration** -- architecturally different (supplementary data source, not a per-repo extractor), requires `gray-matter`, has merge/dedup complexity
+### Phase 4: Code Deduplication -- Core Layer
 
-**Avoids:** Ecto duplication of existing module data (Pitfall 7), gRPC re-implementation of existing parser (Pitfall 8), Absinthe/SDL confusion (Pitfall 14), EventCatalog HTTP assumption (Pitfall 5)
-**Stack:** `graphql`, `gray-matter`
+**Rationale:** The heavy refactoring: pipeline.ts extraction dedup, FTS path unification, entity query consolidation, writer insert dedup. These touch the core layer and carry higher risk. Depends on safety nets from Phase 1 and performance baselines from Phase 2.
+**Delivers:** Shared extraction function in pipeline.ts, unified FTS indexing through `db/fts.ts`, entity hydration consolidation, FTS fallback dedup, clearRepoEntities batch optimization, writer insert helpers, edge operation consolidation
+**Addresses:** TS-04, TS-05, TS-06, TS-07, TS-08, DF-07, DF-08, ARCHITECTURE.md Findings #1-#3
+**Avoids:** Pitfall #1 (shared helper must be pure), Pitfall #5 (golden tests catch regression), Pitfall #9 (no cross-layer utilities)
 
-### Phase 4: Parallel Execution
+### Phase 5: TypeScript Hardening & Cleanup
 
-**Rationale:** Optimization, not functionality. Surgical indexing from Phase 2 already dramatically reduces reindex time. Parallelism is the cherry on top. Also benefits from having all extractors finalized (less rework of the parallel extraction pipeline).
-**Delivers:** 2-4x speedup on full re-index by overlapping file I/O across repos
-**Features:** Parallel repo indexing (table stake)
-**Avoids:** SQLite write lock contention (Pitfall 3), I/O saturation (Pitfall 11), MCP sync conflicts (Pitfall 13)
-**Stack:** `p-limit`
+**Rationale:** `noUncheckedIndexedAccess`, git.ts dead code removal, deps symmetry extraction, and any remaining differentiators. These are lower priority and lower risk. Good cleanup work after the structural changes in Phase 4 have settled.
+**Delivers:** `noUncheckedIndexedAccess` enabled (~5-15 fixes), git.ts dedup/dead code removal, dependencies.ts upstream/downstream parameterization, error handling consistency (structured logging for silent catches)
+**Addresses:** STACK.md Section 5, DF-01, DF-04, ARCHITECTURE.md Finding #5
+**Avoids:** Pitfall #7 (CLI output format tests from Phase 1 protect against shape changes)
 
 ### Phase Ordering Rationale
 
-- **Branch tracking before surgical indexing:** Surgical indexing needs accurate commit tracking against the right branch. If you compare against HEAD on a feature branch, the changed-file diff is wrong.
-- **Surgical indexing before parallelism:** Parallel full-wipe is wasteful. Parallel surgical updates are where the real speedup lives.
-- **Extractors after surgical indexing:** New extractors must follow the `source_file` convention and `changedFiles` filter pattern established in Phase 2. Building them after the pattern exists avoids retrofitting.
-- **gRPC wiring first among extractors:** It is essentially free (data already parsed, just not persisted) and validates the extractor -> persistence -> FTS pipeline for new entity types.
-- **Parallelism last:** It is an optimization, and the pipeline must be stable before adding concurrency complexity.
+- **Safety first:** Phase 1 exists because all four research documents converge on the same conclusion -- refactoring without contract tests, FTS golden tests, and coverage baselines is reckless. This is non-negotiable.
+- **Measure before optimizing:** Phase 2 (performance) before Phase 3-4 (refactoring) because you need clean before/after benchmarks on unchanged code. Refactoring changes the baseline.
+- **MCP before core:** Phase 3 (MCP layer) before Phase 4 (core layer) because MCP is the highest-risk API surface and the lowest-complexity refactoring. Get the easy wins with the contract test safety net.
+- **Core dedup is the big bang:** Phase 4 is the largest phase -- it consolidates the most code. Everything before it builds the safety net and benchmarks. Everything after it is cleanup.
+- **TypeScript hardening last:** `noUncheckedIndexedAccess` will flag issues across the codebase. Better to add it after structural changes are done so you fix it once, not twice.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 2 (Surgical Indexing):** The cross-repo edge consistency problem is the trickiest design decision. Need to decide between stable identifiers vs. cascading re-index vs. orphan cleanup. Worth a focused research spike.
-- **Phase 3, Event Catalog:** EventCatalog frontmatter field names may vary between v2 and v3. Need to validate against the actual `fresha-event-catalog` repo during implementation. The merge/dedup logic (matching catalog event names to proto message names) needs heuristic design.
-- **Phase 3, GraphQL:** Need to audit actual repos to determine whether Absinthe macros or `.graphql` SDL files are the primary schema definition format. Both paths should be built, but effort allocation depends on what the repos actually use.
+- **Phase 2 (Database Performance):** The V5 migration needs careful design -- which indexes, FTS5 prefix config, migration ordering. The STACK.md research is thorough but implementation sequencing needs validation.
+- **Phase 4 (Core Dedup):** pipeline.ts consolidation is the riskiest refactoring in the entire milestone. The pure-function constraint from Pitfall #1 needs to be validated against the actual extraction flow. Worth a `/gsd:research-phase` to map the exact function signatures.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (Branch Tracking):** Well-documented git commands, minimal code changes, clear fallback chain.
-- **Phase 4 (Parallel Execution):** The `p-limit` + `Promise.all` pattern is well-established. The architecture decision (parallel extract, serial write) is already settled by the better-sqlite3 constraint.
-- **Phase 3, gRPC persistence:** Pure wiring of already-extracted data. No unknowns.
-- **Phase 3, Ecto enrichment:** Ecto schema DSL is rigid and well-documented. Regex patterns are straightforward.
+- **Phase 1 (Safety Net):** Contract tests, snapshot tests, coverage config -- well-documented patterns, nothing novel.
+- **Phase 3 (MCP Layer):** Higher-order function wrappers and response format consolidation -- straightforward refactoring.
+- **Phase 5 (TS Hardening):** `noUncheckedIndexedAccess` is a compiler flag + fix sites. Standard.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Only 3 new deps, all verified on npm with version pinning. Existing stack validated and unchanged. |
-| Features | HIGH | Based on direct codebase analysis. Feature deps and complexity assessed against real code. |
-| Architecture | HIGH | Verified against existing source files. Dual-mode pipeline and extraction/persistence separation are well-understood patterns. |
-| Pitfalls | HIGH | All critical pitfalls verified by reading the actual code paths that would fail. Prevention strategies are concrete, not theoretical. |
+| Stack | HIGH | All recommendations based on official SQLite docs, better-sqlite3 API docs, and established best practices. No new dependencies. |
+| Features | HIGH | Every finding based on direct line-by-line codebase analysis of all 46 source files. Specific line numbers cited. |
+| Architecture | HIGH | Full import graph traced manually. No circular dependencies verified. Module coupling quantified. |
+| Pitfalls | HIGH | Pitfalls derived from direct codebase analysis cross-referenced with SQLite docs, MCP spec, and refactoring literature. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **EventCatalog frontmatter schema:** Verified against EventCatalog v3 docs, but actual `fresha-event-catalog` repo may use v2 or custom fields. Validate during Phase 3 implementation.
-- **Absinthe vs. SDL prevalence:** Research identified both extraction paths are needed, but the ratio of Absinthe-based vs. `.graphql`-based repos is unknown. Audit repos before allocating effort.
-- **Cross-repo edge stability model:** Three approaches identified (stable identifiers, cascading re-index, orphan cleanup) but no clear winner. Needs design decision during Phase 2 planning.
-- **gray-matter TypeScript types:** `@types/gray-matter` may be outdated. May need type assertions or a thin wrapper. Minor issue, handle during implementation.
-- **Sync concurrency:** MCP auto-sync and CLI `kb index` can conflict via SQLite write locks. This is a latent v1.0 bug that becomes more likely with parallelism. Should add `busy_timeout` pragma regardless of v1.1 work.
+- **Porter stemming for FTS (STACK.md 3b):** MEDIUM confidence. Beneficial in theory but needs validation against actual knowledge base data before committing. Risk of false positives on technical terms. Defer to testing during Phase 2 or v2.
+- **better-sqlite3 statement caching behavior:** FEATURES.md TS-10 states better-sqlite3 caches prepared statements internally; STACK.md Section 2 says it does NOT. The STACK.md analysis is correct -- better-sqlite3 does not cache `prepare()` calls. The performance impact of hoisting is real, not just cosmetic.
+- **Test coverage baseline:** Unknown current coverage percentage. Phase 1 must measure this before setting thresholds. The ratchet pattern depends on having a starting number.
+- **`getChangedFiles` dead code (DF-01):** Unclear if the HEAD-based variant is still called. Needs grep verification before removal.
+- **MCP SDK `_registeredTools` access in tests:** Brittle internal API access noted in ARCHITECTURE.md. May break on SDK upgrade. No alternative identified yet.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Existing codebase analysis: `git.ts`, `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`, `fts.ts`, `database.ts`, `sync.ts`
-- graphql npm package (v16.13.1) -- [npmjs.com](https://www.npmjs.com/package/graphql)
-- p-limit (v7.3.0) -- [npmjs.com](https://www.npmjs.com/package/p-limit)
-- gray-matter (v4.0.3) -- [npmjs.com](https://www.npmjs.com/package/gray-matter)
-- better-sqlite3 threading docs -- [GitHub](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/threads.md)
-- SQLite WAL mode -- [sqlite.org/wal.html](https://sqlite.org/wal.html)
-- Ecto.Schema docs -- [hexdocs.pm](https://hexdocs.pm/ecto/Ecto.Schema.html)
-- Absinthe.Schema.Notation docs -- [hexdocs.pm](https://hexdocs.pm/absinthe/Absinthe.Schema.Notation.html)
-- git rev-parse, git symbolic-ref -- [git-scm.com](https://git-scm.com/docs/)
+- Direct codebase analysis of all 46 source files and 25 test files
+- [SQLite PRAGMA docs](https://sqlite.org/pragma.html)
+- [SQLite FTS5 Extension](https://www.sqlite.org/fts5.html)
+- [SQLite ALTER TABLE](https://sqlite.org/lang_altertable.html)
+- [better-sqlite3 API](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md)
+- [better-sqlite3 threading docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/threads.md)
+- [MCP Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25)
+- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
+- [Vitest Coverage Guide](https://vitest.dev/guide/coverage.html)
+- [Node.js perf_hooks API](https://nodejs.org/api/perf_hooks.html)
 
 ### Secondary (MEDIUM confidence)
-- EventCatalog v3 project structure -- [eventcatalog.dev/docs](https://www.eventcatalog.dev/docs/development/getting-started/project-structure)
-- EventCatalog SDK -- [eventcatalog.dev/docs/sdk](https://www.eventcatalog.dev/docs/sdk)
-- `fresha-event-catalog` repo structure -- direct inspection (catalog may have evolved since inspection)
+- [SQLite Performance Tuning (phiresky)](https://phiresky.github.io/blog/2020/sqlite-performance-tuning/)
+- [SQLite Pragma Cheatsheet (cj.rs)](https://cj.rs/blog/sqlite-pragma-cheatsheet-for-performance-and-consistency/)
+- [FTS5 Index Structure Analysis](https://darksi.de/13.sqlite-fts5-structure/)
+- [The Strictest TypeScript Config](https://whatislove.dev/articles/the-strictest-typescript-config/)
+- [Avoiding scope creep during refactoring](https://andreigridnev.com/blog/2019-01-20-four-tips-to-avoid-scope-creep-during-refactoring/)
+- [Test coverage of impacted code elements](https://www.sciencedirect.com/science/article/abs/pii/S0164121216000388)
+
+### Tertiary (LOW confidence)
+- [Forward Email SQLite Guide](https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide) -- pragma recommendations, needs validation against local-tool workload
+- [FTS5 performance tuning pitfalls (Sling Academy)](https://www.slingacademy.com/article/full-text-search-performance-tuning-avoiding-pitfalls-in-sqlite/) -- general guidance, not project-specific
 
 ---
-*Research completed: 2026-03-06*
+*Research completed: 2026-03-07*
 *Ready for roadmap: yes*

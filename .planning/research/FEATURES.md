@@ -1,337 +1,300 @@
-# Feature Landscape: v1.1 Improved Reindexing & New Extractors
+# Feature Landscape: Refactoring & Optimization Patterns
 
-**Domain:** Codebase knowledge base / code intelligence for local microservice indexing
-**Researched:** 2026-03-06
-**Scope:** Incremental improvements to existing v1.0 tool (8,193 LOC, 236 tests)
+**Domain:** Code hardening for Node.js/TypeScript CLI + MCP tool with SQLite backend
+**Researched:** 2026-03-07
+**Codebase:** 5,739 src LOC across 46 files, 388 tests
 
 ## Table Stakes
 
-Features that v1.1 should deliver to feel like a meaningful upgrade over v1.0.
+Refactoring items that any maintainable codebase of this size should have. Missing any of these will bite you during the next feature build.
 
-| Feature | Why Expected | Complexity | Depends On |
-|---------|--------------|------------|------------|
-| **Branch-aware git tracking** | v1.0 indexes whatever branch is checked out -- if a dev is on a feature branch, the KB gets polluted with WIP code. Every CI-adjacent tool tracks main/master only. | LOW | Existing `git.ts` module |
-| **Surgical file-level re-indexing** | v1.0 wipes and rewrites all entities for a repo on every index, even for incremental. The `clearRepoEntities` call in `persistRepoData` defeats the purpose of `getChangedFiles`. Users expect changed-file-only updates. | MEDIUM | Branch-aware tracking, existing `clearRepoFiles` |
-| **Parallel repo indexing** | Indexing 50+ repos sequentially is slow. Users expect concurrency from a v1.1 that's about "improved reindexing". | LOW-MEDIUM | Surgical indexing (to avoid DB contention) |
-| **Ecto schema extraction** | v1.0 already detects `schema "table_name"` in its Elixir parser but doesn't extract fields, associations, or store them as first-class entities. This is low-hanging fruit given the existing regex infrastructure. | MEDIUM | Existing `elixir.ts` extractor |
+### TS-01: MCP Tool Error Handling Boilerplate Extraction
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | Every MCP tool (8 files) has identical try/catch with `error instanceof Error ? error.message : String(error)` and identical `{ content: [{ type: 'text' as const, text }], isError: true }` return shape |
+| Complexity | Low |
+| Depends On | `src/mcp/tools/*.ts` (all 8 files) |
+| Current LOC duplication | ~48 lines (6 per file x 8 files) |
+
+**What to do:** Extract a `wrapToolHandler(fn): ToolHandler` higher-order function in `src/mcp/format.ts` (or new `src/mcp/errors.ts`). Each tool file shrinks by 6-8 lines and error format is guaranteed consistent.
+
+```typescript
+// Before (repeated 8 times):
+async (args) => {
+  try {
+    // ...tool logic
+    return { content: [{ type: 'text' as const, text }] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { content: [{ type: 'text' as const, text: `Error ...: ${message}` }], isError: true };
+  }
+}
+
+// After:
+wrapToolHandler('searching', async (args) => {
+  // ...tool logic only
+  return text;
+})
+```
+
+### TS-02: MCP Auto-Sync Pattern Deduplication
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | Three MCP tools (search, entity, deps) repeat the same "extract repo names -> checkAndSyncRepos -> re-run if synced" pattern with ~12 lines each |
+| Complexity | Low |
+| Depends On | `src/mcp/tools/search.ts`, `entity.ts`, `deps.ts`, `src/mcp/sync.ts` |
+| Current LOC duplication | ~36 lines |
+
+**What to do:** Extract `withAutoSync<T>(db, repoNames: string[], query: () => T): T` into `src/mcp/sync.ts`. Takes a query function, runs it, checks sync, re-runs if needed.
+
+### TS-03: DB Path Resolution Deduplication
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | `getDbPath()` logic is duplicated between `src/cli/db.ts` (L14-19) and `src/mcp/server.ts` (L41). Same `process.env.KB_DB_PATH ?? path.join(os.homedir(), '.kb', 'knowledge.db')` |
+| Complexity | Low |
+| Depends On | `src/cli/db.ts`, `src/mcp/server.ts` |
+
+**What to do:** Either import `getDbPath` from `cli/db.ts` into the MCP server, or (better) move `getDbPath` to `src/db/database.ts` since it's database infrastructure, not CLI-specific.
+
+### TS-04: `pipeline.ts` Massive Code Duplication Between `indexSingleRepo` and `extractRepoData`
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | `indexSingleRepo` (lines 448-637, ~190 lines) and `extractRepoData` (lines 83-221, ~140 lines) contain **nearly identical** extraction logic: same module mapping, same GraphQL mapping, same Absinthe mapping, same surgical mode detection. This is the single largest duplication in the codebase. |
+| Complexity | Medium |
+| Depends On | `src/indexer/pipeline.ts` |
+| Current LOC duplication | ~130 lines of direct copy-paste |
+
+**What to do:** Extract shared extraction into a pure function like `runExtractors(repoPath, branch)` that returns `{ elixirModules, protoDefinitions, graphqlDefinitions, allModules, services }`. Both `indexSingleRepo` and `extractRepoData` call it. The surgical/full mode decision and DB snapshot handling remain in their respective functions.
+
+Specific duplicated blocks:
+- Service mapping from proto (lines 123-129 vs 502-508)
+- GraphQL module mapping (lines 132-139 vs 511-518)
+- Elixir module mapping (lines 142-149 vs 521-528)
+- Absinthe module mapping (lines 152-159 vs 531-538)
+- Event mapping from proto messages (lines 174-180, 201-207 vs 554-558, 595-600)
+
+### TS-05: Entity Hydration Pattern in `search/text.ts`
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | Five `hydrate*` functions (hydrateRepo, hydrateModule, hydrateEvent, hydrateService, hydrateLearnedFact) follow an identical pattern: query DB, null-check, construct TextSearchResult. Same structure, different SQL. |
+| Complexity | Medium |
+| Depends On | `src/search/text.ts` |
+| Current LOC | ~135 lines for 5 functions |
+
+**What to do:** Extract a generic `hydrateEntity<T>(db, sql, id, mapper): TextSearchResult | null` that handles the query + null-check. Each hydrate function becomes a config object (SQL string + field mapping). Reduces 135 lines to ~50.
+
+### TS-06: Entity Query Duplication Between `entity.ts` Functions
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | `getEntitiesByExactName` (lines 193-257) and `getEntityById` (lines 259-311) in `search/entity.ts` contain near-identical switch statements with the same SQL JOINs per entity type. Four cases each, same SQL structure. |
+| Complexity | Medium |
+| Depends On | `src/search/entity.ts` |
+| Current LOC duplication | ~120 lines (two switch statements) |
+
+**What to do:** Create an `entityQueryConfig` map that defines `{ table, joinSql, columns, descriptionColumn, filePathColumn }` per entity type. Both functions use the config to build queries dynamically. This also makes adding new entity types a single config entry instead of updating two switch statements.
+
+### TS-07: FTS Query Fallback Duplication
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | The "try FTS MATCH, catch -> try phrase match, catch -> empty" pattern is duplicated in `search/text.ts` (L89-102) and `search/entity.ts` (L144-155). Same retry logic, same phrase escaping. |
+| Complexity | Low |
+| Depends On | `src/search/text.ts`, `src/search/entity.ts` |
+
+**What to do:** Extract `executeFtsWithFallback(db, sql, params, processedQuery): rows[]` to `src/db/fts.ts`. Both search modules call it.
+
+### TS-08: `clearRepoEntities` Repetitive FTS Cleanup Loop
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | `clearRepoEntities` in `writer.ts` (L84-122) queries then loops over modules, events, and services with identical `removeEntity` calls. Three separate query+loop blocks doing the same thing. |
+| Complexity | Low |
+| Depends On | `src/indexer/writer.ts` |
+
+**What to do:** Extract `clearEntitiesByType(db, tableName, entityType, repoId)` helper, or use batch SQL: `DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id IN (SELECT id FROM modules WHERE repo_id = ?)`. The batch approach also avoids N+1 query/delete for repos with many entities.
+
+### TS-09: Inconsistent MCP Response Formats
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | MCP tools use three different response formats: (a) `formatResponse()` wrapper with `{ summary, data, total, truncated }` shape (search, entity, deps), (b) ad-hoc `JSON.stringify({ summary, data })` (learn, forget, cleanup, status), (c) bare `JSON.stringify(types)` (list-types). AI consumers benefit from consistent shape. |
+| Complexity | Low |
+| Depends On | All `src/mcp/tools/*.ts` |
+
+**What to do:** All tools should return the `McpResponse` shape from `format.ts`. For single-item results like learn/forget, use `formatResponse([result], summaryFn, 1)`. For status, wrap in `formatResponse`. This ensures every MCP response has `summary`, `data`, `total`, `truncated`.
+
+### TS-10: Prepared Statement Caching Opportunity
+
+| Attribute | Detail |
+|-----------|--------|
+| Why Expected | `db.prepare()` is called inline throughout the codebase -- in loops inside `clearRepoEntities`, `clearRepoFiles`, `findLinkedRepos`, and `getRelationships`. Each call creates a new prepared statement object. better-sqlite3 internally caches these, but the pattern is noisy and masks intent. |
+| Complexity | Low |
+| Depends On | Systemic across `src/indexer/writer.ts`, `src/search/entity.ts`, `src/search/dependencies.ts` |
+
+**What to do:** Move frequent prepared statements to function-level `const` declarations (hoist out of loops). The `status.ts` MCP tool is the worst offender: 7 separate `db.prepare('SELECT COUNT(*) ...')` calls that could become a single multi-table count query. Note: better-sqlite3 does cache `prepare()` calls internally, so this is readability-first, performance-second.
 
 ## Differentiators
 
-Features that add new knowledge dimensions not available in v1.0.
+Not expected for a tool of this maturity, but would meaningfully improve quality or developer experience.
 
-| Feature | Value Proposition | Complexity | Depends On |
-|---------|-------------------|------------|------------|
-| **GraphQL schema extraction** | Index types, queries, mutations, subscriptions from `.graphql` SDL files and Absinthe `.ex` macros. Answers "what API surface does this service expose?" -- a question devs ask constantly. | MEDIUM | New extractor, schema migration |
-| **gRPC service definition extraction** | v1.0 extracts proto messages but ignores `service` blocks and their RPCs. The proto parser already has `extractServices()` and `ProtoService`/`ProtoRpc` types -- they're just not persisted. Wire it up. | LOW | Existing `proto.ts` (services already parsed) |
-| **Event Catalog integration** | Fresha has a `fresha-event-catalog` repo with curated JSON files: `events.json` (5,721 lines), `services.json` (1,001 lines), `rpcs.json` (6,520 lines). These contain domain ownership, event descriptions, consumer/producer mappings, and proto schemas that are richer than what the KB extracts from raw code. | MEDIUM | New data source, schema for catalog metadata |
+### DF-01: `git.ts` Duplication Between `getChangedFiles` and `getChangedFilesSinceBranch`
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `getChangedFiles` (L25-71) and `getChangedFilesSinceBranch` (L217-264) are functionally identical except for the git diff target (`HEAD` vs branch name). 47 lines duplicated. `getChangedFiles` may be dead code now that branch-aware variants exist. |
+| Complexity | Low |
+| Depends On | `src/indexer/git.ts` |
+
+**What to do:** Check whether `getChangedFiles` (HEAD-based) is still called anywhere. If not, remove it. If yes, make it delegate to `getChangedFilesSinceBranch(repoPath, sinceCommit, 'HEAD')`. Extract the shared diff-output parsing into a `parseDiffNameStatus(output)` helper.
+
+### DF-02: `metadata.ts` Filesystem/Branch Variant Duplication
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `extractDescription` / `extractDescriptionFromBranch`, `detectTechStack` / `detectTechStackFromBranch`, `detectKeyFiles` / `detectKeyFilesFromBranch` are 3 pairs of functions with identical logic but different I/O sources (fs vs git). ~175 lines that could be ~100 with a strategy pattern. |
+| Complexity | Medium |
+| Depends On | `src/indexer/metadata.ts`, `src/indexer/git.ts` |
+
+**What to do:** Create a `FileReader` interface: `{ readFile(path): string | null, fileExists(path): boolean, listFiles(): string[] }`. Implement `FsFileReader` and `GitBranchFileReader`. All three detection functions take a `FileReader` parameter. Cuts 6 functions to 3.
+
+### DF-03: Type-Safe Entity Type Registry
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | Entity types are scattered across 6+ locations: `EntityType` union in `types/entities.ts`, `COARSE_TYPES` Set in `fts.ts`, `MODULE_SUB_TYPES` and `SERVICE_SUB_TYPES` Sets in `entity.ts`, `tableMap` in `resolveEntityName`, hydrate switch in `text.ts`, query switch in `entity.ts`. Adding a new entity type requires touching all of them. |
+| Complexity | Medium |
+| Depends On | `src/types/entities.ts`, `src/db/fts.ts`, `src/search/entity.ts`, `src/search/text.ts` |
+
+**What to do:** Create a centralized `EntityRegistry` (a typed config object, not a class) that maps entity type -> `{ tableName, nameColumn, descriptionColumn, joinSql, filePathExpression, subTypes }`. All the scattered switches and Sets derive from this single source of truth.
+
+### DF-04: `dependencies.ts` Upstream/Downstream Symmetry Extraction
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `findLinkedRepos` has mirrored upstream/downstream branches (L112-142 vs L142-176) with identical structure but swapped produces/consumes relationship types. ~64 lines that could be ~35. |
+| Complexity | Low |
+| Depends On | `src/search/dependencies.ts` |
+
+**What to do:** Parameterize by `{ sourceRelType, targetRelType }` -- upstream uses `{ consumes_event, produces_event }`, downstream uses the reverse. One code path handles both directions.
+
+### DF-05: `learned_fact` Not in EntityType Union
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `learned_fact` is stored in FTS as an entity_type string but is NOT in the `EntityType` union. This forces unsafe casts like `'learned_fact' as EntityType` in text.ts L253 and bypasses `indexEntity()` in store.ts L29-31 (writes directly to FTS with raw SQL). |
+| Complexity | Low |
+| Depends On | `src/types/entities.ts`, `src/knowledge/store.ts`, `src/search/text.ts` |
+
+**What to do:** Add `'learned_fact'` to the `EntityType` union. Update `learnFact()` to use `indexEntity()` instead of raw FTS INSERT. This eliminates the unsafe cast and ensures consistent FTS composite format (`learned_fact:learned_fact`).
+
+### DF-06: MCP Status Tool Inline SQL / CLI-MCP Status Divergence
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `status.ts` MCP tool has 7 individual `SELECT COUNT(*)` queries plus a staleness check loop -- all inline, untestable. CLI status command (`cli/commands/status.ts`) has its own count logic with a different shape. The two status outputs are inconsistent. |
+| Complexity | Medium |
+| Depends On | `src/mcp/tools/status.ts`, `src/cli/commands/status.ts` |
+
+**What to do:** Extract `getKbStats(db): KbStats` to a shared module (e.g., `src/db/stats.ts`). Both CLI and MCP status call it. Replace 7 separate COUNT queries with a single multi-table query or a reusable helper. Staleness checking logic already partially exists in `mcp/sync.ts` and `mcp/hygiene.ts` -- consolidate.
+
+### DF-07: `writer.ts` Module/Event Insert Duplication Between `persistRepoData` and `persistSurgicalData`
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | Both persist functions prepare identical INSERT statements for files, modules, events, and services. The module FTS description building logic (Ecto table name enrichment) is copy-pasted between them. ~70 lines duplicated. |
+| Complexity | Medium |
+| Depends On | `src/indexer/writer.ts` |
+
+**What to do:** Extract `insertModulesWithFts(db, repoId, modules)`, `insertEventsWithFts(db, repoId, events)`, `insertServicesWithFts(db, repoId, services)` as shared helpers. Both persist paths call these shared functions. The Ecto table name FTS enrichment logic lives in one place.
+
+### DF-08: Edge Insertion Function Sharing in `pipeline.ts`
+
+| Attribute | Detail |
+|-----------|--------|
+| Value Proposition | `insertEventEdges`, `insertGrpcClientEdges`, `insertEctoAssociationEdges` (lines 645-787) all prepare the same `INSERT INTO edges` statement independently. They also share the "look up same-repo then any-repo" entity resolution pattern. |
+| Complexity | Low |
+| Depends On | `src/indexer/pipeline.ts` |
+
+**What to do:** Extract a shared `resolveEntity(db, table, name, repoId): id | null` helper for the two-step "same repo first, then global" lookup pattern. Share the edge INSERT prepared statement.
 
 ## Anti-Features
 
-Features to explicitly NOT build in v1.1.
+Refactoring work that looks tempting but should NOT be done for this project.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Worker thread parallelism** | better-sqlite3 cannot share connections across threads. Worker threads would require each thread to open its own DB connection, and writes still serialize at the SQLite level. The bottleneck is I/O (filesystem scanning), not CPU. | Use `Promise.all` with `p-limit` for concurrent filesystem reads, serialize DB writes on main thread. |
-| **Full AST parsing for Elixir** | Would require an Elixir parser in JS (doesn't exist) or shelling out to `mix`. The regex approach in `elixir.ts` handles the well-structured patterns at Fresha. | Extend regex patterns for Ecto fields/associations and Absinthe macros. |
-| **GraphQL introspection from running services** | Would require services to be running, auth tokens, network access. Violates local-only constraint. | Parse `.graphql` SDL files and Absinthe source files statically. |
-| **EventCatalog SDK integration** | The `@eventcatalog/sdk` requires the catalog to be built and provides an API for reading/writing catalog entities. Overkill -- the raw JSON source files are simpler and contain everything needed. | Read the JSON source files directly from the `fresha-event-catalog` repo. |
-| **Real-time file watching for re-index** | Already out of scope per PROJECT.md. On-demand indexing is sufficient. | Keep existing on-demand `kb index` and MCP auto-sync patterns. |
-
-## Detailed Feature Specifications
-
-### 1. Branch-Aware Git Tracking (main/master only)
-
-**What it does:** When indexing, always resolve to the main/master branch HEAD, regardless of what branch is currently checked out locally.
-
-**Expected behavior:**
-- Determine the default branch name for each repo (could be `main`, `master`, or custom)
-- Use `git rev-parse origin/main` or `git rev-parse origin/master` to get the default branch HEAD
-- Compare against stored `last_indexed_commit` using the default branch SHA, not the checked-out HEAD
-- If the dev is on a feature branch, still index main/master content
-
-**Implementation approach:**
-1. Add `getDefaultBranch(repoPath)` to `git.ts`:
-   - Try `git symbolic-ref refs/remotes/origin/HEAD` (unreliable, may not be set)
-   - Fallback: try `git rev-parse --verify origin/main` then `origin/master`
-   - Cache result per repo (branch name doesn't change often)
-2. Add `getCommitForRef(repoPath, ref)` to resolve branch refs to SHAs
-3. Modify `getCurrentCommit()` to accept an optional branch parameter
-4. Update `indexSingleRepo` to use default branch SHA for comparison and content
-
-**Complexity:** LOW -- 3-4 small functions in `git.ts`, minor pipeline changes.
-
-**Edge cases:**
-- Repo has no remote (local-only): fall back to HEAD
-- `origin/HEAD` not set: use fallback chain main -> master -> HEAD
-- Detached HEAD state: still works since we're resolving origin/main explicitly
-
-**Confidence:** HIGH -- git commands are well-documented and deterministic.
-
-### 2. Surgical File-Level Re-Indexing
-
-**What it does:** When a repo has new commits, only re-extract entities from changed files instead of wiping everything and re-extracting all files.
-
-**Current problem (v1.0):** The pipeline calls `getChangedFiles()` to detect deleted files, but then runs ALL extractors on ALL files and calls `clearRepoEntities()` which wipes everything before re-inserting. The incremental detection exists but isn't used for anything beyond delete cleanup.
-
-**Expected behavior:**
-1. Get changed files via `git diff --name-status <last_commit>..HEAD`
-2. For deleted files: remove their entities (already implemented via `clearRepoFiles`)
-3. For added/modified files: remove old entities for those files, run extractors only on those files
-4. For unchanged files: do nothing -- their entities remain in the DB
-5. For force re-index: wipe and rebuild everything (existing behavior)
-
-**Implementation approach:**
-1. Modify extractors to accept a file list filter (optional):
-   - `extractElixirModules(repoPath, { files?: string[] })` -- if files provided, only process those
-   - `extractProtoDefinitions(repoPath, { files?: string[] })` -- same
-   - New extractors should follow this pattern from the start
-2. Modify `persistRepoData` to support incremental mode:
-   - Remove the `clearRepoEntities(db, repoId)` call for incremental updates
-   - Only clear entities from changed files via existing `clearRepoFiles`
-   - Upsert new entities from changed files
-3. Update `indexSingleRepo` to orchestrate: detect changed files -> clear changed file entities -> extract from changed files only -> persist
-
-**Complexity:** MEDIUM -- core refactor of the extraction/persistence pipeline. Touches `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`.
-
-**Key risk:** Event relationship detection currently scans ALL `.ex` files for consumer patterns. Surgical indexing needs to handle cross-file dependencies: if file A defines a consumer and file B is modified, file A's consumer relationships should remain untouched. This requires clean file-level isolation of entities, which the current `clearRepoFiles` mostly supports via `source_file` tracking.
-
-**Confidence:** HIGH -- the existing `clearRepoFiles` and `getChangedFiles` already provide the building blocks.
-
-### 3. Parallel Repo Indexing
-
-**What it does:** Index multiple repos concurrently instead of sequentially.
-
-**Expected behavior:**
-- Run extraction (filesystem reads, git commands) for multiple repos in parallel
-- Control concurrency to avoid overwhelming the filesystem
-- Serialize database writes (SQLite single-writer constraint)
-- Maintain per-repo error isolation (existing requirement IDX-07)
-- Show progress as repos complete
-
-**Implementation approach:**
-1. Use `p-limit` (or hand-rolled semaphore) for concurrency control
-2. Split the pipeline into two phases per repo:
-   - **Phase 1 (parallel):** Extract metadata, run file extractors, detect events -- pure filesystem I/O
-   - **Phase 2 (serial):** Persist to database -- `persistRepoData` in main thread
-3. Modify `indexAllRepos` to use `Promise.all` with limiter:
-   ```typescript
-   const limit = pLimit(4); // 4 repos at a time
-   const extractions = repos.map(repo => limit(() => extractRepoData(repo)));
-   const results = await Promise.all(extractions);
-   for (const result of results) { persistRepoData(db, result); }
-   ```
-4. This requires making extractors async (they currently use sync `fs.readFileSync`)
-
-**Complexity:** LOW-MEDIUM -- the architectural change is straightforward, but converting sync filesystem operations to async and restructuring the pipeline requires touching most indexer files.
-
-**Trade-off decision:** Don't use worker_threads. The SQLite writer constraint means workers can't write in parallel anyway, and the overhead of serializing extraction results across thread boundaries isn't worth it for I/O-bound work. `Promise.all` + async filesystem operations + `p-limit` is the right call.
-
-**Expected speedup:** 2-4x for full re-index (bottleneck shifts from sequential I/O to DB writes). Diminishing returns beyond 4-6 concurrent repos due to disk throughput limits.
-
-**Confidence:** HIGH -- well-established Node.js concurrency pattern.
-
-### 4. GraphQL Schema Extraction
-
-**What it does:** Extract types, queries, mutations, and subscriptions from two sources:
-1. `.graphql` SDL files (found in at least 10 repos: app-accounting-documents, app-packages, app-blocked-times, app-wallet-transfers, etc.)
-2. Absinthe macro definitions in `.ex` files
-
-**Expected behavior for `.graphql` files:**
-- Parse SDL using the `graphql` npm package's `parse()` function
-- Extract: object types (with fields), input types, enum types, query/mutation/subscription root fields
-- Store as searchable entities with repo association
-
-**Expected behavior for Absinthe `.ex` files:**
-- Regex-extract Absinthe macros: `object :name do`, `field :name, :type`, `query do`, `mutation do`, `input_object :name do`, `enum :name do`
-- Map to equivalent GraphQL type/field structures
-- Link to source file
-
-**Implementation approach:**
-1. **New extractor: `graphql.ts`**
-   - Find `.graphql` files recursively (like proto finder)
-   - Use `graphql` package `parse()` to get AST
-   - Walk `DocumentNode.definitions`, extract `ObjectTypeDefinition`, `InputObjectTypeDefinition`, `EnumTypeDefinition`, etc.
-   - Special handling for `Query`, `Mutation`, `Subscription` root types
-2. **Extend `elixir.ts`** for Absinthe patterns:
-   - Detect Absinthe schemas: `use Absinthe.Schema` or `use Absinthe.Schema.Notation`
-   - Regex patterns for `object :identifier do`, `field :name, :type`, `query do`, `mutation do`
-   - Classify as module type "graphql_schema" or "graphql_type"
-3. **Schema migration** (v3): Add `graphql_types` table or extend modules table with GraphQL-specific columns
-4. **FTS integration:** Index GraphQL type names and field names for search
-
-**New dependency:** `graphql` npm package (the reference implementation, ~200KB, no native deps, zero config). Used only for its parser -- not running a server.
-
-**Complexity:** MEDIUM -- the `.graphql` parser is trivial with the `graphql` package. Absinthe macro extraction via regex is more brittle but follows the same pattern as existing Elixir extraction.
-
-**Confidence:** HIGH for `.graphql` SDL parsing (official parser, well-documented AST). MEDIUM for Absinthe macro extraction (regex on macros is fragile but sufficient for common patterns).
-
-### 5. gRPC Service Definition Extraction
-
-**What it does:** Persist the service/RPC definitions that the proto parser already extracts but currently discards.
-
-**Current state:** `proto.ts` already has `extractServices()` which returns `ProtoService[]` with `ProtoRpc[]`. The `indexSingleRepo` pipeline maps proto messages to events but completely ignores the service blocks. The `RelationshipType` already includes `'calls_grpc'`.
-
-**Expected behavior:**
-- Store gRPC services as entities (service name, package, source file)
-- Store RPCs with their request/response types
-- Create `calls_grpc` edges when one repo's code references another repo's gRPC service
-- Make services searchable ("what gRPC endpoints does app-rewards expose?")
-
-**Implementation approach:**
-1. Map `ProtoService` data to a new entity type or reuse the existing `services` table
-2. Store each RPC as a module-like entity with type "grpc_rpc"
-3. Add edges: repo -> service (exposes_grpc), detect gRPC client calls in Elixir code (e.g., `Stub.method_name()` patterns)
-4. Update `persistRepoData` to handle gRPC service persistence
-
-**Complexity:** LOW -- the hard parsing work is done. This is plumbing existing data into the DB and FTS.
-
-**Confidence:** HIGH -- direct extension of existing code, no new parsing needed.
-
-### 6. Ecto Schema Extraction
-
-**What it does:** Extract database structure from Ecto schema definitions: table names (already captured), field names/types, associations, and embedded schemas.
-
-**Current state:** `elixir.ts` already detects `schema "table_name"` and classifies modules as type "schema". But it doesn't extract the fields or associations defined within the schema block.
-
-**Ecto schema patterns to extract:**
-```elixir
-schema "table_name" do
-  field :name, :string                    # field with type
-  field :status, Ecto.Enum, values: [...]  # enum field
-  belongs_to :user, User                   # association
-  has_many :orders, Order                  # association
-  has_one :profile, Profile                # association
-  many_to_many :tags, Tag                  # association
-  embeds_one :metadata, Metadata           # embedded schema
-  embeds_many :items, Item                 # embedded schema
-  timestamps()                             # auto-fields
-end
-```
-
-**Expected behavior:**
-- Extract all fields with their types from `field :name, :type` declarations
-- Extract associations (belongs_to, has_many, has_one, many_to_many) with target schema
-- Extract embedded schemas (embeds_one, embeds_many)
-- Detect timestamps() calls
-- Store as structured data associated with the module entity
-- Enable queries like "which schemas have a `partner_id` field?" or "what tables does app-rewards use?"
-
-**Implementation approach:**
-1. Extend `parseElixirFile` to capture field and association data when inside a `schema` block
-2. Add regex patterns:
-   - `field\s+:(\w+),\s+([\w.:]+)` for fields
-   - `(belongs_to|has_many|has_one|many_to_many)\s+:(\w+),\s+([\w.]+)` for associations
-   - `(embeds_one|embeds_many)\s+:(\w+),\s+([\w.]+)` for embeds
-   - `timestamps\(\)` for timestamp detection
-3. Store in existing `modules` table via extended summary, or add a new `schema_fields` table
-4. Create edges for associations (schema A -> schema B via `has_many`)
-
-**Complexity:** MEDIUM -- regex extraction is straightforward for well-formatted Ecto schemas. The association-to-edge mapping adds cross-repo relationship data.
-
-**Confidence:** HIGH for field/association regex extraction (Ecto has very consistent macro syntax). MEDIUM for cross-repo association resolution (target schema names may not match module names exactly).
-
-### 7. Event Catalog Integration
-
-**What it does:** Import curated domain knowledge from the `fresha-event-catalog` repo as a supplementary data source, enriching the KB with human-authored event descriptions, domain ownership, team assignments, and service metadata that code extraction alone cannot provide.
-
-**Data available in the Event Catalog:**
-- `sources/events/events.json`: ~200+ events with name, version, channels, producers, owners, domain, proto schema, description, protocol
-- `sources/services/services.json`: ~50+ services with name, owners, repo URL, language, description, domains, sends/receives
-- `sources/rpcs/rpcs.json`: ~100+ gRPC service definitions with methods, request/response schemas, domain, protocol
-
-**Expected behavior:**
-- Detect `fresha-event-catalog` repo in the repos directory (or allow configuring its path)
-- Parse the JSON source files (not the generated MDX)
-- Merge Event Catalog data with code-extracted data:
-  - Enrich events with descriptions, domain assignments, owner teams
-  - Enrich services with domain context, team ownership
-  - Add RPC definitions not found in individual repo proto files
-- Avoid duplicates: match by event name/service name between code-extracted and catalog data
-- Track catalog version/commit separately from individual repo commits
-
-**Implementation approach:**
-1. New extractor: `event-catalog.ts`
-   - Locate the catalog repo (scan repos directory or config)
-   - Parse `events.json`, `services.json`, `rpcs.json`
-   - Map to existing entity types (events, services, edges)
-2. Merge strategy: catalog data supplements code-extracted data
-   - If an event exists from code extraction AND catalog: catalog description wins, schema from code wins
-   - If an event exists only in catalog: create entity with catalog data
-   - Domain/owner metadata always comes from catalog (authoritative source)
-3. Schema migration: Add columns for domain, owner_team to relevant tables
-4. Indexing: treat catalog as a special "repo" that gets indexed alongside code repos
-
-**Complexity:** MEDIUM -- JSON parsing is trivial, the complexity is in the merge/deduplication logic and schema evolution.
-
-**Key risk:** Event names in the catalog may not match proto message names exactly. The catalog uses human-readable names ("Payment Failed") while proto uses message names ("PaymentFailed" or "payment_failed.v1.Payload"). Need a normalization/matching strategy.
-
-**Confidence:** HIGH for parsing (it's just JSON). MEDIUM for merge logic (name matching heuristics needed).
+| ORM/query builder layer | better-sqlite3's raw SQL with `.prepare()` is the right abstraction for this project size. An ORM adds complexity without value for 46 files. | Keep raw SQL. The entity registry config (DF-03) gives most of the DRY benefit without the abstraction cost. |
+| Abstract base class for MCP tools | 8 tool files don't warrant a class hierarchy. Composition (TS-01 wrapper + TS-02 auto-sync) handles it better. | Use HOF wrappers, not inheritance. |
+| Plugin architecture for extractors | Current 6 extractors are stable and hardcoded. A plugin system adds indirection for no user benefit. | Keep extractors as direct imports. Add new ones as new files + pipeline imports. |
+| Dependency injection container | The codebase passes `db` as a function parameter everywhere -- this IS dependency injection, just the simple kind. A DI container over-engineers a CLI tool. | Keep parameter passing. The `withDb` pattern in CLI is already clean. |
+| Monorepo/workspace split | 5.7K LOC doesn't warrant package boundaries. The current `src/` directory structure (db, indexer, search, mcp, cli, knowledge) already provides good module boundaries. | Keep as single package. |
+| Generic extractor result type | Elixir, proto, and GraphQL extractors return very different shapes. Forcing a common interface would lose type safety and require runtime type guards everywhere. | Keep specific types per extractor. The mapping to `ModuleData`/`EventData`/`ServiceData` in pipeline.ts is the right unification point. |
+| Async refactor for better-sqlite3 calls | better-sqlite3 is synchronous by design. Wrapping sync calls in `Promise.resolve()` or `setImmediate()` adds overhead without enabling true parallelism. The DB is the serialization point. | Keep synchronous DB operations. Only extraction (filesystem/git I/O) benefits from async. |
 
 ## Feature Dependencies
 
 ```
-Branch-Aware Git Tracking
-    |
-    +---> Surgical File-Level Re-Indexing
-              |
-              +---> Parallel Repo Indexing (benefits from surgical to reduce DB contention)
+TS-01 (error wrapper)     -- standalone, no dependencies
+TS-02 (auto-sync)         -- standalone, no dependencies
+TS-03 (db path)           -- standalone, no dependencies
+TS-04 (pipeline extract)  -- standalone (largest impact)
+TS-05 (hydration)         -- benefits from DF-03 (entity registry) but not required
+TS-06 (entity queries)    -- benefits from DF-03 (entity registry) but not required
+TS-07 (FTS fallback)      -- standalone
+TS-08 (clear entities)    -- standalone
+TS-09 (response format)   -- easier after TS-01 (error wrapper exists)
+TS-10 (prepared stmts)    -- standalone
 
-Existing proto.ts
-    |
-    +---> gRPC Service Definition Extraction (LOW effort, just wiring)
-
-Existing elixir.ts
-    |
-    +---> Ecto Schema Extraction (extend regex patterns)
-
-New graphql.ts + extended elixir.ts
-    |
-    +---> GraphQL Schema Extraction
-
-fresha-event-catalog repo
-    |
-    +---> Event Catalog Integration (independent track)
-
-Schema Migration (v3)
-    |
-    +---> All new extractors need DB storage
+DF-01 (git dedup)         -- standalone
+DF-02 (metadata strategy) -- standalone
+DF-03 (entity registry)   -- enables cleaner TS-05, TS-06, DF-05
+DF-04 (deps symmetry)     -- standalone
+DF-05 (learned_fact type) -- part of DF-03 effort or standalone
+DF-06 (status shared)     -- standalone
+DF-07 (writer inserts)    -- standalone
+DF-08 (edge inserts)      -- standalone
 ```
 
-### Critical Path
+## MVP Recommendation
 
-1. Branch-aware tracking MUST come before surgical indexing (surgical relies on accurate commit tracking against the right branch)
-2. Surgical indexing SHOULD come before parallelism (parallel extraction + serial persistence is cleaner with surgical updates)
-3. gRPC wiring is completely independent and can be done anytime
-4. GraphQL, Ecto, and Event Catalog extractors are independent of each other
-5. All extractors need a schema migration, so that should be designed upfront
+Prioritize these in order of impact-to-effort ratio:
 
-## Implementation Priority
+1. **TS-04: Pipeline extraction dedup** -- Largest single duplication (~130 lines). High risk of bugs when only one copy gets updated. Do this first.
+2. **TS-01: MCP error wrapper** -- Low effort, touches all 8 MCP tools. Creates the foundation for TS-09.
+3. **TS-02: MCP auto-sync dedup** -- Low effort, pairs naturally with TS-01.
+4. **TS-07: FTS fallback dedup** -- Quick win, shared by two search modules.
+5. **TS-03: DB path dedup** -- Trivial, 5-minute fix.
+6. **DF-01: git.ts dedup** -- Likely includes dead code removal. Quick win.
+7. **DF-07: Writer insert dedup** -- Moderate effort, reduces two-location bug risk in persistence layer.
+8. **TS-09: Response format consistency** -- After TS-01 is done, this becomes easy.
+9. **DF-05: learned_fact in EntityType** -- Small fix with outsized type-safety improvement.
 
-| Feature | Value | Effort | Priority | Phase Recommendation |
-|---------|-------|--------|----------|---------------------|
-| gRPC service definition extraction | HIGH | LOW | P0 | First -- it's nearly free |
-| Branch-aware git tracking | HIGH | LOW | P1 | Foundation for surgical indexing |
-| Surgical file-level re-indexing | HIGH | MEDIUM | P1 | Core improvement, enables parallelism |
-| Parallel repo indexing | MEDIUM | LOW-MED | P1 | Natural follow-on to surgical |
-| Ecto schema extraction | MEDIUM | MEDIUM | P2 | Extends existing extractor |
-| GraphQL schema extraction | MEDIUM | MEDIUM | P2 | New extractor with npm dep |
-| Event Catalog integration | HIGH | MEDIUM | P2 | Independent track, rich data source |
+**Defer to later milestones:**
+- **DF-02 (metadata strategy pattern)**: Works fine as-is, refactor only if adding a third I/O source.
+- **DF-03 (entity registry)**: High value but medium complexity. Better suited for when a new entity type is actually being added.
+- **DF-06 (shared status)**: The CLI and MCP status diverge intentionally (MCP adds staleness). Unify only when the divergence becomes a maintenance burden.
 
-**Rationale:** Start with what's nearly free (gRPC wiring), then fix the indexing pipeline foundation (branch + surgical + parallel), then add new extractors. Event Catalog integration is high value but independent, so it can be parallelized with extractor work.
+## Complexity Budget Summary
+
+| Category | Count | Estimated Total Effort |
+|----------|-------|----------------------|
+| Table Stakes (Low) | 6 items | ~4-6 hours |
+| Table Stakes (Medium) | 4 items | ~6-8 hours |
+| Differentiators (Low) | 4 items | ~3-4 hours |
+| Differentiators (Medium) | 4 items | ~6-8 hours |
+| **Total** | **18 items** | **~19-26 hours** |
+
+The table stakes items alone would eliminate approximately 350-400 lines of duplication and establish patterns that prevent future duplication in the same areas.
 
 ## Sources
 
-- Existing codebase analysis (`git.ts`, `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`) -- HIGH confidence
-- `fresha-event-catalog` repo structure and JSON source files -- HIGH confidence (direct inspection)
-- [GraphQL Tools schema loading](https://the-guild.dev/graphql/tools/docs/schema-loading) -- MEDIUM confidence
-- [graphql-js parse function](https://snyk.io/advisor/npm-package/graphql/functions/graphql.parse) -- HIGH confidence
-- [Absinthe Schema Notation docs](https://hexdocs.pm/absinthe/Absinthe.Schema.Notation.html) -- HIGH confidence
-- [Ecto Schema docs](https://hexdocs.pm/ecto/Ecto.Schema.html) -- HIGH confidence
-- [EventCatalog SDK](https://www.eventcatalog.dev/docs/sdk) -- MEDIUM confidence
-- [p-limit concurrency control](https://www.npmjs.com/package/p-limit) -- HIGH confidence
-- [better-sqlite3 worker thread safety](https://github.com/JoshuaWise/better-sqlite3/issues/237) -- HIGH confidence
-- [git symbolic-ref for default branch detection](https://git-scm.com/docs/git-symbolic-ref) -- HIGH confidence
-
----
-*Feature research for v1.1: Improved Reindexing & New Extractors*
-*Researched: 2026-03-06*
+- Direct codebase analysis of all 46 source files (HIGH confidence -- every file read in full)
+- Line-by-line comparison of duplicated patterns with specific line numbers cited
+- better-sqlite3 prepared statement caching behavior (training data, MEDIUM confidence)
+- MCP SDK tool handler type signatures (from codebase `@modelcontextprotocol/sdk` imports, HIGH confidence)

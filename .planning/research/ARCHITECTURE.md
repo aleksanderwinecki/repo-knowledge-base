@@ -1,676 +1,424 @@
-# Architecture: v1.1 Integration Analysis
+# Architecture Review: v1.2 Hardening & Module Tightening
 
-**Domain:** Improved reindexing and new extractors for existing knowledge base CLI
-**Researched:** 2026-03-06
-**Overall confidence:** HIGH (based on direct codebase analysis + verified domain patterns)
+**Domain:** Existing Node.js/TypeScript knowledge base CLI — module architecture review
+**Researched:** 2026-03-07
+**Confidence:** HIGH (direct codebase analysis of all 46 source files + 25 test files)
 
 ## Executive Summary
 
-The v1.1 features split into two categories: **pipeline infrastructure changes** (branch-aware tracking, surgical file-level indexing, parallel execution) and **new extractors** (GraphQL/Absinthe, gRPC, Ecto, Event Catalog). The good news: the existing architecture is well-layered enough that new extractors are pure additions. The bad news: surgical file-level indexing requires reworking the core pipeline's relationship between extractors and the writer, because today's extractors scan entire repos and the writer does full wipe-and-rewrite per repo.
+The codebase is in good shape for a 5.7K LOC project built in ~20 hours. Layering is clean: CLI and MCP are thin wrappers over core modules. There are no circular dependencies. The dependency graph flows downward: interface layers (CLI, MCP) -> core modules (search, indexer, knowledge) -> DB layer -> types. The few issues are the kind you'd expect from rapid development: code duplication in pipeline.ts, inconsistent extractor interfaces, FTS entity indexing split across two code paths, and test setup boilerplate repeated in every file.
 
-## Current Architecture (What Exists)
+The biggest wins are in three areas:
+1. **pipeline.ts** is 788 lines with massive duplication between `indexSingleRepo` and `extractRepoData`/`persistExtractedData` -- nearly identical extraction logic repeated twice
+2. **FTS indexing** has two divergent code paths (indexEntity in fts.ts vs raw INSERT in knowledge/store.ts)
+3. **Test setup** repeats the same temp-dir + openDatabase + cleanup pattern in all 25 test files
+
+None of these require architectural restructuring. They're all tighten-in-place fixes.
+
+## Current Module Architecture
 
 ```
-Pipeline Flow (today):
-  discoverRepos(rootDir)
-      |
-      v
-  for each repo (sequential):
-      |
-      +-- checkSkip(db, repoPath)  -- compare commit SHA, skip if unchanged
-      |
-      +-- indexSingleRepo(db, repoPath, options):
-            |
-            +-- extractMetadata(repoPath)       -- scans README, mix.exs, etc.
-            +-- detect isIncremental             -- checks if old commit reachable
-            +-- clearRepoFiles(deleted files)    -- ONLY handles deleted files
-            +-- extractElixirModules(repoPath)   -- scans ALL .ex files in lib/
-            +-- extractProtoDefinitions(repoPath)-- scans ALL .proto files
-            +-- detectEventRelationships(...)    -- scans ALL .ex files again
-            +-- persistRepoData(db, data):
-                  |
-                  +-- upsertRepo(metadata)
-                  +-- clearRepoEntities(repoId)  ** FULL WIPE **
-                  +-- insert all modules, events, FTS entries
-            +-- insertEventEdges(...)
+Interface Layer (thin wrappers, no business logic)
+  ┌─────────────────────┐    ┌─────────────────────────────┐
+  │  cli/               │    │  mcp/                       │
+  │  ├── index.ts       │    │  ├── server.ts (factory)    │
+  │  ├── db.ts (withDb) │    │  ├── format.ts (4KB limit)  │
+  │  ├── output.ts      │    │  ├── sync.ts (auto-reindex) │
+  │  └── commands/      │    │  ├── hygiene.ts (cleanup)   │
+  │      └── 8 files    │    │  └── tools/ (8 files)       │
+  └──────────┬──────────┘    └──────────────┬──────────────┘
+             │                              │
+             ├──────────────────────────────┘
+             v
+Core Layer (business logic, DB-aware)
+  ┌─────────────────┐  ┌────────────────┐  ┌──────────────┐
+  │  search/         │  │  indexer/       │  │  knowledge/  │
+  │  ├── text.ts     │  │  ├── pipeline  │  │  ├── store   │
+  │  ├── entity.ts   │  │  ├── writer    │  │  └── types   │
+  │  ├── deps.ts     │  │  ├── scanner   │  └──────────────┘
+  │  └── types.ts    │  │  ├── metadata  │
+  └────────┬─────────┘  │  ├── git       │
+           │            │  ├── elixir    │
+           │            │  ├── proto     │
+           │            │  ├── graphql   │
+           │            │  ├── events    │
+           │            │  └── catalog   │
+           │            └───────┬────────┘
+           │                    │
+           v                    v
+DB Layer (pure data operations)
+  ┌───────────────────────────────────────┐
+  │  db/                                  │
+  │  ├── database.ts (open/close/pragma)  │
+  │  ├── schema.ts (version check)        │
+  │  ├── migrations.ts (V1-V4)           │
+  │  ├── fts.ts (FTS5 CRUD + type ops)   │
+  │  └── tokenizer.ts (pure function)    │
+  └───────────────────────────────────────┘
+           │
+  ┌────────┴──────────┐
+  │  types/entities.ts │  (shared type definitions)
+  └───────────────────┘
 ```
 
-### Critical Observation
+### Dependency Direction (verified, no cycles)
 
-Despite having `isIncremental` detection and `clearRepoFiles()` for surgical deletion, the pipeline **always does full extraction + full wipe-and-rewrite**. The incremental path only handles clearing data for deleted files before the full wipe happens anyway. `clearRepoFiles` exists but its effect is immediately erased by `clearRepoEntities` in `persistRepoData`.
+All imports flow downward through the layers:
+- **CLI commands** import from `search/`, `knowledge/`, `db/fts.ts`, `cli/db.ts`, `cli/output.ts`
+- **MCP tools** import from `search/`, `knowledge/`, `mcp/format.ts`, `mcp/sync.ts`
+- **MCP sync/hygiene** import from `indexer/` -- this is the only cross-layer import within the core, and it's justified (sync needs to trigger re-indexing)
+- **search/** imports from `db/fts.ts`, `db/tokenizer.ts`, `types/entities.ts`
+- **indexer/writer** imports from `db/fts.ts` -- the one upward-adjacent dependency, necessary for FTS sync
+- **knowledge/store** imports from `db/tokenizer.ts` -- but bypasses `db/fts.ts` (problem, see below)
+- **db/** only imports from `types/`
 
-This means surgical file-level indexing is not a tweak -- it is a pipeline mode change.
+No circular dependencies exist. Layer boundaries are respected.
 
-## Integration Analysis: Feature by Feature
+## Findings by Area
 
-### 1. Branch-Aware Tracking
+### 1. Code Duplication: pipeline.ts (CRITICAL)
 
-**What changes:** `git.ts` + `pipeline.ts` (checkSkip)
-**What's new:** Nothing new needed beyond modifying `getCurrentCommit`
-**Complexity:** Low
+**The problem:** `pipeline.ts` is 788 lines -- the largest file by far -- because it contains two nearly identical extraction flows:
 
-Today, `getCurrentCommit` runs `git rev-parse HEAD`, which returns whatever branch is checked out -- including PR branches a developer might be reviewing. The fix is to resolve the main/master branch ref instead of HEAD.
+- `indexSingleRepo()` (lines 448-637): Used for single repo indexing and by `mcp/sync.ts`
+- `extractRepoData()` + `persistExtractedData()` (lines 83-286): Used by `indexAllRepos()` for parallel batching
 
-**Implementation approach:**
+Both paths contain identical:
+- Extractor invocations (extractElixirModules, extractProtoDefinitions, extractGraphqlDefinitions)
+- Module mapping logic (elixirModuleData, graphqlModules, absintheModules, allModules)
+- Service mapping from proto definitions
+- Surgical vs full mode determination
+- Event data assembly from proto messages
+
+**How it happened:** `indexAllRepos` was refactored for parallel extraction (phase 2 = parallel, phase 3 = serial persist), so the extraction logic was duplicated into `extractRepoData`. `indexSingleRepo` was kept as-is for the sync path.
+
+**Fix:** Extract a shared `extractRepoData()` function used by both paths. `indexSingleRepo` becomes: snapshot DB state -> `extractRepoData()` -> `persistExtractedData()`. The 3-phase pipeline in `indexAllRepos` uses the same functions.
+
+**Impact:** ~200 LOC reduction, single source of truth for extraction logic.
+
+### 2. FTS Indexing: Two Divergent Paths (HIGH)
+
+**The problem:** There are two ways entities get indexed into FTS:
+
+1. **Via `db/fts.ts` `indexEntity()`**: Used by `indexer/writer.ts` for repos, modules, events, services. Handles tokenization, composite type formatting, and delete-then-insert upsert.
+
+2. **Via raw INSERT in `knowledge/store.ts` `learnFact()`**: Directly inserts into `knowledge_fts` with its own tokenization call. Uses `'learned_fact'` as entity_type (not composite format -- writes `'learned_fact'` instead of `'learned_fact:learned_fact'`).
+
+This means:
+- `learnFact` produces entity_type = `'learned_fact'` while `indexEntity` would produce `'learned_fact:learned_fact'`
+- `forgetFact` deletes with `entity_type = 'learned_fact'` (exact match) while `removeEntity` uses `LIKE 'type:%'` pattern
+- The composite type system is inconsistent for learned facts
+
+The `text.ts` hydration handles this because `parseCompositeType` falls back for strings without colons (returns `{ entityType: 'learned_fact', subType: 'learned_fact' }`), but it's fragile.
+
+**Fix:** Either:
+- (a) Add `'learned_fact'` to `EntityType` and use `indexEntity()` / `removeEntity()` in `knowledge/store.ts`
+- (b) Or create a dedicated `indexFact()` / `removeFact()` in `db/fts.ts` that explicitly uses the composite format
+
+Option (a) is cleaner. The EntityType union just needs to include `'learned_fact'`.
+
+### 3. Extractor Interface Inconsistency (MEDIUM)
+
+**The problem:** The five extractors have three different interface patterns:
+
+| Extractor | Input | Returns | Notes |
+|-----------|-------|---------|-------|
+| `extractElixirModules` | `(repoPath, branch)` | `ElixirModule[]` | Rich type with many fields |
+| `extractProtoDefinitions` | `(repoPath, branch)` | `ProtoDefinition[]` | File-grouped with messages + services |
+| `extractGraphqlDefinitions` | `(repoPath, branch)` | `GraphqlDefinition[]` | File-grouped with types |
+| `detectEventRelationships` | `(repoPath, branch, protos, elixirModules)` | `EventRelationship[]` | Depends on other extractors' output |
+| `enrichFromEventCatalog` | `(db, rootDir)` | `{matched, skipped}` | DB-aware, runs post-persist, filesystem-based |
+
+The first three follow the same pattern (repo + branch -> parsed data), which is good. `detectEventRelationships` takes other extractors' output as input -- reasonable since it correlates across types. `enrichFromEventCatalog` is the outlier: it reads from filesystem (not git branch) and writes directly to DB.
+
+Each extractor also internally calls `listBranchFiles` + `readBranchFile` independently, which means the same `git ls-tree` is called 3+ times per repo (once per extractor). This is cached by the OS but still redundant.
+
+**Fix:**
+- Share the `listBranchFiles` result across extractors by passing it as a parameter or computing once in the pipeline
+- Consider a common `ExtractorContext` type: `{ repoPath: string; branch: string; allFiles: string[]; readFile: (path: string) => string | null }`
+- Leave `enrichFromEventCatalog` as-is -- it's a post-processing enrichment step, not a per-repo extractor
+
+### 4. DB Access Patterns (MEDIUM)
+
+**What's good:**
+- `better-sqlite3` is synchronous, so no connection pool management needed
+- Transactions are used correctly in `persistRepoData`, `persistSurgicalData`, `forgetFact`
+- `withDb` / `withDbAsync` in CLI ensures connections are always closed
+- WAL mode + NORMAL sync is the right default for local-only tool
+
+**What could be tighter:**
+
+**4a. Statement preparation inside loops.** In `clearRepoEntities`, `clearRepoFiles`, and `insertEventEdges`, statements like `db.prepare(...)` are called inside loops. `better-sqlite3` does cache prepared statements internally, so this isn't a performance bug, but it's an inconsistent pattern -- some functions (like `persistSurgicalData`) prepare once outside the loop and reuse.
+
+**4b. Missing transaction boundaries.** `clearRepoEntities()` is not wrapped in a transaction. It's a multi-step operation (delete FTS entries, delete modules, delete events, delete files, delete services) that could leave the DB in an inconsistent state if interrupted. The caller `persistRepoData` wraps it in a transaction, but `clearRepoEntities` is also called directly from `mcp/hygiene.ts` `pruneDeletedRepos` which wraps its own transaction -- so this works, but the function's API doesn't make this requirement explicit.
+
+**4c. Edge clearing is scattered.** Edge deletion logic is spread across:
+- `clearRepoEntities` (deletes edges by source_type='repo')
+- `clearRepoEdges` (deletes edges by source_type='repo' AND by service source)
+- `clearRepoFiles` (deletes edges by source_file)
+- `insertEventEdges` / `insertGrpcClientEdges` / `insertEctoAssociationEdges` in pipeline.ts
+
+This makes it hard to reason about edge lifecycle. All edge operations are correct today, but adding a new edge type would require touching multiple files.
+
+**Fix:**
+- Move edge operations into `writer.ts` (they're currently in `pipeline.ts`)
+- Make `clearRepoEntities` explicitly document that it must run inside a transaction, or wrap itself in one (idempotent via `db.transaction` nesting)
+
+### 5. Error Propagation Patterns (MEDIUM)
+
+**What's good:**
+- Extractors use try/catch with `continue` to skip bad files (error isolation)
+- MCP tools wrap all handlers in try/catch and return `isError: true`
+- Pipeline catches per-repo errors and continues to next repo
+
+**What's inconsistent:**
+
+**5a. Silent error swallowing.** Many catch blocks are empty: extractors catch and skip files without any logging. This is fine for the "skip unreadable files" case, but makes debugging hard when extractors silently produce no output for a repo.
+
+**5b. `console.warn` vs `console.error` vs silent.** Error reporting is inconsistent:
+- `pipeline.ts`: `console.error` for repo failures, `console.warn` for catalog enrichment
+- `mcp/server.ts`: `console.error` for fatal errors
+- CLI: `outputError()` for user-facing errors
+- Extractors: silent skip
+
+There's no structured logging. Not a problem at current scale, but would help debugging.
+
+**5c. The `resolveDefaultBranch` function swallows `gh` CLI failures.** It calls `gh repo view` with a 5-second timeout, and if `gh` is not installed or network is unavailable, it silently falls back to main/master probing. This is correct behavior but the timeout can delay indexing by 5 seconds per repo if `gh` is installed but the network is slow.
+
+### 6. Shared State / Globals (LOW)
+
+The codebase has almost no shared mutable state. Key observations:
+- DB connection is passed explicitly via function parameters (no singleton)
+- CLI uses `withDb` for lifecycle management
+- MCP creates one connection in `main()` and passes it to `createServer` -> all tools
+- `SCHEMA_VERSION` and `COARSE_TYPES` are module-level constants (immutable)
+- `registerShutdownHandlers` installs process listeners -- these are global side effects but only run in the CLI/MCP entry points, not in tests
+- `p-limit` in pipeline.ts is created per `indexAllRepos` call (not shared)
+
+No fixes needed here. This is clean.
+
+### 7. Testing Architecture (MEDIUM)
+
+**What's good:**
+- 388 tests across 25 files, solid coverage
+- Tests mirror src/ structure (tests/db/, tests/indexer/, tests/search/, etc.)
+- Pure parse functions (parseElixirFile, parseProtoFile, parseGraphqlFile) are tested without DB
+- MCP tools are tested via direct handler invocation (smart -- avoids stdio transport)
+- Pipeline tests create real git repos with `git init` + `git commit`
+
+**What's repetitive:**
+
+**7a. DB setup boilerplate.** Every test file that needs a database repeats this:
 
 ```typescript
-// git.ts -- new function
-export function getDefaultBranchCommit(repoPath: string): string | null {
-  // Try refs in order: main, master, then fall back to HEAD
-  for (const branch of ['main', 'master']) {
-    try {
-      const sha = execSync(`git rev-parse refs/heads/${branch}`, {
-        cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-      if (sha) return sha;
-    } catch {
-      continue;
-    }
-  }
-  // Fallback: use HEAD (detached HEAD, unusual branch names)
-  return getCurrentCommit(repoPath);
-}
+let db: Database.Database;
+let dbPath: string;
+
+beforeEach(() => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-UNIQUE-'));
+  dbPath = path.join(tmpDir, 'test.db');
+  db = openDatabase(dbPath);
+});
+
+afterEach(() => {
+  closeDatabase(db);
+  const dir = path.dirname(dbPath);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 ```
 
-**Changes to existing code:**
-- `git.ts`: Add `getDefaultBranchCommit()` function
-- `metadata.ts`: Change `extractMetadata` to call `getDefaultBranchCommit` instead of `getCurrentCommit`
-- `pipeline.ts` (checkSkip): The comparison logic stays the same since it already compares stored commit vs current commit
+This pattern appears in 18+ test files. A shared test helper would eliminate ~100 lines of boilerplate.
 
-**For `getChangedFiles`:** Must also diff against the default branch commit, not HEAD. Current signature `getChangedFiles(repoPath, sinceCommit)` already takes the old commit and diffs to HEAD. Change the diff target:
+**7b. Test data factory duplication.** Multiple test files create similar RepoMetadata objects, module data, etc. The `writer.test.ts` has `makeMetadata()`, and `text.test.ts` has inline `persistRepoData` calls with similar data. These could share fixture factories.
 
-```typescript
-// Instead of: git diff --name-status ${sinceCommit}..HEAD
-// Use:        git diff --name-status ${sinceCommit}..${defaultBranch}
-export function getChangedFiles(
-  repoPath: string,
-  sinceCommit: string,
-  targetRef?: string, // default: resolved main/master branch
-): { added: string[]; modified: string[]; deleted: string[] }
-```
+**7c. MCP tool testing uses internal `_registeredTools` access.** The `callTool` helper in `tools.test.ts` accesses `(server as unknown as { _registeredTools: ... })._registeredTools[toolName]`, which is brittle -- internal API of McpServer that could break on SDK upgrades.
 
-**Integration points:** 2 modified files (git.ts, metadata.ts), 0 new files
-**Risk:** Low. A branch name resolution failure falls back to HEAD, maintaining current behavior.
+**Fix:**
+- Create `tests/helpers/db.ts` with `createTestDb()` returning `{ db, cleanup }` and maybe a vitest fixture
+- Create `tests/helpers/fixtures.ts` with factory functions for common test data
+- For MCP tool testing, consider using the SDK's in-memory transport if available, or accept the internal access as a pragmatic choice and document it
 
----
+## Module Coupling Analysis
 
-### 2. Surgical File-Level Indexing
+### Import Graph (most-imported modules)
 
-**What changes:** `pipeline.ts`, `writer.ts`, all extractors
-**What's new:** Extractor interface refactoring, file-scoped persistence
-**Complexity:** HIGH -- this is the biggest architectural change
+| Module | Imported By | Role |
+|--------|-------------|------|
+| `db/fts.ts` | writer, search/text, search/entity, search/index, cli/search, mcp/list-types | FTS operations hub |
+| `db/tokenizer.ts` | fts, search/text, search/entity, knowledge/store | Pure tokenization |
+| `types/entities.ts` | fts, writer, search/text, search/entity, search/types | Type definitions |
+| `indexer/git.ts` | elixir, proto, graphql, events, metadata, pipeline, mcp/sync, mcp/status | Git operations |
+| `knowledge/store.ts` | cli/learn, cli/learned, cli/forget, mcp/learn, mcp/forget | CRUD for facts |
+| `mcp/format.ts` | All MCP tools except status | Response sizing |
+| `mcp/sync.ts` | MCP tools: search, entity, deps | Auto-reindex |
 
-**The core problem:** Today's extractors take a `repoPath` and internally find+read all relevant files. The pipeline has no way to tell an extractor "only process these specific files." And `persistRepoData` always calls `clearRepoEntities` (full wipe) before inserting.
+**Observations:**
+- `db/fts.ts` is the most coupled module -- it's imported by 6 files across 3 layers. This is acceptable because it's the central FTS abstraction, but the `search/index.ts` barrel re-exporting `listAvailableTypes` from `../db/fts.js` creates a layer violation: search module's public API includes a raw DB function.
+- `indexer/git.ts` is imported by 8 files but only within the indexer layer + MCP (where sync/status need git operations). Clean.
+- `mcp/sync.ts` importing from `indexer/pipeline.ts` is the one cross-core-module dependency. Justified.
 
-**Required changes:**
+### Layer Boundary Violations
 
-#### A. Extractor Interface: Add File-Scoped Mode
+| Violation | Where | Severity | Notes |
+|-----------|-------|----------|-------|
+| search/index.ts re-exports from db/fts.ts | `export { listAvailableTypes } from '../db/fts.js'` | LOW | Should be wrapped in a search-layer function |
+| search/text.ts imports from db/fts.ts | `resolveTypeFilter`, `parseCompositeType` | LOW | FTS query construction belongs in search, but the FTS filter utilities live in db |
+| search/entity.ts imports from db/fts.ts | `COARSE_TYPES`, `resolveTypeFilter`, `parseCompositeType` | LOW | Same as above |
+| mcp/tools/list-types.ts imports from db/fts.ts | `listAvailableTypes` | LOW | Bypasses search layer |
+| mcp/tools/status.ts imports from indexer/git.ts | `getCurrentCommit` | LOW | Could go through a status query in search layer |
+| knowledge/store.ts bypasses db/fts.ts | Raw FTS INSERT instead of indexEntity | MEDIUM | See Finding #2 |
 
-Each extractor needs to accept an optional file filter. Two approaches:
+These are all LOW severity individually. The search -> db/fts imports are defensible because `db/fts.ts` is an FTS utility layer that both search and indexer need. But if this bothers you, the type filter utilities (`resolveTypeFilter`, `parseCompositeType`, `COARSE_TYPES`, `listAvailableTypes`) could move into `search/types.ts` or a new `search/fts-helpers.ts`.
 
-**Option A (recommended): Filter at the file-discovery layer.**
-Extractors already have internal `findExFiles` / `findProtoFiles` functions. Add a `fileFilter` parameter that, when provided, intersects with the discovered files.
+## What NOT to Refactor (Leave Alone)
 
-```typescript
-// Before (elixir.ts):
-export function extractElixirModules(repoPath: string): ElixirModule[]
+These are well-designed and should be preserved as-is:
 
-// After:
-export function extractElixirModules(
-  repoPath: string,
-  changedFiles?: Set<string>,  // relative paths; if provided, only process these
-): ElixirModule[]
-```
+| Module | Why It's Good |
+|--------|---------------|
+| `db/database.ts` | Minimal, correct. WAL + FK + NORMAL pragma. Clean open/close/shutdown. |
+| `db/tokenizer.ts` | Pure function, well-tested, zero dependencies. |
+| `db/migrations.ts` | Simple sequential migrations, transaction-wrapped. |
+| `cli/db.ts` | `withDb`/`withDbAsync` is exactly the right pattern for CLI lifecycle. |
+| `cli/output.ts` | Minimal JSON output. Nothing to improve. |
+| `mcp/format.ts` | Recursive halving for 4KB limit is elegant and well-tested. |
+| `mcp/server.ts` | Clean factory pattern. Good DI of DB connection. |
+| `indexer/scanner.ts` | Simple, correct. No changes needed. |
+| `indexer/git.ts` | Comprehensive git plumbing. Each function is independent and well-named. |
+| `search/dependencies.ts` | BFS with cycle detection, clean separation. |
+| `knowledge/` | Two files, clear CRUD. Only fix is the FTS path (Finding #2). |
+| All pure parser functions | `parseElixirFile`, `parseProtoFile`, `parseGraphqlFile`, `parseFrontmatter` -- pure, testable. |
 
-Inside the extractor, when `changedFiles` is provided, skip files not in the set. This is minimally invasive -- each extractor needs ~3 lines of filtering added.
+## Suggested Review Order
 
-**Option B (rejected): Extractors accept file content directly.**
-This would require the pipeline to read files and pass content to extractors. But extractors like Elixir/proto need to discover files by extension within directories, and the event detector needs to scan for consumer patterns across multiple files. Passing individual files breaks cross-file analysis.
+Based on coupling (review high-coupling modules first, so fixes propagate cleanly):
 
-#### B. Writer: Add File-Scoped Persistence Mode
+| Order | Module(s) | Focus Area | Estimated Impact |
+|-------|-----------|------------|------------------|
+| 1 | `indexer/pipeline.ts` | Dedup extraction logic, extract shared function | HIGH -- 200+ LOC reduction |
+| 2 | `db/fts.ts` + `knowledge/store.ts` | Unify FTS indexing path, add learned_fact to EntityType | HIGH -- consistency fix |
+| 3 | `indexer/writer.ts` + edge operations in pipeline.ts | Consolidate edge CRUD into writer | MEDIUM -- maintainability |
+| 4 | Test helpers | Extract DB setup, fixture factories | MEDIUM -- reduce boilerplate |
+| 5 | Extractor interface | Share file listing, optional ExtractorContext | LOW-MEDIUM -- performance + consistency |
+| 6 | `search/text.ts` + `search/entity.ts` | Statement preparation, type filter extraction | LOW -- minor cleanup |
+| 7 | Error handling consistency | Add structured logging for silent catch blocks | LOW -- debugging aid |
 
-`persistRepoData` needs a mode that clears+reinserts only entities from specific files, not the whole repo.
+## Data Flow
 
-```typescript
-// New function alongside existing persistRepoData:
-export function persistFileData(
-  db: Database.Database,
-  repoId: number,
-  changedFiles: string[],  // files being re-indexed
-  data: Omit<RepoData, 'metadata'>,
-): void {
-  db.transaction(() => {
-    // 1. Clear entities from changed files only
-    clearRepoFiles(db, repoId, changedFiles);
-    // 2. Insert new entities (same logic as persistRepoData but without repo upsert/wipe)
-    insertModules(db, repoId, data.modules ?? []);
-    insertEvents(db, repoId, data.events ?? []);
-  })();
-}
-```
-
-The existing `clearRepoFiles` already handles per-file entity removal with FTS cleanup. It just needs to be used in the right place.
-
-#### C. Pipeline: Dual-Mode Orchestration
-
-```typescript
-export function indexSingleRepo(db, repoPath, options): IndexStats {
-  const metadata = extractMetadata(repoPath);
-  const repoName = metadata.name;
-
-  // Determine mode
-  const existingRow = getExistingRepo(db, repoName);
-  const isIncremental = canDoIncremental(existingRow, metadata, options);
-
-  if (isIncremental) {
-    // SURGICAL PATH
-    const changes = getChangedFiles(repoPath, existingRow.last_indexed_commit);
-    const changedSet = new Set([...changes.added, ...changes.modified]);
-
-    // Update repo metadata (commit SHA, description may have changed)
-    upsertRepo(db, metadata);
-
-    // Clear deleted files
-    if (changes.deleted.length > 0) {
-      clearRepoFiles(db, existingRow.id, changes.deleted);
-    }
-
-    // Run extractors with file filter
-    const elixirModules = extractElixirModules(repoPath, changedSet);
-    const protoDefinitions = extractProtoDefinitions(repoPath, changedSet);
-    const eventRelationships = detectEventRelationships(repoPath, protoDefinitions, elixirModules);
-
-    // Persist only changed file entities
-    const changedFilePaths = [...changedSet];
-    persistFileData(db, existingRow.id, changedFilePaths, { modules, events });
-    insertEventEdges(db, existingRow.id, eventRelationships);
-
-  } else {
-    // FULL PATH (same as today)
-    const stats = fullIndex(db, repoPath, metadata);
-    return stats;
-  }
-}
-```
-
-**Integration points:**
-- Modified: `pipeline.ts` (dual-mode logic), `writer.ts` (new `persistFileData`), `elixir.ts`, `proto.ts`, `events.ts` (file filter parameter)
-- Existing `clearRepoFiles` is already correct for surgical deletion -- it just needs to be called at the right time
-
-**Risk:** MEDIUM. The event detector (`events.ts`) scans for consumer patterns across ALL .ex files in lib/. If only the changed files are processed, a new consumer added in file A that references a proto from unchanged file B will still be detected (the consumer pattern is self-contained per file). But if a proto message name changes in an unchanged proto file, consumers referencing the old name in changed files will create orphaned event entities. This is an acceptable edge case -- `--force` full reindex resolves it.
-
----
-
-### 3. Parallel Repo Execution
-
-**What changes:** `pipeline.ts` (indexAllRepos)
-**What's new:** Worker thread infrastructure OR simple child_process parallelism
-**Complexity:** MEDIUM
-
-**The constraint:** `better-sqlite3` connections cannot be shared across threads. Each worker needs its own connection. But all workers write to the same database file. SQLite in WAL mode allows concurrent readers and serializes writers, so parallel writes will work but serialize at the SQLite level.
-
-**Recommended approach: Process-level parallelism with result aggregation.**
-
-Don't use `worker_threads` with multiple DB connections. Instead, separate the CPU-bound work (file reading + regex extraction) from the I/O-bound work (DB writes):
+### Indexing Flow (current)
 
 ```
-Phase 1 (parallel): Extract data from repos (CPU-bound, no DB)
-  - Each "worker" runs extractors for one repo
-  - Returns structured data (modules, protos, events)
-  - No DB access needed
-
-Phase 2 (sequential): Persist results to DB (I/O-bound, single connection)
-  - Main thread iterates over extraction results
-  - Calls persistRepoData for each
-  - Single DB connection, no threading issues
+CLI: kb index --root ~/Repos
+  |
+  v
+withDbAsync -> openDatabase -> initializeSchema (migrations)
+  |
+  v
+indexAllRepos(db, options)
+  |
+  +-- Phase 1 (sequential): discoverRepos -> resolveDefaultBranch -> checkSkip -> snapshot DB
+  |
+  +-- Phase 2 (parallel, p-limit): extractRepoData(repoPath, options, branch, dbSnapshot)
+  |     |
+  |     +-- extractMetadata (git show README, mix.exs, etc.)
+  |     +-- extractElixirModules (git ls-tree -> git show per .ex file -> parseElixirFile)
+  |     +-- extractProtoDefinitions (git ls-tree -> git show per .proto -> parseProtoFile)
+  |     +-- extractGraphqlDefinitions (git ls-tree -> git show per .graphql -> parseGraphqlFile)
+  |     +-- detectEventRelationships (from proto + elixir data + scan .ex for consumers)
+  |     +-- determine surgical vs full mode
+  |     +-- return ExtractedRepoData (no DB access in this phase)
+  |
+  +-- Phase 3 (sequential): persistExtractedData(db, extracted)
+        |
+        +-- persistRepoData or persistSurgicalData (transaction-wrapped)
+        |     +-- upsertRepo
+        |     +-- clearRepoEntities or clearRepoFiles
+        |     +-- insert modules + FTS index
+        |     +-- insert events + FTS index
+        |     +-- insert services + FTS index
+        |
+        +-- insertEventEdges (outside transaction)
+        +-- insertGrpcClientEdges (outside transaction)
+        +-- insertEctoAssociationEdges (outside transaction)
+  |
+  +-- enrichFromEventCatalog (post-persist, filesystem-based)
 ```
 
-**Implementation:**
-
-```typescript
-import { cpus } from 'os';
-
-export async function indexAllReposParallel(
-  db: Database.Database,
-  options: IndexOptions,
-): Promise<IndexResult[]> {
-  const repos = discoverRepos(options.rootDir);
-  const toIndex = repos.filter(r => !shouldSkip(db, r, options));
-
-  // Phase 1: Parallel extraction (no DB access)
-  const concurrency = Math.min(cpus().length, 8);
-  const extractionResults = await parallelMap(
-    toIndex,
-    (repoPath) => extractRepoData(repoPath, options), // pure extraction, no DB
-    concurrency,
-  );
-
-  // Phase 2: Sequential persistence (single DB connection)
-  const results: IndexResult[] = [];
-  for (const { repoPath, data, error } of extractionResults) {
-    if (error) {
-      results.push({ repo: path.basename(repoPath), status: 'error', error });
-      continue;
-    }
-    try {
-      persistRepoData(db, data);
-      results.push({ repo: path.basename(repoPath), status: 'success', stats: data.stats });
-    } catch (e) {
-      results.push({ repo: path.basename(repoPath), status: 'error', error: e.message });
-    }
-  }
-  return results;
-}
-
-// Simple promise-pool for bounded concurrency
-async function parallelMap<T, R>(
-  items: T[],
-  fn: (item: T) => Promise<R>,
-  concurrency: number,
-): Promise<R[]> {
-  const results: R[] = [];
-  const executing = new Set<Promise<void>>();
-
-  for (const item of items) {
-    const p = fn(item).then(r => { results.push(r); });
-    executing.add(p);
-    p.finally(() => executing.delete(p));
-    if (executing.size >= concurrency) {
-      await Promise.race(executing);
-    }
-  }
-  await Promise.all(executing);
-  return results;
-}
-```
-
-**Why not worker_threads:** The extraction work is file I/O + regex, which is already fast. The real bottleneck for ~50 repos is the sequential loop. `Promise.all` with bounded concurrency using async file reads gets 80% of the parallelism benefit with 10% of the complexity. Worker threads would only matter if extraction were truly CPU-bound (AST parsing, etc.), which regex-based extractors are not.
-
-**The catch:** Current extractors use `fs.readFileSync`. To parallelize with async concurrency, extractors would need async variants OR we use worker_threads for true parallelism with sync code. A pragmatic middle ground: use `Promise.all` around the existing sync extractors. Node.js will interleave the sync work since each `extractRepoData` call returns a promise that wraps synchronous work. This won't achieve true parallelism but will be enough for the I/O-bound file discovery step.
-
-**Better pragmatic approach: Just use a simple batching loop.**
-
-```typescript
-// Batch repos into groups of N, process each group synchronously
-// This is dumb but effective for 50-100 repos with sync extractors
-function indexAllReposBatched(db, options): IndexResult[] {
-  const repos = discoverRepos(options.rootDir);
-  // ... skip check ...
-  // Process sequentially but with extraction separated from persistence
-  // The real win is decoupling extraction from DB writes
-}
-```
-
-Actually, let me revise: with sync `fs.readFileSync` and sync better-sqlite3, **true parallelism requires worker_threads**. The simplest correct approach:
-
-```typescript
-// worker.ts -- runs in worker thread
-import { parentPort, workerData } from 'worker_threads';
-// Each worker extracts one repo (CPU + file I/O, no DB)
-const result = extractRepoData(workerData.repoPath);
-parentPort.postMessage(result);
-```
-
-**Integration points:**
-- Modified: `pipeline.ts` (new `indexAllReposParallel` or batched variant)
-- New: `worker.ts` (if using worker_threads) or just a `parallelMap` utility
-- Extractors: No changes needed (each worker calls them normally)
-- Writer: No changes needed (main thread handles all DB writes sequentially)
-
-**Risk:** LOW if extraction is separated from persistence. The tricky part is serializing the structured extraction results across the worker boundary (they must be serializable -- no DB handles, no file handles). Current extractor return types (`ElixirModule[]`, `ProtoDefinition[]`, `EventRelationship[]`) are already plain objects, so this works.
-
----
-
-### 4. GraphQL/Absinthe Extractor
-
-**What changes:** Nothing existing
-**What's new:** `src/indexer/graphql.ts`, schema changes for new entity data
-**Complexity:** MEDIUM
-
-Based on analysis of real Absinthe schemas in the repos (e.g., `app-appointments-manager`), the patterns to extract:
-
-**File discovery:** `.ex` files containing `use Absinthe.Schema` or `use Absinthe.Schema.Notation`
-
-**Extraction targets:**
-- **Types:** `object :name do` blocks with their fields
-- **Queries:** `field :name` inside `query do` or in modules imported via `import_types`
-- **Mutations:** `field :name` inside `mutation do` or imported mutation modules
-- **Input objects:** `input_object :name do` blocks
-- **Enums:** `enum :name do` blocks
-
-**Regex patterns (validated against real code):**
-
-```typescript
-// Object types: object :appointment do
-const objectRe = /object\s+:(\w+)\s+do\b/g;
-
-// Fields within objects: field(:id, non_null(:id))  or  field :id, :id
-const fieldRe = /field[:\s(]+:(\w+),\s*(?:non_null\()?:?(\w+)/g;
-
-// Input objects: input_object :booking_input do
-const inputRe = /input_object\s+:(\w+)\s+do\b/g;
-
-// Enums: enum :appointment_system_status do
-const enumRe = /enum\s+:(\w+)\s+do\b/g;
-
-// Mutations: detected by module naming convention *Mutations.* or mutation do block
-const mutationRe = /(?:mutation\s+do|field\s*[:(]\s*:(\w+).*resolve)/g;
-
-// Query fields: detected in query do block or Queries.* modules
-const queryFieldRe = /field\s*[:(]\s*:(\w+)/g;
-```
-
-**Data model:** GraphQL types map to the existing `modules` table with `type: 'graphql_type' | 'graphql_query' | 'graphql_mutation' | 'graphql_input' | 'graphql_enum'`. No schema migration needed -- the `modules` table already has `name`, `type`, `file_path`, and `summary` columns.
-
-**Integration points:**
-- New: `src/indexer/graphql.ts`
-- Modified: `pipeline.ts` (add extractor call), `writer.ts` types (add GraphQL module types)
-- FTS: Automatic -- `persistRepoData` already indexes modules into FTS
-
----
-
-### 5. gRPC Service Extractor
-
-**What changes:** Minimal -- existing proto extractor already parses gRPC services
-**What's new:** `src/indexer/grpc.ts` for the Elixir-side gRPC server/client detection
-**Complexity:** LOW
-
-The existing `proto.ts` already extracts `ProtoService` with RPCs from `.proto` files. What's missing is detecting which **repos implement or consume** those gRPC services. In the Fresha codebase:
-
-- **Server side:** Generated `.pb.ex` files in `lib/generated/` with `use GRPC.Server` or `use GRPC.Endpoint`
-- **Client side:** Code that calls gRPC stubs, typically via generated client modules
-
-**Extraction approach:** Scan `.ex` files for:
-```typescript
-// Server: use GRPC.Server, service: SomeService
-const grpcServerRe = /use\s+GRPC\.(?:Server|Endpoint)\s*,\s*service:\s*([\w.]+)/g;
-
-// Client calls: SomeService.Stub.some_rpc(channel, request)
-const grpcClientRe = /([\w.]+)\.Stub\.(\w+)\s*\(/g;
-```
-
-**Data model:** gRPC service relationships become edges:
-- `repo -> service (exposes_grpc)` when repo has a GRPC.Server for that service
-- `repo -> service (calls_grpc)` when repo calls a gRPC stub
-
-These relationship types already exist in `EntityType` and `RelationshipType`.
-
-**Integration points:**
-- New: `src/indexer/grpc.ts`
-- Modified: `pipeline.ts` (add extractor call)
-- The `services` table may need population with gRPC service names
-- Edges table already supports `calls_grpc` and `exposes_graphql` relationship types
-
----
-
-### 6. Ecto Schema Extractor
-
-**What changes:** Existing `elixir.ts` already partially handles Ecto (it detects `schema "table_name"`)
-**What's new:** Enhanced extraction in `src/indexer/ecto.ts` or extended `elixir.ts`
-**Complexity:** LOW-MEDIUM
-
-The current `elixir.ts` already:
-- Detects `schema "table_name"` and sets `type: 'schema'` and `tableName`
-- Extracts module name and public functions
-
-What's missing:
-- **Field definitions:** `field :name, :type` within schema blocks
-- **Associations:** `belongs_to`, `has_many`, `has_one`, `many_to_many`
-- **Database table relationships** derived from associations
-
-**Recommended: Extend `elixir.ts` rather than create a new file.** Ecto schemas ARE Elixir modules. The existing `parseElixirFile` already finds module boundaries. Add field/association extraction within the schema detection block.
-
-```typescript
-// New in elixir.ts:
-interface EctoField {
-  name: string;
-  type: string;
-}
-
-interface EctoAssociation {
-  type: 'belongs_to' | 'has_many' | 'has_one' | 'many_to_many';
-  name: string;
-  targetModule: string;
-}
-
-// Enhanced ElixirModule interface:
-interface ElixirModule {
-  // ... existing fields ...
-  ectoFields?: EctoField[];
-  ectoAssociations?: EctoAssociation[];
-}
-```
-
-**Regex patterns (validated against real Ecto schemas):**
-
-```typescript
-// Fields: field :name, :string  or  field(:name, :string)
-const fieldRe = /field[:\s(]+:(\w+),\s*:(\w+)/g;
-
-// Associations: belongs_to :appointment, Module.Name
-const assocRe = /(belongs_to|has_many|has_one|many_to_many)\s+:(\w+),\s*([\w.]+)/g;
-```
-
-**Data model:** Ecto field/association data enhances the module summary in FTS. Associations create edges between modules (e.g., `Booking belongs_to Appointment`). This enriches the dependency graph significantly.
-
-**Integration points:**
-- Modified: `src/indexer/elixir.ts` (add field/association extraction)
-- Modified: `writer.ts` types (extend `ModuleData` with Ecto-specific fields)
-- New edges: module-to-module associations stored in `edges` table
-
----
-
-### 7. Event Catalog Extractor
-
-**What changes:** This is fundamentally different -- it's not a per-repo extractor
-**What's new:** `src/indexer/eventcatalog.ts`, possibly a separate pipeline entry point
-**Complexity:** MEDIUM
-
-Event Catalog is a **single repo** (`fresha-event-catalog`) with a well-defined directory structure:
+### Search Flow (current)
 
 ```
-src/
-  domains/     d:appointments/index.mdx    -- frontmatter: id, name, services, entities
-  services/    s:appointments/index.mdx    -- frontmatter: id, name, repository.url
-  events/      event:payment-failed/index.mdx -- frontmatter: id, name, channels, owners
-  commands/    ...
-  queries/     ...
-  channels/    ...
-  entities/    ...
-  teams/       ...
+MCP: kb_search(query, options)
+  |
+  v
+searchText(db, query, options)
+  |
+  +-- tokenizeForFts(query)
+  +-- build SQL with optional type filter (resolveTypeFilter)
+  +-- FTS5 MATCH query (try raw, fallback to phrase)
+  +-- for each FTS match: hydrateResult(db, match)
+  |     +-- parseCompositeType(entity_type)
+  |     +-- switch on entityType -> JOIN with source table (repos/modules/events/services/learned_facts)
+  |     +-- return TextSearchResult with repo context
+  +-- apply repoFilter post-hydration
+  |
+  v
+checkAndSyncRepos(db, resultRepoNames)
+  +-- for each repo: compare HEAD vs stored commit
+  +-- re-index up to 3 stale repos
+  +-- if any synced: re-run searchText
+  |
+  v
+formatResponse(results, summaryFn)
+  +-- slice to maxItems, build McpResponse
+  +-- if > 4KB: recursive halving
+  +-- return JSON string
 ```
 
-Each `index.mdx` file has YAML frontmatter with structured data (id, name, version, summary, owners, badges, services, entities, sends, receives, channels, repository).
+## Anti-Patterns Found
 
-**This is a supplementary data source, not a code extractor.** It enriches existing repo/service/event data with:
-- Domain ownership (which domain does a service belong to?)
-- Event-to-channel mappings (which Kafka topics carry which events?)
-- Team ownership
-- Cross-service relationships (sends/receives)
+### Anti-Pattern 1: Copy-Paste Pipeline Logic
 
-**Integration approach:**
+**What happened:** Two complete extraction pipelines exist in pipeline.ts
+**Why it happened:** Parallel indexing needed separation of extraction (CPU-bound) from persistence (DB-bound), but the existing `indexSingleRepo` was kept for the sync path
+**What breaks:** Any extractor change or new extractor must be applied in two places
+**Fix:** Single extraction function, two callers
 
-```typescript
-// eventcatalog.ts
-export interface EventCatalogDomain {
-  id: string;
-  name: string;
-  services: string[];
-  entities: string[];
-}
+### Anti-Pattern 2: Raw SQL Outside DB Layer
 
-export interface EventCatalogService {
-  id: string;
-  name: string;
-  repositoryUrl: string | null;
-  language: string | null;
-}
+**What happened:** `knowledge/store.ts` writes raw FTS INSERT instead of using `db/fts.ts`
+**Why it happened:** `EntityType` didn't include `'learned_fact'`, so `indexEntity()` couldn't be used
+**What breaks:** Inconsistent composite type format in FTS table
+**Fix:** Extend EntityType, use indexEntity/removeEntity
 
-export interface EventCatalogEvent {
-  id: string;
-  name: string;
-  channels: string[];
-  owners: string[];
-}
+### Anti-Pattern 3: Edge Operations in Pipeline
 
-export function extractEventCatalog(catalogPath: string): {
-  domains: EventCatalogDomain[];
-  services: EventCatalogService[];
-  events: EventCatalogEvent[];
-}
-```
+**What happened:** `insertEventEdges`, `insertGrpcClientEdges`, `insertEctoAssociationEdges` live in pipeline.ts (380+ LOC), not in writer.ts
+**Why it happened:** Edge insertion requires entity lookups that cross extractors (find event by name, find module by name), which felt pipeline-level
+**What breaks:** Edge lifecycle management is split across two files. Adding a new edge type means modifying pipeline.ts (which is already too large)
+**Fix:** Move to writer.ts or a new `indexer/edges.ts`
 
-**YAML/frontmatter parsing:** Use a lightweight YAML parser. The frontmatter is between `---` delimiters, which is trivial to extract. For YAML parsing, `js-yaml` is the standard choice (or just parse the simple key-value frontmatter with regex since the structure is predictable).
+## Integration Points
 
-**Data model considerations:**
-- Event Catalog data enriches existing entities (adds domain context, team ownership)
-- A new `domains` table might be warranted, or domains can be stored as modules with `type: 'domain'`
-- Service-to-domain mapping stored as edges
-- Event-to-channel mapping could use a new `channels` table or store as module `type: 'channel'`
-
-**Integration points:**
-- New: `src/indexer/eventcatalog.ts`
-- Modified: `pipeline.ts` (special-case for event catalog repo or separate pipeline step)
-- Possible schema migration: `domains` table, or repurpose existing tables
-- New dependency: `js-yaml` (or lightweight frontmatter parser)
-
----
-
-## Component Dependency Map
-
-```
-Branch-Aware Tracking (git.ts, metadata.ts)
-    |
-    |  (no deps on other features)
-    v
-Surgical File-Level Indexing (pipeline.ts, writer.ts, extractors)
-    |
-    |  (must exist before parallel makes sense --
-    |   parallel full-wipe is wasteful)
-    v
-Parallel Execution (pipeline.ts + worker infrastructure)
-    |
-    |  (extractors must support file filtering first)
-    |
-    +--- GraphQL Extractor (new file, hooks into pipeline)
-    +--- gRPC Extractor (new file, hooks into pipeline)
-    +--- Ecto Extraction (extends elixir.ts)
-    +--- Event Catalog Extractor (new file, somewhat independent)
-```
-
-## Suggested Build Order
-
-### Phase 1: Branch-Aware Tracking
-**Files:** `git.ts`, `metadata.ts`
-**Rationale:** Smallest change, immediately valuable, no dependencies. Prevents dirty index data from PR branch checkouts.
-
-### Phase 2: Surgical File-Level Indexing
-**Files:** `pipeline.ts`, `writer.ts`, `elixir.ts`, `proto.ts`, `events.ts`
-**Rationale:** The highest-impact infrastructure change. Makes incremental reindexing actually incremental instead of "skip or full wipe." Must come before parallelization because parallel full-wipe is pointless.
-
-### Phase 3: New Extractors (can be done in any order, or in parallel)
-**Files:** `graphql.ts`, `grpc.ts`, extended `elixir.ts` (Ecto), `eventcatalog.ts`
-**Rationale:** Each extractor is independent. They hook into the pipeline at the same extension point. Can be shipped incrementally.
-
-Suggested sub-ordering within Phase 3:
-1. **Ecto enhancement** -- least work, extends existing extractor, high value (database structure knowledge)
-2. **GraphQL extractor** -- medium work, the codebase is heavily Absinthe-based
-3. **gRPC extractor** -- low work, proto services already parsed, just need Elixir-side detection
-4. **Event Catalog** -- medium work, architecturally different (supplementary source, YAML parsing)
-
-### Phase 4: Parallel Execution
-**Files:** `pipeline.ts`, possibly `worker.ts`
-**Rationale:** Last because it is an optimization. The surgical indexing from Phase 2 will already dramatically reduce reindex time. Parallelism is the cherry on top. Also, implementing it after extractors are finalized means less rework.
-
-## What Changes vs What's Added
-
-### Modified Files (existing code changes)
-
-| File | Change | Scope |
-|------|--------|-------|
-| `src/indexer/git.ts` | Add `getDefaultBranchCommit()` | Small addition |
-| `src/indexer/metadata.ts` | Use `getDefaultBranchCommit` instead of `getCurrentCommit` | 1-line change |
-| `src/indexer/pipeline.ts` | Dual-mode (full vs surgical), parallel orchestration | Major rework |
-| `src/indexer/writer.ts` | Add `persistFileData()` for surgical persistence | Medium addition |
-| `src/indexer/elixir.ts` | Add `changedFiles` filter param, add Ecto field/assoc extraction | Medium changes |
-| `src/indexer/proto.ts` | Add `changedFiles` filter param | Small change |
-| `src/indexer/events.ts` | Add `changedFiles` filter param | Small change |
-
-### New Files
-
-| File | Purpose | Depends On |
-|------|---------|------------|
-| `src/indexer/graphql.ts` | Absinthe/GraphQL schema extraction | elixir.ts patterns |
-| `src/indexer/grpc.ts` | gRPC server/client detection in Elixir code | proto.ts data |
-| `src/indexer/eventcatalog.ts` | Event Catalog MDX/frontmatter parsing | js-yaml or custom parser |
-
-### Schema Migrations (possibly needed)
-
-| Migration | Reason | Verdict |
-|-----------|--------|---------|
-| `domains` table | Event Catalog domain data | **Maybe** -- could reuse modules table with `type: 'domain'` |
-| Ecto fields column on modules | Store field definitions | **No** -- store in summary text, searchable via FTS |
-| `repos.default_branch` column | Store detected default branch name | **Yes** -- useful for branch-aware tracking diagnostics |
-
-## Data Flow: After v1.1
-
-```
-discoverRepos(rootDir)
-    |
-    v
-for each repo (parallel via worker pool):
-    |
-    +-- resolveDefaultBranch(repoPath)  -- NEW: resolve main/master
-    +-- checkSkip(db, repoPath)         -- compare against default branch commit
-    |
-    +-- MODE DECISION:
-    |   |
-    |   +-- FULL (new repo or --force):
-    |   |     extractors scan all files
-    |   |     clearRepoEntities + full insert
-    |   |
-    |   +-- SURGICAL (incremental):
-    |         getChangedFiles(since, defaultBranch)
-    |         extractors filter to changed files only
-    |         clearRepoFiles(deleted + modified) + insert only new
-    |
-    +-- NEW EXTRACTORS:
-          extractElixirModules(repoPath, changedFiles)  -- now includes Ecto
-          extractProtoDefinitions(repoPath, changedFiles)
-          extractGraphQLSchema(repoPath, changedFiles)   -- NEW
-          detectGrpcRelationships(repoPath, ...)         -- NEW
-          detectEventRelationships(repoPath, ...)
-    |
-    v
-persistRepoData/persistFileData  -- mode-dependent
-    |
-    v
-EVENT CATALOG (separate pass, if catalog repo changed):
-    extractEventCatalog(catalogPath)
-    enrichExistingEntities(db, catalogData)
-```
-
-## Key Architectural Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| Extend `elixir.ts` for Ecto instead of separate extractor | Ecto schemas ARE Elixir modules. Same file discovery, same parsing context. Separate file would duplicate 80% of the code. |
-| Separate extraction from persistence for parallelism | better-sqlite3 connections can't be shared across threads. Extracting in parallel + persisting sequentially avoids threading complexity entirely. |
-| File filter as optional parameter, not new extractor interface | Minimal change to existing extractor signatures. `undefined` means "process all" (backward compatible). |
-| Event Catalog as a separate pipeline step, not a per-repo extractor | It's one special repo, not a pattern across all repos. Treating it as a per-repo extractor would be architecturally dishonest. |
-| Use `refs/heads/main` or `refs/heads/master` instead of `origin/HEAD` | `origin/HEAD` requires network access or may not be set. Local branch refs are always available and deterministic. |
+| Boundary | How They Connect | Health |
+|----------|------------------|--------|
+| CLI -> core | `withDb(fn)` passes DB to core functions | Clean |
+| MCP -> core | `createServer(db)` passes DB to all tools via closure | Clean |
+| search -> db/fts | Direct import of type filter utilities | Minor layer leak, functional |
+| indexer/writer -> db/fts | `indexEntity` / `removeEntity` for FTS sync | Clean |
+| knowledge -> db | Bypasses fts.ts, uses raw SQL | Needs fix |
+| mcp/sync -> indexer | Calls `indexSingleRepo` for auto-reindex | Clean, justified |
+| mcp/hygiene -> indexer/writer | Calls `clearRepoEntities` for cleanup | Clean |
+| pipeline -> extractors | Direct function calls, no common interface | Works, could be tighter |
+| pipeline -> writer | Calls `persistRepoData` / `persistSurgicalData` | Clean |
+| All -> types/entities.ts | Shared EntityType union | Clean, needs learned_fact |
 
 ## Sources
 
-- Absinthe schema patterns: [Absinthe.Schema docs](https://hexdocs.pm/absinthe/Absinthe.Schema.html), [Absinthe.Schema.Notation](https://hexdocs.pm/absinthe/Absinthe.Schema.Notation.html) (HIGH confidence -- official hex docs)
-- Ecto schema patterns: [Ecto.Schema docs](https://hexdocs.pm/ecto/Ecto.Schema.html) (HIGH confidence -- official hex docs)
-- EventCatalog structure: [EventCatalog domain API](https://www.eventcatalog.dev/docs/api/domain-api), verified against local `fresha-event-catalog` repo (HIGH confidence -- direct observation)
-- better-sqlite3 worker threads: [GitHub issue #237](https://github.com/JoshuaWise/better-sqlite3/issues/237), connections cannot be shared across threads (HIGH confidence -- library maintainer guidance)
-- Git default branch resolution: [practical guide](https://dev.to/bowmanjd/get-github-default-branch-from-the-command-line-powershell-or-bash-zsh-37m9), `git rev-parse refs/heads/{main,master}` (HIGH confidence -- standard git)
-- Real codebase patterns: Validated against `app-appointments-manager` (Absinthe), `app-appointments` (Ecto), `fresha-event-catalog` (EventCatalog) repos (HIGH confidence -- direct code inspection)
+- Direct codebase analysis of all 46 source files and 25 test files
+- Import graph traced manually across all modules
+- Test pattern analysis across all beforeEach/afterEach blocks
+- better-sqlite3 documentation (statement caching behavior)
 
 ---
-*Architecture research for: repo-knowledge-base v1.1*
-*Researched: 2026-03-06*
+*Architecture review for: repo-knowledge-base v1.2 Hardening*
+*Researched: 2026-03-07*
