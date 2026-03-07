@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { searchText } from '../../search/text.js';
 import { formatResponse } from '../format.js';
 import { wrapToolHandler } from '../handler.js';
-import { checkAndSyncRepos } from '../sync.js';
+import { withAutoSync } from '../sync.js';
 
 export function registerSearchTool(server: McpServer, db: Database.Database): void {
   server.tool(
@@ -22,24 +22,15 @@ export function registerSearchTool(server: McpServer, db: Database.Database): vo
       type: z.string().optional().describe('Filter by type: coarse (repo, module, event, service) or sub-type (schema, context, graphql_query, grpc, etc.)'),
     },
     wrapToolHandler('kb_search', ({ query, limit, repo, type }) => {
-      let results = searchText(db, query, {
-        limit: limit ?? 10,
-        repoFilter: repo,
-        entityTypeFilter: type,
-      });
-
-      // Extract unique repo names and check for stale data
-      const repoNames = [...new Set(results.map((r) => r.repoName))];
-      const syncResult = checkAndSyncRepos(db, repoNames);
-
-      // If any repos were synced, re-run the search for fresh results
-      if (syncResult.synced.length > 0) {
-        results = searchText(db, query, {
+      const results = withAutoSync(
+        db,
+        () => searchText(db, query, {
           limit: limit ?? 10,
           repoFilter: repo,
           entityTypeFilter: type,
-        });
-      }
+        }),
+        (items) => [...new Set(items.map((r) => r.repoName))],
+      );
 
       return formatResponse(
         results,

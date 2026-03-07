@@ -70,3 +70,21 @@ export function checkAndSyncRepos(
     skipped: toSkip.map((r) => r.name),
   };
 }
+
+/**
+ * Run a query, sync stale repos found in results, re-run if anything synced.
+ * Generic over result type -- works with arrays (search, entity) and single objects (deps).
+ */
+export function withAutoSync<T>(
+  db: Database.Database,
+  queryFn: () => T,
+  extractRepoNames: (result: T) => string[],
+): T {
+  let result = queryFn();
+  const repoNames = extractRepoNames(result);
+  const syncResult = checkAndSyncRepos(db, repoNames);
+  if (syncResult.synced.length > 0) {
+    result = queryFn();
+  }
+  return result;
+}

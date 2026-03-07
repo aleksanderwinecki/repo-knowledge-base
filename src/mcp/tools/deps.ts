@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { queryDependencies } from '../../search/dependencies.js';
 import { formatResponse } from '../format.js';
 import { wrapToolHandler } from '../handler.js';
-import { checkAndSyncRepos } from '../sync.js';
+import { withAutoSync } from '../sync.js';
 
 export function registerDepsTool(server: McpServer, db: Database.Database): void {
   server.tool(
@@ -33,18 +33,12 @@ export function registerDepsTool(server: McpServer, db: Database.Database): void
         });
       }
 
-      // Extract repo names from entity + dependencies and check for stale data
-      const repoNames = [
-        result.entity.repoName,
-        ...result.dependencies.map((d) => d.repoName),
-      ];
-      const uniqueRepos = [...new Set(repoNames)];
-      const syncResult = checkAndSyncRepos(db, uniqueRepos);
-
-      // If any repos were synced, re-run the query for fresh results
-      if (syncResult.synced.length > 0) {
-        result = queryDependencies(db, name, { direction, depth, repo });
-      }
+      // Sync stale repos and re-query if needed (only when we have results)
+      result = withAutoSync(
+        db,
+        () => queryDependencies(db, name, { direction, depth, repo })!,
+        (r) => [...new Set([r.entity.repoName, ...r.dependencies.map((d) => d.repoName)])],
+      );
 
       // Wrap single result in array for formatResponse
       return formatResponse(
