@@ -372,8 +372,8 @@ describe('v4 migration', () => {
     expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
   });
 
-  it('SCHEMA_VERSION is 4', () => {
-    expect(SCHEMA_VERSION).toBe(4);
+  it('SCHEMA_VERSION is 5', () => {
+    expect(SCHEMA_VERSION).toBe(5);
   });
 
   it('fresh database has file_id column on events', () => {
@@ -382,5 +382,164 @@ describe('v4 migration', () => {
 
     const evtCols = (db.pragma('table_info(events)') as Array<{ name: string }>).map((c) => c.name);
     expect(evtCols).toContain('file_id');
+  });
+});
+
+describe('v5 migration', () => {
+  let db: Database.Database;
+  let dbPath: string;
+
+  /**
+   * Create a raw v4 database by running only v1-v4 migrations manually,
+   * then setting user_version to 4. This simulates an existing v4 database.
+   */
+  function createV4Database(filePath: string): Database.Database {
+    const rawDb = new BetterSqlite3(filePath);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('foreign_keys = ON');
+    runMigrations(rawDb, 0, 4);
+    setVersion(rawDb, 4);
+    return rawDb;
+  }
+
+  afterEach(() => {
+    if (db?.open) closeDatabase(db);
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('creates idx_modules_name index', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-idx-mod-name-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_modules_name'"
+    ).all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('creates idx_events_name index', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-idx-evt-name-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_events_name'"
+    ).all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('creates idx_services_name index', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-idx-svc-name-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_services_name'"
+    ).all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('creates idx_modules_repo_file index', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-idx-mod-rf-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_modules_repo_file'"
+    ).all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('creates idx_events_repo_file index', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-idx-evt-rf-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_events_repo_file'"
+    ).all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('rebuilds knowledge_fts with prefix config', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-fts-prefix-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+
+    // Initialize FTS (old version without prefix) and insert test data
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+        name,
+        description,
+        entity_type UNINDEXED,
+        entity_id UNINDEXED,
+        tokenize = 'unicode61'
+      );
+    `);
+    db.prepare(
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)"
+    ).run('authentication', 'handles user login', 'module:module', 1);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify prefix search works (2-char prefix query)
+    const results = db.prepare(
+      "SELECT name FROM knowledge_fts WHERE knowledge_fts MATCH ?"
+    ).all('au*') as Array<{ name: string }>;
+    expect(results.length).toBe(1);
+    expect(results[0].name).toBe('authentication');
+  });
+
+  it('FTS data survives V5 migration', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v5-fts-data-${Date.now()}.db`);
+    db = createV4Database(dbPath);
+
+    // Initialize FTS (old version) and populate with test data
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+        name,
+        description,
+        entity_type UNINDEXED,
+        entity_id UNINDEXED,
+        tokenize = 'unicode61'
+      );
+    `);
+    db.prepare(
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)"
+    ).run('UserService', 'manages users', 'service:service', 1);
+    db.prepare(
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)"
+    ).run('OrderPlaced', 'order event', 'event:event', 2);
+    db.prepare(
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)"
+    ).run('PaymentModule', 'payment processing', 'module:module', 3);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // All 3 rows should survive
+    const count = db.prepare(
+      "SELECT COUNT(*) as cnt FROM knowledge_fts"
+    ).get() as { cnt: number };
+    expect(count.cnt).toBe(3);
+
+    // Verify specific data preserved
+    const row = db.prepare(
+      "SELECT name, description, entity_type, entity_id FROM knowledge_fts WHERE knowledge_fts MATCH ?"
+    ).get('UserService') as { name: string; description: string; entity_type: string; entity_id: number };
+    expect(row.name).toBe('UserService');
+    expect(row.description).toBe('manages users');
+    expect(row.entity_type).toBe('service:service');
+    expect(row.entity_id).toBe(1);
   });
 });

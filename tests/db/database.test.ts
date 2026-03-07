@@ -81,6 +81,38 @@ describe('openDatabase', () => {
     closeDatabase(db2);
   });
 
+  describe('pragma tuning', () => {
+    it('sets cache_size to -64000', () => {
+      const dbPath = tmpDbPath('cache');
+      dbPaths.push(dbPath);
+
+      const db = openDatabase(dbPath);
+      const cacheSize = db.pragma('cache_size', { simple: true });
+      expect(cacheSize).toBe(-64000);
+      closeDatabase(db);
+    });
+
+    it('sets temp_store to MEMORY (value 2)', () => {
+      const dbPath = tmpDbPath('temp-store');
+      dbPaths.push(dbPath);
+
+      const db = openDatabase(dbPath);
+      const tempStore = db.pragma('temp_store', { simple: true });
+      expect(tempStore).toBe(2);
+      closeDatabase(db);
+    });
+
+    it('sets mmap_size to 268435456', () => {
+      const dbPath = tmpDbPath('mmap');
+      dbPaths.push(dbPath);
+
+      const db = openDatabase(dbPath);
+      const mmapSize = db.pragma('mmap_size', { simple: true });
+      expect(mmapSize).toBe(268435456);
+      closeDatabase(db);
+    });
+  });
+
   it('creates parent directories', () => {
     const dbPath = path.join(
       os.tmpdir(),
