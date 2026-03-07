@@ -1,0 +1,116 @@
+# Requirements: Repo Knowledge Base
+
+**Defined:** 2026-03-07
+**Core Value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
+
+## v1.2 Requirements
+
+Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
+
+### Safety Net
+
+- [ ] **SAFE-01**: MCP tool contract tests verify all 8 tool schemas, parameter names, and response shapes
+- [ ] **SAFE-02**: FTS golden tests verify search quality for known queries against snapshot data
+- [ ] **SAFE-03**: CLI output format snapshot tests prevent silent JSON shape changes
+
+### Database Performance
+
+- [ ] **PERF-01**: SQLite pragma tuning (cache_size, temp_store, mmap_size) applied at connection open
+- [ ] **PERF-02**: Prepared statements hoisted out of hot loops in fts.ts, writer.ts, entity.ts, dependencies.ts, status.ts
+- [ ] **PERF-03**: Missing database indexes added via V5 migration (modules, events, services name lookups)
+- [ ] **PERF-04**: FTS5 optimize command runs after bulk indexing operations
+- [ ] **PERF-05**: WAL checkpoint after index completes
+- [ ] **PERF-06**: FTS5 prefix index configuration (prefix='2,3') for faster prefix searches
+- [ ] **PERF-07**: perf_hooks instrumentation for indexing and search benchmarking
+
+### MCP Layer
+
+- [ ] **MCP-01**: Error handling extracted to wrapToolHandler HOF, eliminating 48 lines of duplication across 8 tools
+- [ ] **MCP-02**: Auto-sync pattern extracted to withAutoSync helper, eliminating 36 lines across 3 tools
+- [ ] **MCP-03**: Consistent McpResponse format across all MCP tools
+- [ ] **MCP-04**: DB path resolution deduplicated (shared utility)
+- [ ] **MCP-05**: learned_fact added to EntityType union, FTS indexing unified through db/fts.ts
+
+### Core Deduplication
+
+- [ ] **CORE-01**: Pipeline extraction logic deduplicated between indexSingleRepo and extractRepoData (~130 lines)
+- [ ] **CORE-02**: FTS indexing paths unified — knowledge/store.ts uses db/fts.ts indexEntity()
+- [ ] **CORE-03**: Entity hydration pattern consolidated across search modules
+- [ ] **CORE-04**: Entity query switch statement deduplicated
+- [ ] **CORE-05**: FTS query fallback logic shared between text.ts and entity.ts
+- [ ] **CORE-06**: clearRepoEntities batch cleanup optimized
+- [ ] **CORE-07**: Writer insert helpers extracted for shared persistence patterns
+- [ ] **CORE-08**: Edge operations (insertEventEdges, insertGrpcClientEdges, insertEctoAssociationEdges) consolidated
+
+### TypeScript Hardening
+
+- [ ] **TS-01**: noUncheckedIndexedAccess enabled in tsconfig with all fix sites resolved
+- [ ] **TS-02**: Dead code removed from git.ts (HEAD-based getChangedFiles if unused)
+- [ ] **TS-03**: Dependencies upstream/downstream symmetry extracted to shared parameterized function
+- [ ] **TS-04**: Silent catch blocks replaced with structured error logging
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Deferred Optimizations
+
+- **DEF-01**: Type-safe entity registry (config-driven, eliminates scattered switch statements)
+- **DEF-02**: metadata.ts FileReader strategy pattern
+- **DEF-03**: Porter stemming for FTS5 (needs real-data validation)
+- **DEF-04**: Vitest coverage ratchet thresholds (need baseline measurement first)
+- **DEF-05**: Test helper extraction (DB setup boilerplate across 18+ test files)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Architectural restructuring | Architecture is clean, tighten in place only |
+| New extractors or entity types | Hardening milestone, no new features |
+| Table rebuild migrations | SQLite ALTER TABLE limitations, ADD COLUMN and CREATE INDEX only |
+| AST-based parsing | Regex works well for structured macros, out of domain for v1.2 |
+| Embedding/semantic search | Separate feature milestone (v2.0) |
+| MCP tool parameter renames | Public contract, no breaking changes |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SAFE-01 | TBD | Pending |
+| SAFE-02 | TBD | Pending |
+| SAFE-03 | TBD | Pending |
+| PERF-01 | TBD | Pending |
+| PERF-02 | TBD | Pending |
+| PERF-03 | TBD | Pending |
+| PERF-04 | TBD | Pending |
+| PERF-05 | TBD | Pending |
+| PERF-06 | TBD | Pending |
+| PERF-07 | TBD | Pending |
+| MCP-01 | TBD | Pending |
+| MCP-02 | TBD | Pending |
+| MCP-03 | TBD | Pending |
+| MCP-04 | TBD | Pending |
+| MCP-05 | TBD | Pending |
+| CORE-01 | TBD | Pending |
+| CORE-02 | TBD | Pending |
+| CORE-03 | TBD | Pending |
+| CORE-04 | TBD | Pending |
+| CORE-05 | TBD | Pending |
+| CORE-06 | TBD | Pending |
+| CORE-07 | TBD | Pending |
+| CORE-08 | TBD | Pending |
+| TS-01 | TBD | Pending |
+| TS-02 | TBD | Pending |
+| TS-03 | TBD | Pending |
+| TS-04 | TBD | Pending |
+
+**Coverage:**
+- v1.2 requirements: 27 total
+- Mapped to phases: 0
+- Unmapped: 27 ⚠️
+
+---
+*Requirements defined: 2026-03-07*
+*Last updated: 2026-03-07 after initial definition*
