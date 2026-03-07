@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
 status: executing
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-07T18:07:02.872Z"
-last_activity: 2026-03-07 -- Completed 14-02 writer insert helpers + clearEntityFts dedup
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-03-07T18:14:46.000Z"
+last_activity: 2026-03-07 -- Completed 14-03 pipeline unification (indexSingleRepo delegation)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 89
+  completed_plans: 10
+  percent: 93
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 14 - Core Layer Dedup (in progress, 1/3 plans done)
+**Current focus:** Phase 14 - Core Layer Dedup (complete, 3/3 plans done)
 
 ## Current Position
 
 Phase: 14 of 15 (Core Layer Dedup)
-Plan: 2 of 3
-Status: In Progress
-Last activity: 2026-03-07 -- Completed 14-02 writer insert helpers + clearEntityFts dedup
+Plan: 3 of 3
+Status: Complete
+Last activity: 2026-03-07 -- Completed 14-03 pipeline unification (indexSingleRepo delegation)
 
-Progress: [█████████░] 89%
+Progress: [██████████] 93%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████████░] 89%
 | 13-02 mcp-dedup | 3min | 2 tasks | 10 files |
 | 14-02 core-dedup | 2min | 1 task | 1 file |
 | Phase 14 P01 | 4min | 2 tasks | 4 files |
+| 14-03 core-dedup | 4min | 1 task | 8 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - 14-02: clearEntityFts consolidates select-then-delete-FTS pattern without changing hoisted statement structure
 - [Phase 14]: Hydrator returns null for unknown types (single-entity semantics); createEntityByIdLookup wraps to array
 - [Phase 14]: repoPath added to EntityInfo as superset field for both text.ts and entity.ts callers
+- 14-03: indexSingleRepo made async, delegates to extractRepoData + persistExtractedData (same path as indexAllRepos)
+- 14-03: wrapToolHandler accepts sync or async handlers to support async withAutoSync propagation
+- 14-03: Edge functions kept in pipeline.ts (not moved to writer.ts) -- CORE-08 satisfied by single call path
 
 ### Pending Todos
 
@@ -92,6 +96,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T18:06:58.923Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-03-07T18:14:46Z
+Stopped at: Completed 14-03-PLAN.md
 Resume file: None

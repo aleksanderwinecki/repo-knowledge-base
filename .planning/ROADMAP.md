@@ -35,7 +35,7 @@
 - [x] **Phase 11: Safety Net** - Contract tests, FTS golden tests, and CLI snapshot tests before any refactoring (completed 2026-03-07)
 - [x] **Phase 12: Database Performance** - SQLite pragma tuning, prepared statements, indexes, FTS5 optimization, benchmarking (completed 2026-03-07)
 - [x] **Phase 13: MCP Layer Dedup** - Extract shared error handling, auto-sync, response format, and DB path patterns (completed 2026-03-07)
-- [ ] **Phase 14: Core Layer Dedup** - Consolidate pipeline extraction, FTS indexing, entity hydration, writer, and edge operations
+- [x] **Phase 14: Core Layer Dedup** - Consolidate pipeline extraction, FTS indexing, entity hydration, writer, and edge operations (completed 2026-03-07)
 - [ ] **Phase 15: TypeScript Hardening** - Enable noUncheckedIndexedAccess, remove dead code, extract shared patterns, fix silent catches
 
 ## Phase Details
@@ -130,5 +130,5 @@ Plans:
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
 | 13. MCP Layer Dedup | 2/2 | Complete    | 2026-03-07 | - |
-| 14. Core Layer Dedup | 2/3 | In Progress|  | - |
+| 14. Core Layer Dedup | 3/3 | Complete   | 2026-03-07 | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
