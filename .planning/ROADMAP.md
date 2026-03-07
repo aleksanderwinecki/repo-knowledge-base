@@ -94,7 +94,11 @@ Plans:
   3. Entity hydration and entity query dispatch each live in one place -- search modules share a single hydration pattern and a single query router
   4. FTS query fallback logic (retry without special characters, broader match) is shared between text.ts and entity.ts
   5. Writer insert helpers, clearRepoEntities batch cleanup, and edge insertion operations (event edges, gRPC client edges, Ecto association edges) are each consolidated into single implementations
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 14-01-PLAN.md — FTS query fallback helper + entity hydration/dispatch consolidation
+- [ ] 14-02-PLAN.md — Writer insert helpers + clearRepoEntities batch cleanup consolidation
+- [ ] 14-03-PLAN.md — Pipeline unification (indexSingleRepo delegates to extractRepoData + persistExtractedData) + CORE-02 verification
 
 ### Phase 15: TypeScript Hardening
 **Goal**: TypeScript strictness is tightened and remaining code quality issues (dead code, asymmetric patterns, silent failures) are resolved
@@ -126,5 +130,5 @@ Plans:
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
 | 13. MCP Layer Dedup | 2/2 | Complete    | 2026-03-07 | - |
-| 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
+| 14. Core Layer Dedup | v1.2 | 0/3 | Not started | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
