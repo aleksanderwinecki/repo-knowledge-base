@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
-status: in_progress
-stopped_at: Completed 15-01 noUncheckedIndexedAccess
-last_updated: "2026-03-07T18:41:10.236Z"
-last_activity: 2026-03-07 -- Completed 15-01 noUncheckedIndexedAccess (60 errors fixed across 6 indexer files)
+status: completed
+stopped_at: Completed 15-02 dead code, dedup, catch documentation
+last_updated: "2026-03-07T18:41:17Z"
+last_activity: 2026-03-07 -- Completed 15-02 dead code removal, findLinkedRepos dedup, catch block documentation
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
-  percent: 93
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 15 - TypeScript Hardening (in progress, 1/4 plans done)
+**Current focus:** Phase 15 - TypeScript Hardening (complete, 2/2 plans done)
 
 ## Current Position
 
 Phase: 15 of 15 (TypeScript Hardening)
-Plan: 1 of 4
-Status: In Progress
-Last activity: 2026-03-07 -- Completed 15-01 noUncheckedIndexedAccess (60 errors fixed across 6 indexer files)
+Plan: 2 of 2
+Status: Complete
+Last activity: 2026-03-07 -- Completed 15-02 dead code removal, findLinkedRepos dedup, catch block documentation
 
-Progress: [██████████] 95%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [██████████] 95%
 | Phase 14 P01 | 4min | 2 tasks | 4 files |
 | 14-03 core-dedup | 4min | 1 task | 8 files |
 | 15-01 ts-hardening | 3min | 1 task | 7 files |
+| 15-02 ts-hardening | 4min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,8 @@ Recent decisions affecting current work:
 - 15-01: Prefer guard-and-continue over ! for regex match groups in while loops (readability + type narrowing)
 - 15-01: Use ! for structurally guaranteed parallel array indexing (pipeline.ts workItems[i]!, settled[i]!)
 - 15-01: Use ?? fallback for record indexing in .map() callbacks where continue is unavailable
+- 15-02: Removed 5 dead tests for getChangedFiles alongside the function removal
+- 15-02: MECHANISM_LABELS[key] ?? key pattern for Record access under noUncheckedIndexedAccess
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T18:40:28Z
-Stopped at: Completed 15-01 noUncheckedIndexedAccess
-Resume file: .planning/phases/15-typescript-hardening/15-CONTEXT.md
+Last session: 2026-03-07T18:41:17Z
+Stopped at: Completed 15-02-PLAN.md (Phase 15 complete, milestone v1.2 complete)
+Resume file: .planning/phases/15-typescript-hardening/15-02-SUMMARY.md
