@@ -80,7 +80,10 @@ Plans:
   1. `kb index` processes multiple repos concurrently (observable via faster completion time or progress output)
   2. Concurrency is configurable (e.g., environment variable or flag) with a sensible default
   3. After parallel indexing completes, the database is consistent -- identical results to sequential indexing (no write lock corruption, no missing entities)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 09-01-PLAN.md -- Pipeline refactor: extract-parallel + persist-serial with p-limit
+- [ ] 09-02-PLAN.md -- Parallel indexing test suite (consistency, error isolation, config)
 
 ## Progress
 
@@ -96,4 +99,4 @@ Plans:
 | 6. Branch-Aware Tracking & Schema Migration | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 7. Surgical File-Level Indexing | v1.1 | 2/2 | Complete | 2026-03-06 |
 | 8. New Extractors | v1.1 | 3/3 | Complete | 2026-03-06 |
-| 9. Parallel Execution | v1.1 | 0/? | Not started | - |
+| 9. Parallel Execution | v1.1 | 0/2 | Not started | - |
