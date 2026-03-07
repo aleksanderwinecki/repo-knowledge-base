@@ -187,6 +187,7 @@ export function persistRepoData(
       id: repoId,
       name: data.metadata.name,
       description: data.metadata.description,
+      subType: 'repo',
     });
 
     // Insert modules
@@ -220,6 +221,7 @@ export function persistRepoData(
           id: modId,
           name: mod.name,
           description: ftsDescription,
+          subType: mod.type ?? 'module',
         });
       }
     }
@@ -245,6 +247,7 @@ export function persistRepoData(
           id: evtId,
           name: evt.name,
           description: evt.schemaDefinition,
+          subType: 'event',
         });
       }
     }
@@ -275,6 +278,7 @@ export function persistRepoData(
           id: svcId,
           name: svc.name,
           description: svc.description,
+          subType: svc.serviceType ?? 'service',
         });
       }
     }
@@ -377,6 +381,7 @@ export function persistSurgicalData(
         id: Number(modInfo.lastInsertRowid),
         name: mod.name,
         description: ftsDescription,
+        subType: mod.type ?? 'module',
       });
     }
 
@@ -394,6 +399,7 @@ export function persistSurgicalData(
         id: Number(evtInfo.lastInsertRowid),
         name: evt.name,
         description: evt.schemaDefinition,
+        subType: 'event',
       });
     }
 
@@ -432,6 +438,7 @@ export function persistSurgicalData(
           id: Number(svcInfo.lastInsertRowid),
           name: svc.name,
           description: svc.description,
+          subType: svc.serviceType ?? 'service',
         });
       }
     }

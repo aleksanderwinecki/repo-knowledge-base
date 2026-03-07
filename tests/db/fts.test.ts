@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
-import { indexEntity, removeEntity, search } from '../../src/db/fts.js';
+import { indexEntity, removeEntity, search, resolveTypeFilter, parseCompositeType, listAvailableTypes } from '../../src/db/fts.js';
 import type Database from 'better-sqlite3';
 import os from 'os';
 import path from 'path';
@@ -44,7 +44,8 @@ describe('FTS5', () => {
 
     const results = search(db, 'booking');
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].entityType).toBe('service');
+    // Without explicit subType, defaults to parent:parent composite format
+    expect(results[0].entityType).toBe('service:service' as any);
     expect(results[0].entityId).toBe(1);
   });
 
@@ -58,7 +59,7 @@ describe('FTS5', () => {
 
     const results = search(db, 'booking');
     expect(results.length).toBe(1);
-    expect(results[0].entityType).toBe('event');
+    expect(results[0].entityType).toBe('event:event' as any);
     expect(results[0].entityId).toBe(1);
   });
 
@@ -71,7 +72,7 @@ describe('FTS5', () => {
 
     const results = search(db, 'booking');
     expect(results.length).toBe(1);
-    expect(results[0].entityType).toBe('service');
+    expect(results[0].entityType).toBe('service:service' as any);
     expect(results[0].entityId).toBe(2);
   });
 
@@ -84,7 +85,7 @@ describe('FTS5', () => {
 
     const results = search(db, 'create booking');
     expect(results.length).toBe(1);
-    expect(results[0].entityType).toBe('module');
+    expect(results[0].entityType).toBe('module:module' as any);
     expect(results[0].entityId).toBe(3);
   });
 
@@ -160,5 +161,167 @@ describe('FTS5', () => {
 
     const results = search(db, 'test service', 5);
     expect(results.length).toBe(5);
+  });
+
+  describe('composite entity_type (parent:subtype)', () => {
+    it('indexEntity with subType stores composite format', () => {
+      indexEntity(db, {
+        type: 'module',
+        id: 1,
+        name: 'UserSchema',
+        description: 'User Ecto schema',
+        subType: 'schema',
+      });
+
+      // Verify raw FTS row stores 'module:schema'
+      const row = db.prepare('SELECT entity_type FROM knowledge_fts WHERE entity_id = 1').get() as { entity_type: string };
+      expect(row.entity_type).toBe('module:schema');
+    });
+
+    it('indexEntity without subType defaults to parent:parent', () => {
+      indexEntity(db, {
+        type: 'module',
+        id: 2,
+        name: 'SomeModule',
+        description: 'A plain module',
+      });
+
+      const row = db.prepare('SELECT entity_type FROM knowledge_fts WHERE entity_id = 2 AND entity_type LIKE ?').get('module:%') as { entity_type: string };
+      expect(row.entity_type).toBe('module:module');
+    });
+
+    it('removeEntity works with composite types', () => {
+      indexEntity(db, {
+        type: 'module',
+        id: 3,
+        name: 'SchemaToRemove',
+        subType: 'schema',
+      });
+
+      // Verify it exists
+      let results = search(db, 'schema remove');
+      expect(results.length).toBe(1);
+
+      // Remove by parent type
+      removeEntity(db, 'module', 3);
+
+      // Should be gone
+      results = search(db, 'schema remove');
+      expect(results.length).toBe(0);
+    });
+
+    it('search returns entity_type in composite format', () => {
+      indexEntity(db, {
+        type: 'service',
+        id: 10,
+        name: 'PaymentGrpc',
+        description: 'gRPC payment service',
+        subType: 'grpc',
+      });
+
+      const results = search(db, 'payment grpc');
+      expect(results.length).toBeGreaterThan(0);
+      // The raw entityType returned by search() is the composite string
+      expect(results[0].entityType).toBe('service:grpc' as any);
+    });
+
+    it('FTS MATCH does not match on entity_type tokens (UNINDEXED)', () => {
+      indexEntity(db, {
+        type: 'module',
+        id: 20,
+        name: 'UserProfile',
+        description: 'Manages user profiles',
+        subType: 'context',
+      });
+
+      // Searching for "context" should NOT match the entity_type field since it's UNINDEXED
+      // It should only match if "context" appears in name or description
+      const results = search(db, 'context');
+      // "context" does not appear in name or description, so no results
+      expect(results.length).toBe(0);
+    });
+  });
+
+  describe('resolveTypeFilter', () => {
+    it('coarse type returns parent LIKE pattern', () => {
+      const result = resolveTypeFilter('module');
+      expect(result.sql).toBe('entity_type LIKE ?');
+      expect(result.param).toBe('module:%');
+    });
+
+    it('granular type returns sub-type LIKE pattern', () => {
+      const result = resolveTypeFilter('schema');
+      expect(result.sql).toBe('entity_type LIKE ?');
+      expect(result.param).toBe('%:schema');
+    });
+
+    it('handles all coarse types', () => {
+      for (const coarse of ['repo', 'file', 'module', 'service', 'event', 'learned_fact']) {
+        const result = resolveTypeFilter(coarse);
+        expect(result.param).toBe(`${coarse}:%`);
+      }
+    });
+
+    it('treats unknown types as granular sub-types', () => {
+      const result = resolveTypeFilter('graphql_query');
+      expect(result.param).toBe('%:graphql_query');
+    });
+  });
+
+  describe('parseCompositeType', () => {
+    it('parses module:schema', () => {
+      const result = parseCompositeType('module:schema');
+      expect(result.entityType).toBe('module');
+      expect(result.subType).toBe('schema');
+    });
+
+    it('parses event:event', () => {
+      const result = parseCompositeType('event:event');
+      expect(result.entityType).toBe('event');
+      expect(result.subType).toBe('event');
+    });
+
+    it('handles legacy format without colon', () => {
+      const result = parseCompositeType('module');
+      expect(result.entityType).toBe('module');
+      expect(result.subType).toBe('module');
+    });
+
+    it('parses service:grpc', () => {
+      const result = parseCompositeType('service:grpc');
+      expect(result.entityType).toBe('service');
+      expect(result.subType).toBe('grpc');
+    });
+  });
+
+  describe('listAvailableTypes', () => {
+    it('returns grouped structure with counts', () => {
+      indexEntity(db, { type: 'module', id: 1, name: 'Schema1', subType: 'schema' });
+      indexEntity(db, { type: 'module', id: 2, name: 'Schema2', subType: 'schema' });
+      indexEntity(db, { type: 'module', id: 3, name: 'Context1', subType: 'context' });
+      indexEntity(db, { type: 'event', id: 4, name: 'Event1', subType: 'event' });
+      indexEntity(db, { type: 'service', id: 5, name: 'Svc1', subType: 'grpc' });
+
+      const types = listAvailableTypes(db);
+
+      expect(types.module).toBeDefined();
+      expect(types.event).toBeDefined();
+      expect(types.service).toBeDefined();
+
+      // Module should have schema (2) and context (1)
+      const schemaEntry = types.module.find(t => t.subType === 'schema');
+      expect(schemaEntry).toBeDefined();
+      expect(schemaEntry!.count).toBe(2);
+
+      const contextEntry = types.module.find(t => t.subType === 'context');
+      expect(contextEntry).toBeDefined();
+      expect(contextEntry!.count).toBe(1);
+
+      // Event has 1
+      expect(types.event.find(t => t.subType === 'event')!.count).toBe(1);
+
+      // Service has 1 grpc
+      expect(types.service.find(t => t.subType === 'grpc')!.count).toBe(1);
+    });
   });
 });
