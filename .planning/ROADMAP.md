@@ -63,7 +63,11 @@ Plans:
   3. Entity lookups by name hit database indexes instead of table scans -- V5 migration adds indexes on modules, events, and services
   4. FTS5 runs optimize after bulk indexing and WAL checkpoints after index completes -- observable in perf_hooks timing output
   5. Indexing and search operations have perf_hooks instrumentation that reports wall-clock timing for benchmarking before/after
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 12-01-PLAN.md — SQLite pragma tuning, V5 migration (indexes + FTS5 prefix rebuild)
+- [ ] 12-02-PLAN.md — Prepared statement hoisting in fts.ts, writer.ts, entity.ts, dependencies.ts
+- [ ] 12-03-PLAN.md — FTS5 optimize, WAL checkpoint, and --timing CLI instrumentation
 
 ### Phase 13: MCP Layer Dedup
 **Goal**: MCP tool implementations share error handling, auto-sync, response formatting, and DB path resolution through extracted helpers
@@ -117,7 +121,7 @@ Plans:
 | 9. Parallel Execution | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Search Type Filtering | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 11. Safety Net | 2/2 | Complete    | 2026-03-07 | - |
-| 12. Database Performance | v1.2 | 0/? | Not started | - |
+| 12. Database Performance | v1.2 | 0/3 | Not started | - |
 | 13. MCP Layer Dedup | v1.2 | 0/? | Not started | - |
 | 14. Core Layer Dedup | v1.2 | 0/? | Not started | - |
 | 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
