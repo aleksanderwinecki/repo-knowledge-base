@@ -6,24 +6,22 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type Database from 'better-sqlite3';
 import { listAvailableTypes } from '../../db/fts.js';
+import { formatSingleResponse } from '../format.js';
+import { wrapToolHandler } from '../handler.js';
 
 export function registerListTypesTool(server: McpServer, db: Database.Database): void {
   server.tool(
     'kb_list_types',
     'Discover available entity types and sub-types in the knowledge base with counts',
     {},
-    async () => {
-      try {
-        const types = listAvailableTypes(db);
-        const text = JSON.stringify(types, null, 2);
-        return { content: [{ type: 'text' as const, text }] };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [{ type: 'text' as const, text: `Error listing types: ${message}` }],
-          isError: true,
-        };
-      }
-    },
+    wrapToolHandler('kb_list_types', () => {
+      const types = listAvailableTypes(db);
+      const entries = Object.entries(types);
+      const total = entries.reduce((sum, [, subtypes]) => sum + subtypes.length, 0);
+      return formatSingleResponse(
+        types,
+        `${total} entity types available across ${entries.length} categories`,
+      );
+    }),
   );
 }

@@ -186,8 +186,9 @@ describe('kb_learn', () => {
     const parsed = parseResponse(result);
 
     expect(parsed.summary).toContain('Learned');
-    expect(parsed.data).toHaveProperty('id');
-    expect((parsed.data as Record<string, unknown>).content).toBe('The auth service uses JWT tokens');
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
+    expect(data).toHaveProperty('id');
+    expect(data.content).toBe('The auth service uses JWT tokens');
   });
 
   it('stores fact with repo association', async () => {
@@ -197,7 +198,8 @@ describe('kb_learn', () => {
     });
     const parsed = parseResponse(result);
 
-    expect((parsed.data as Record<string, unknown>).repo).toBe('my-service');
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
+    expect(data.repo).toBe('my-service');
   });
 });
 
@@ -206,13 +208,14 @@ describe('kb_forget', () => {
     // Learn a fact first
     const learnResult = await callTool('kb_learn', { content: 'Temporary fact' });
     const learnParsed = parseResponse(learnResult);
-    const factId = (learnParsed.data as Record<string, unknown>).id as number;
+    const factId = ((learnParsed.data as unknown[])[0] as Record<string, unknown>).id as number;
 
     const result = await callTool('kb_forget', { id: factId });
     const parsed = parseResponse(result);
 
     expect(parsed.summary).toContain(`Forgot fact ${factId}`);
-    expect((parsed.data as Record<string, unknown>).deleted).toBe(true);
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
+    expect(data.deleted).toBe(true);
   });
 
   it('returns deleted=false for non-existent id', async () => {
@@ -220,7 +223,8 @@ describe('kb_forget', () => {
     const parsed = parseResponse(result);
 
     expect(parsed.summary).toContain('not found');
-    expect((parsed.data as Record<string, unknown>).deleted).toBe(false);
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
+    expect(data.deleted).toBe(false);
   });
 });
 
@@ -233,7 +237,7 @@ describe('kb_status', () => {
 
     expect(parsed).toHaveProperty('summary');
     expect(parsed).toHaveProperty('data');
-    const data = parsed.data as Record<string, unknown>;
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
     const counts = data.counts as Record<string, number>;
     expect(counts).toHaveProperty('repos');
     expect(counts).toHaveProperty('modules');
@@ -253,7 +257,7 @@ describe('kb_cleanup', () => {
 
     expect(parsed.summary).toContain('1 deleted repos');
     expect(parsed.summary).toContain('dry run');
-    const data = parsed.data as Record<string, unknown>;
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
     expect(data.pruned).toBe(false);
     expect((data.deletedRepos as string[])).toContain('gone-repo');
   });
@@ -265,7 +269,8 @@ describe('kb_cleanup', () => {
     const parsed = parseResponse(result);
 
     expect(parsed.summary).toContain('pruned');
-    expect((parsed.data as Record<string, unknown>).pruned).toBe(true);
+    const data = (parsed.data as unknown[])[0] as Record<string, unknown>;
+    expect(data.pruned).toBe(true);
 
     // Verify repo is actually gone from DB
     const row = db.prepare('SELECT COUNT(*) as c FROM repos WHERE name = ?').get('gone-repo') as { c: number };
@@ -311,27 +316,28 @@ describe('kb_list_types', () => {
     insertModule(repoId, 'ContextOne', 'A context module', 'context');
 
     const result = await callTool('kb_list_types');
-    const r = result as { content: Array<{ type: string; text: string }> };
-    const parsed = JSON.parse(r.content[0].text);
+    const parsed = parseResponse(result);
+    const typeMap = (parsed.data as unknown[])[0] as Record<string, unknown>;
 
-    expect(parsed).toHaveProperty('module');
-    expect(Array.isArray(parsed.module)).toBe(true);
+    expect(typeMap).toHaveProperty('module');
+    expect(Array.isArray(typeMap.module)).toBe(true);
 
-    const schemaEntry = parsed.module.find((e: { subType: string }) => e.subType === 'schema');
+    const moduleEntries = typeMap.module as Array<{ subType: string; count: number }>;
+    const schemaEntry = moduleEntries.find((e) => e.subType === 'schema');
     expect(schemaEntry).toBeDefined();
-    expect(schemaEntry.count).toBe(2);
+    expect(schemaEntry!.count).toBe(2);
 
-    const contextEntry = parsed.module.find((e: { subType: string }) => e.subType === 'context');
+    const contextEntry = moduleEntries.find((e) => e.subType === 'context');
     expect(contextEntry).toBeDefined();
-    expect(contextEntry.count).toBe(1);
+    expect(contextEntry!.count).toBe(1);
   });
 
   it('returns empty object for empty database', async () => {
     const result = await callTool('kb_list_types');
-    const r = result as { content: Array<{ type: string; text: string }> };
-    const parsed = JSON.parse(r.content[0].text);
+    const parsed = parseResponse(result);
+    const typeMap = (parsed.data as unknown[])[0] as Record<string, unknown>;
 
-    expect(parsed).toEqual({});
+    expect(typeMap).toEqual({});
   });
 });
 

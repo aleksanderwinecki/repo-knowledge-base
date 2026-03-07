@@ -7,6 +7,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { forgetFact } from '../../knowledge/store.js';
+import { formatSingleResponse } from '../format.js';
+import { wrapToolHandler } from '../handler.js';
 
 export function registerForgetTool(server: McpServer, db: Database.Database): void {
   server.tool(
@@ -15,21 +17,12 @@ export function registerForgetTool(server: McpServer, db: Database.Database): vo
     {
       id: z.number().describe('ID of the fact to forget'),
     },
-    async ({ id }) => {
-      try {
-        const deleted = forgetFact(db, id);
-        const text = JSON.stringify({
-          summary: deleted ? `Forgot fact ${id}` : `Fact ${id} not found`,
-          data: { deleted },
-        });
-        return { content: [{ type: 'text' as const, text }] };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [{ type: 'text' as const, text: `Error forgetting fact: ${message}` }],
-          isError: true,
-        };
-      }
-    },
+    wrapToolHandler('kb_forget', ({ id }) => {
+      const deleted = forgetFact(db, id);
+      return formatSingleResponse(
+        { deleted },
+        deleted ? `Forgot fact ${id}` : `Fact ${id} not found`,
+      );
+    }),
   );
 }
