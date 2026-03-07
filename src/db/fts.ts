@@ -134,10 +134,12 @@ export function executeFtsWithFallback<T>(
   try {
     return db.prepare(sql).all(...buildParams(processedQuery)) as T[];
   } catch {
+    // FTS syntax error -- retry as phrase match below
     try {
       const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
       return db.prepare(sql).all(...buildParams(phraseQuery)) as T[];
     } catch {
+      // Phrase match also failed -- return empty results
       return [];
     }
   }

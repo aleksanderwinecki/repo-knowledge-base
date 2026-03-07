@@ -13,6 +13,7 @@ export function getCurrentCommit(repoPath: string): string | null {
     }).trim();
     return sha || null;
   } catch {
+    // Expected: not a git repo or git unavailable
     return null;
   }
 }
@@ -33,6 +34,7 @@ export function isCommitReachable(
     });
     return true;
   } catch {
+    // Expected: commit GC'd or invalid SHA
     return false;
   }
 }
@@ -88,6 +90,7 @@ export function resolveDefaultBranch(repoPath: string): string | null {
     });
     return 'master';
   } catch {
+    // master doesn't exist either
     return null;
   }
 }
@@ -108,6 +111,7 @@ export function getBranchCommit(
     }).trim();
     return sha || null;
   } catch {
+    // Branch doesn't exist
     return null;
   }
 }
@@ -130,6 +134,7 @@ export function listBranchFiles(
     if (!output) return [];
     return output.split('\n').filter(Boolean);
   } catch {
+    // Branch or repo not readable
     return [];
   }
 }
@@ -152,6 +157,7 @@ export function readBranchFile(
     });
     return content;
   } catch {
+    // File or branch doesn't exist
     return null;
   }
 }
@@ -206,6 +212,7 @@ export function getChangedFilesSinceBranch(
 
     return { added, modified, deleted };
   } catch {
+    // Expected: sinceCommit unreachable or GC'd
     return { added: [], modified: [], deleted: [] };
   }
 }

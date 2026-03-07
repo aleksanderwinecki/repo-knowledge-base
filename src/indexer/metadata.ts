@@ -102,6 +102,7 @@ function extractDescription(repoPath: string): string | null {
       const desc = parseFirstParagraph(content);
       if (desc) return desc;
     } catch {
+      // README not readable -- skip
       continue;
     }
   }
