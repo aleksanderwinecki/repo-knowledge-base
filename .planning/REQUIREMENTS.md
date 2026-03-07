@@ -38,8 +38,8 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 - [ ] **CORE-03**: Entity hydration pattern consolidated across search modules
 - [ ] **CORE-04**: Entity query switch statement deduplicated
 - [ ] **CORE-05**: FTS query fallback logic shared between text.ts and entity.ts
-- [ ] **CORE-06**: clearRepoEntities batch cleanup optimized
-- [ ] **CORE-07**: Writer insert helpers extracted for shared persistence patterns
+- [x] **CORE-06**: clearRepoEntities batch cleanup optimized
+- [x] **CORE-07**: Writer insert helpers extracted for shared persistence patterns
 - [ ] **CORE-08**: Edge operations (insertEventEdges, insertGrpcClientEdges, insertEctoAssociationEdges) consolidated
 
 ### TypeScript Hardening
@@ -98,8 +98,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-03 | Phase 14 | Pending |
 | CORE-04 | Phase 14 | Pending |
 | CORE-05 | Phase 14 | Pending |
-| CORE-06 | Phase 14 | Pending |
-| CORE-07 | Phase 14 | Pending |
+| CORE-06 | Phase 14 | Complete |
+| CORE-07 | Phase 14 | Complete |
 | CORE-08 | Phase 14 | Pending |
 | TS-01 | Phase 15 | Pending |
 | TS-02 | Phase 15 | Pending |

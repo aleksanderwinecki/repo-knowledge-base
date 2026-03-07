@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
-status: completed
-stopped_at: Phase 14 context gathered
-last_updated: "2026-03-07T17:48:50.844Z"
-last_activity: 2026-03-07 -- Completed 13-02 MCP auto-sync dedup + FTS unification (withAutoSync helper, EntityType learned_fact, V6 migration)
+status: executing
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-03-07T18:04:36.080Z"
+last_activity: 2026-03-07 -- Completed 14-02 writer insert helpers + clearEntityFts dedup
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 10
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 13 - MCP Layer Dedup (complete, 2/2 plans done)
+**Current focus:** Phase 14 - Core Layer Dedup (in progress, 1/3 plans done)
 
 ## Current Position
 
-Phase: 13 of 15 (MCP Layer Dedup)
-Plan: 2 of 2
-Status: Complete
-Last activity: 2026-03-07 -- Completed 13-02 MCP auto-sync dedup + FTS unification (withAutoSync helper, EntityType learned_fact, V6 migration)
+Phase: 14 of 15 (Core Layer Dedup)
+Plan: 2 of 3
+Status: In Progress
+Last activity: 2026-03-07 -- Completed 14-02 writer insert helpers + clearEntityFts dedup
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 | Phase 12 P02 | 4min | 2 tasks | 4 files |
 | 13-01 mcp-dedup | 7min | 2 tasks | 15 files |
 | 13-02 mcp-dedup | 3min | 2 tasks | 10 files |
+| 14-02 core-dedup | 2min | 1 task | 1 file |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - 13-01: getDbPath() kept for backward compat, delegates to shared resolveDbPath()
 - 13-02: withAutoSync is generic over T (not array-restricted) so deps tool can pass single result objects
 - 13-02: V6 migration normalizes bare 'learned_fact' to 'learned_fact:learned_fact' for removeEntity LIKE pattern compat
+- 14-02: Writer insert helpers accept pre-prepared statements as params (not db.prepare() internally) to preserve Phase 12 hoisting
+- 14-02: Helpers are module-private, called within existing transaction closures
+- 14-02: clearEntityFts consolidates select-then-delete-FTS pattern without changing hoisted statement structure
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T17:48:50.842Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-core-layer-dedup/14-CONTEXT.md
+Last session: 2026-03-07T18:04:36.078Z
+Stopped at: Completed 14-02-PLAN.md
+Resume file: None
