@@ -39,6 +39,9 @@ export function runMigrations(
     if (fromVersion < 5 && toVersion >= 5) {
       migrateToV5(db);
     }
+    if (fromVersion < 6 && toVersion >= 6) {
+      migrateToV6(db);
+    }
   });
 
   migrate();
@@ -207,6 +210,29 @@ function migrateToV5(db: Database.Database): void {
     );
     for (const row of ftsRows) {
       insert.run(row.name, row.description, row.entity_type, row.entity_id);
+    }
+  }
+}
+
+/**
+ * V6: Normalize bare 'learned_fact' FTS entries to composite 'learned_fact:learned_fact'.
+ * indexEntity/removeEntity use LIKE 'type:%' patterns that won't match bare types.
+ */
+function migrateToV6(db: Database.Database): void {
+  const rows = db.prepare(
+    "SELECT rowid, name, description, entity_id FROM knowledge_fts WHERE entity_type = 'learned_fact'"
+  ).all() as Array<{ rowid: number; name: string; description: string | null; entity_id: number }>;
+
+  if (rows.length > 0) {
+    const deleteStmt = db.prepare(
+      "DELETE FROM knowledge_fts WHERE entity_type = 'learned_fact' AND entity_id = ?"
+    );
+    const insertStmt = db.prepare(
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, 'learned_fact:learned_fact', ?)"
+    );
+    for (const row of rows) {
+      deleteStmt.run(row.entity_id);
+      insertStmt.run(row.name, row.description, row.entity_id);
     }
   }
 }

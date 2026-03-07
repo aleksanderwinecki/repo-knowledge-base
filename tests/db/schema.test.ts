@@ -372,8 +372,8 @@ describe('v4 migration', () => {
     expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
   });
 
-  it('SCHEMA_VERSION is 5', () => {
-    expect(SCHEMA_VERSION).toBe(5);
+  it('SCHEMA_VERSION is 6', () => {
+    expect(SCHEMA_VERSION).toBe(6);
   });
 
   it('fresh database has file_id column on events', () => {

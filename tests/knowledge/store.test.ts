@@ -22,8 +22,8 @@ describe('knowledge store', () => {
   });
 
   describe('schema migration', () => {
-    it('schema version is 5', () => {
-      expect(SCHEMA_VERSION).toBe(5);
+    it('schema version is 6', () => {
+      expect(SCHEMA_VERSION).toBe(6);
     });
 
     it('learned_facts table exists after migration', () => {
@@ -70,7 +70,7 @@ describe('knowledge store', () => {
 
       const rows = db
         .prepare(
-          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'payments' AND entity_type = 'learned_fact'",
+          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'payments' AND entity_type LIKE 'learned_fact:%'",
         )
         .all();
       expect(rows.length).toBeGreaterThan(0);
@@ -135,7 +135,7 @@ describe('knowledge store', () => {
       // Verify it's in FTS
       let ftsRows = db
         .prepare(
-          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'billing' AND entity_type = 'learned_fact'",
+          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'billing' AND entity_type LIKE 'learned_fact:%'",
         )
         .all();
       expect(ftsRows.length).toBeGreaterThan(0);
@@ -146,7 +146,7 @@ describe('knowledge store', () => {
       // Verify it's gone from FTS
       ftsRows = db
         .prepare(
-          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'billing' AND entity_type = 'learned_fact'",
+          "SELECT * FROM knowledge_fts WHERE knowledge_fts MATCH 'billing' AND entity_type LIKE 'learned_fact:%'",
         )
         .all();
       expect(ftsRows).toHaveLength(0);

@@ -5,7 +5,7 @@
 
 import type Database from 'better-sqlite3';
 import type { LearnedFact } from './types.js';
-import { tokenizeForFts } from '../db/tokenizer.js';
+import { indexEntity, removeEntity } from '../db/fts.js';
 
 /**
  * Store a new learned fact in the knowledge base.
@@ -22,13 +22,13 @@ export function learnFact(
   const result = stmt.run(content, repo ?? null);
   const id = Number(result.lastInsertRowid);
 
-  // Index in FTS for searchability
-  // We write directly to knowledge_fts instead of using indexEntity() because
-  // EntityType doesn't include 'learned_fact', but the FTS TEXT column accepts any string.
-  const processedContent = tokenizeForFts(content);
-  db.prepare(
-    'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)',
-  ).run(processedContent, processedContent, 'learned_fact', id);
+  // Index in FTS for searchability via the standard path
+  indexEntity(db, {
+    type: 'learned_fact',
+    id,
+    name: content,
+    description: content,
+  });
 
   // Read back the created_at from DB for accurate timestamp
   const row = db
@@ -75,10 +75,8 @@ export function listFacts(
  */
 export function forgetFact(db: Database.Database, id: number): boolean {
   const forget = db.transaction(() => {
-    // Remove from FTS first
-    db.prepare(
-      "DELETE FROM knowledge_fts WHERE entity_type = 'learned_fact' AND entity_id = ?",
-    ).run(id);
+    // Remove from FTS first via the standard path
+    removeEntity(db, 'learned_fact', id);
     // Remove from table
     const result = db
       .prepare('DELETE FROM learned_facts WHERE id = ?')
