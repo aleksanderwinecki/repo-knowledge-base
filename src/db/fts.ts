@@ -120,6 +120,30 @@ export function parseCompositeType(compositeType: string): { entityType: EntityT
 }
 
 /**
+ * Execute an FTS5 query with automatic fallback for syntax errors.
+ * On FTS5 MATCH failure (e.g., unbalanced quotes, invalid operators),
+ * retries with the query wrapped as a phrase match.
+ * Returns empty array if both attempts fail.
+ */
+export function executeFtsWithFallback<T>(
+  db: Database.Database,
+  sql: string,
+  processedQuery: string,
+  buildParams: (query: string) => (string | number)[],
+): T[] {
+  try {
+    return db.prepare(sql).all(...buildParams(processedQuery)) as T[];
+  } catch {
+    try {
+      const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
+      return db.prepare(sql).all(...buildParams(phraseQuery)) as T[];
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
  * List available entity types with sub-type counts from the FTS table.
  * Returns grouped structure: { module: [{ subType: 'schema', count: 2 }, ...], ... }
  */

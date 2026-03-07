@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import type { EntityType } from '../types/entities.js';
 import type { EntityCard, EntityFilters, EntityRelationship } from './types.js';
 import { tokenizeForFts } from '../db/tokenizer.js';
-import { COARSE_TYPES, resolveTypeFilter, parseCompositeType } from '../db/fts.js';
+import { COARSE_TYPES, resolveTypeFilter, parseCompositeType, executeFtsWithFallback } from '../db/fts.js';
 
 /**
  * Find entities by name with optional filters.
@@ -264,23 +264,15 @@ function findByFts(
     LIMIT 20
   `;
 
-  const params: (string | number)[] = [processedQuery];
-  if (typeFilterParam) params.push(typeFilterParam);
+  const buildParams = (query: string): (string | number)[] => {
+    const p: (string | number)[] = [query];
+    if (typeFilterParam) p.push(typeFilterParam);
+    return p;
+  };
 
-  let rows: Array<{ entity_type: string; entity_id: number; name: string }>;
-  try {
-    rows = db.prepare(sql).all(...params) as typeof rows;
-  } catch {
-    // FTS syntax error
-    try {
-      const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
-      const fallbackParams: (string | number)[] = [phraseQuery];
-      if (typeFilterParam) fallbackParams.push(typeFilterParam);
-      rows = db.prepare(sql).all(...fallbackParams) as typeof rows;
-    } catch {
-      return [];
-    }
-  }
+  const rows = executeFtsWithFallback<{ entity_type: string; entity_id: number; name: string }>(
+    db, sql, processedQuery, buildParams,
+  );
 
   // Create pre-prepared lookups for the hydration loop
   const lookupEntityById = createEntityByIdLookup(db);

@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import type { EntityType } from '../types/entities.js';
 import type { TextSearchResult, TextSearchOptions } from './types.js';
 import { tokenizeForFts } from '../db/tokenizer.js';
-import { resolveTypeFilter, parseCompositeType } from '../db/fts.js';
+import { resolveTypeFilter, parseCompositeType, executeFtsWithFallback } from '../db/fts.js';
 
 /**
  * Full-text search across all indexed content with contextual metadata.
@@ -82,24 +82,14 @@ function executeFtsQuery(
     LIMIT ?
   `;
 
-  const params: (string | number)[] = [processedQuery];
-  if (typeFilterParam) params.push(typeFilterParam);
-  params.push(limit);
+  const buildParams = (query: string): (string | number)[] => {
+    const p: (string | number)[] = [query];
+    if (typeFilterParam) p.push(typeFilterParam);
+    p.push(limit);
+    return p;
+  };
 
-  try {
-    return db.prepare(sql).all(...params) as FtsMatch[];
-  } catch {
-    // FTS5 syntax error — try wrapping as phrase match
-    try {
-      const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
-      const fallbackParams: (string | number)[] = [phraseQuery];
-      if (typeFilterParam) fallbackParams.push(typeFilterParam);
-      fallbackParams.push(limit);
-      return db.prepare(sql).all(...fallbackParams) as FtsMatch[];
-    } catch {
-      return [];
-    }
-  }
+  return executeFtsWithFallback<FtsMatch>(db, sql, processedQuery, buildParams);
 }
 
 /**
