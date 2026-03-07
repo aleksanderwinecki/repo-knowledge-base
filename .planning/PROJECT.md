@@ -6,18 +6,8 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 
 ## Current State
 
-**Latest shipped:** v1.1 Improved Reindexing (2026-03-07)
-**Next milestone:** v1.2 Hardening & Quick Wins
-
-## Current Milestone: v1.2 Hardening & Quick Wins
-
-**Goal:** Systematic module-by-module review of the codebase to find and ship optimizations, refactoring, and verification improvements.
-
-**Target features:**
-- Module-by-module code review for quick wins
-- Refactoring opportunities (duplication, API cleanup, module boundaries)
-- Performance optimizations (indexing, search, persistence)
-- Test coverage and correctness verification
+**Latest shipped:** v1.2 Hardening & Quick Wins (2026-03-07)
+**Next milestone:** TBD (use `/gsd:new-milestone` to plan)
 
 ## Core Value
 
@@ -27,23 +17,13 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
-- v1.1 IDX2-01: Indexer tracks only main/master branch commit SHA — Phase 6
-- v1.1 IDX2-02: Surgical file-level re-indexing (only changed files) — Phase 7
-- v1.1 IDX2-03: Deleted file cleanup via git diff — Phase 7
-- v1.1 IDX2-04: Parallel repo indexing with configurable concurrency — Phase 9
-- v1.1 IDX2-05: Schema migration (v3) for new extractors — Phase 6
-- v1.1 EXT-01: gRPC service definitions from .proto files — Phase 8
-- v1.1 EXT-02: Ecto schema fields and associations — Phase 8
-- v1.1 EXT-03: GraphQL types/queries/mutations from .graphql SDL — Phase 8
-- v1.1 EXT-04: Absinthe macro extraction — Phase 8
-- v1.1 EXT-05: Event Catalog metadata integration — Phase 8
-- v1.1 EXT-06: gRPC client call edge detection — Phase 8
-- v1.1 TF-01..TF-08: Search type filtering with parent:subtype FTS, CLI --type, MCP type param, kb_list_types — Phase 10
-- v1.0 STOR-01..04: SQLite + FTS5 storage, schema, per-repo tracking
-- v1.0 IDX-01..07: Repo scanning, extraction, incremental indexing, error isolation
-- v1.0 SRCH-01..04: Text search, entity queries, dependency graphs, contextual results
-- v1.0 INTF-01..04: CLI, MCP server, JSON output, <4KB responses
-- v1.0 KNOW-01..03: Manual knowledge injection, persistence, relationship graphs
+- v1.2 SAFE-01..03: MCP contract tests, FTS golden tests, CLI snapshot tests — Phase 11
+- v1.2 PERF-01..07: SQLite pragmas, prepared statements, indexes, FTS5 optimize, WAL checkpoint, perf_hooks — Phase 12
+- v1.2 MCP-01..05: wrapToolHandler HOF, withAutoSync, McpResponse, DB path, EntityType union — Phase 13
+- v1.2 CORE-01..08: Pipeline unification, FTS path, entity hydration, writer helpers, edge ops — Phase 14
+- v1.2 TS-01..04: noUncheckedIndexedAccess, dead code, deps symmetry, catch docs — Phase 15
+- v1.1 IDX2-01..05, EXT-01..06, TF-01..08: Branch-aware indexing, new extractors, type filtering — Phases 6-10
+- v1.0 STOR-01..04, IDX-01..07, SRCH-01..04, INTF-01..04, KNOW-01..03: Foundation — Phases 1-5
 
 ### Active
 
@@ -65,12 +45,12 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v1.1 with 13,258 LOC TypeScript (5,739 src + 7,519 tests), 388 tests passing across 25 test files.
-Tech stack: Node.js, TypeScript, better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built in ~20 hours total across v1.0 and v1.1.
+Shipped v1.2 with 14,249 LOC TypeScript (5,582 src + 8,667 tests), 435 tests passing across 28 test files.
+Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
+Built across v1.0, v1.1, and v1.2 milestones.
 
 8 MCP tools: kb_search, kb_entity, kb_deps, kb_learn, kb_forget, kb_status, kb_cleanup, kb_list_types.
-CLI: kb index, kb search (--type, --list-types, --entity), kb deps, kb status, kb learn, kb learned, kb forget, kb docs.
+CLI: kb index (--force, --timing), kb search (--type, --list-types, --entity), kb deps (--direction), kb status, kb learn, kb learned, kb forget, kb docs.
 
 Known limitations:
 - FTS5 keyword search only (no semantic/embedding search) — handles ~80% of queries well
@@ -99,6 +79,12 @@ Known limitations:
 | EventCatalog via filesystem parsing | SDK is file-based, no HTTP API; direct MDX/YAML parsing works | v1.1 Good |
 | FTS parent:subtype composite format | Enables both coarse and granular type filtering without separate columns | v1.1 Good |
 | UNINDEXED entity_type in FTS | Prevents type tokens from polluting MATCH results; still supports = and LIKE | v1.1 Good |
+| Safety nets before refactoring | Contract tests + golden tests catch regressions from any structural change | v1.2 Good |
+| wrapToolHandler HOF for MCP tools | Single error handling path; individual tools are pure logic only | v1.2 Good |
+| withAutoSync generic helper | Type-safe sync-requery pattern; direction-agnostic | v1.2 Good |
+| extractRepoData + persistExtractedData as single pipeline | indexSingleRepo and indexAllRepos share identical extraction/persistence code | v1.2 Good |
+| noUncheckedIndexedAccess enabled | Catches undefined array/record access at compile time; 60 fixes were mechanical | v1.2 Good |
+| Document intentional silence over forced logging | 28 bare catches are all legitimate (git probes, file reads, FTS fallbacks) | v1.2 Good |
 
 ## Constraints
 
@@ -110,4 +96,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-07 after v1.1 milestone*
+*Last updated: 2026-03-07 after v1.2 milestone*

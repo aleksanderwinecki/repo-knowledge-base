@@ -1,5 +1,22 @@
 # Milestones
 
+## v1.2 Hardening & Quick Wins (Shipped: 2026-03-07)
+
+**Phases completed:** 5 phases (11-15), 12 plans, 23 tasks
+**Timeline:** 1 day (2026-03-07)
+**Stats:** 45 commits, 435 tests, 14,249 LOC TypeScript (5,582 src + 8,667 tests)
+
+**Key accomplishments:**
+- Safety net: 16 MCP contract tests + 15 FTS golden tests + 8 CLI snapshot tests locking API contracts and search quality
+- Database performance: SQLite pragma tuning, prepared statement hoisting, B-tree indexes, FTS5 optimize/WAL checkpoint, perf_hooks instrumentation
+- MCP layer dedup: wrapToolHandler HOF, withAutoSync helper, unified McpResponse format, shared DB path utility — ~84 lines eliminated
+- Core layer dedup: shared FTS fallback, entity hydrator, writer helpers, pipeline unification (indexSingleRepo → extractRepoData + persistExtractedData) — ~400 lines eliminated
+- TypeScript hardening: noUncheckedIndexedAccess enabled (60 fixes), dead code removed, dependency query parameterized, all catch blocks documented
+
+**Delivered:** Systematic hardening of the entire codebase — safety nets for refactoring confidence, SQLite performance tuning, ~500 lines of duplicated code consolidated, and strict TypeScript enabled across all source files.
+
+---
+
 ## v1.1 Improved Reindexing (Shipped: 2026-03-07)
 
 **Phases completed:** 5 phases (6-10), 11 plans, ~18 tasks
