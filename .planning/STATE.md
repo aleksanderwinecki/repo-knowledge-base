@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Search Type Filtering
-status: complete
-stopped_at: "Phase 10 Plan 02 complete"
-last_updated: "2026-03-07T12:32:07Z"
+milestone: v1.1
+milestone_name: Improved Reindexing
+status: completed
+stopped_at: Completed 10-02-PLAN.md (Phase 10 complete)
+last_updated: "2026-03-07T12:36:49.119Z"
 last_activity: 2026-03-07 -- Phase 10 Plan 02 complete (CLI & MCP type filtering interfaces)
 progress:
-  total_phases: 6
+  total_phases: 5
   completed_phases: 5
   total_plans: 11
   completed_plans: 11
