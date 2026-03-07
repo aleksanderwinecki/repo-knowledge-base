@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Improved Reindexing
-status: completed
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-07T10:25:42.692Z"
-last_activity: 2026-03-06 -- Phase 8 Plan 03 complete (Pipeline wiring + Event Catalog enrichment)
+status: in-progress
+stopped_at: Phase 9 Plan 01 complete
+last_updated: "2026-03-07T10:49:29Z"
+last_activity: 2026-03-07 -- Phase 9 Plan 01 complete (Parallel extraction pipeline)
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 9
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06 after Phase 6)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 8 -- New Extractors
+**Current focus:** Phase 9 -- Parallel Execution
 
 ## Current Position
 
-Phase: 8 of 9 (New Extractors)
-Plan: 3 of 3 complete
-Status: Complete
-Last activity: 2026-03-06 -- Phase 8 Plan 03 complete (Pipeline wiring + Event Catalog enrichment)
+Phase: 9 of 9 (Parallel Execution)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-03-07 -- Phase 9 Plan 01 complete (Parallel extraction pipeline)
 
-Progress: [####################] 100% (Phase 8 complete)
+Progress: [#################---] 89% (Phase 9 Plan 01 complete)
 
 ## Performance Metrics
 
@@ -58,6 +58,8 @@ Progress: [####################] 100% (Phase 8 complete)
 | Phase 08 P01 | 3min | 2 tasks | 2 files |
 | Phase 08 P02 | 3min | 2 tasks | 4 files |
 | Phase 08 P03 | 7min | 3 tasks | 5 files |
+| 9. Parallel Execution | 2 | 1 | In Progress |
+| Phase 09 P01 | 6min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -95,6 +97,10 @@ Recent decisions affecting current work:
 - Phase 8-03: Domain derived by traversing domain->service->event chain in catalog MDX files
 - Phase 8-03: Ecto association edges skip cross-repo targets not found in DB
 - Phase 8-03: enrichFromEventCatalog wrapped in try/catch to prevent catalog failures from blocking indexing
+- Phase 9-01: p-limit v7 for ESM-native concurrency control
+- Phase 9-01: Three-phase pipeline: sequential DB prep, parallel extraction, serial persistence
+- Phase 9-01: extractRepoData takes dbSnapshot instead of DB handle for thread safety
+- Phase 9-01: indexSingleRepo unchanged for MCP sync backward compatibility
 
 ### Pending Todos
 
@@ -107,6 +113,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T10:25:42.689Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-parallel-execution/09-CONTEXT.md
+Last session: 2026-03-07T10:49:29Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: .planning/phases/09-parallel-execution/09-01-SUMMARY.md
