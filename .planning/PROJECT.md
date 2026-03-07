@@ -7,7 +7,17 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 ## Current State
 
 **Latest shipped:** v1.1 Improved Reindexing (2026-03-07)
-**Next milestone:** Not yet planned
+**Next milestone:** v1.2 Hardening & Quick Wins
+
+## Current Milestone: v1.2 Hardening & Quick Wins
+
+**Goal:** Systematic module-by-module review of the codebase to find and ship optimizations, refactoring, and verification improvements.
+
+**Target features:**
+- Module-by-module code review for quick wins
+- Refactoring opportunities (duplication, API cleanup, module boundaries)
+- Performance optimizations (indexing, search, persistence)
+- Test coverage and correctness verification
 
 ## Core Value
 
