@@ -30,3 +30,16 @@ export function withDb<T>(fn: (db: Database.Database) => T): T {
     closeDatabase(db);
   }
 }
+
+/**
+ * Open a database, run an async function, then close the database.
+ * Ensures the database is always closed, even on exceptions.
+ */
+export async function withDbAsync<T>(fn: (db: Database.Database) => Promise<T>): Promise<T> {
+  const db = openDatabase(getDbPath());
+  try {
+    return await fn(db);
+  } finally {
+    closeDatabase(db);
+  }
+}
