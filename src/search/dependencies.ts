@@ -109,24 +109,36 @@ function findLinkedRepos(
 ): LinkedRepo[] {
   const results: LinkedRepo[] = [];
 
+  // Hoist all prepared statements above the traversal logic
+  const consumedEdgesStmt = db.prepare(
+    "SELECT target_id, relationship_type FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'consumes_event'",
+  );
+  const producedEdgesStmt = db.prepare(
+    "SELECT target_id, relationship_type FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'produces_event'",
+  );
+  const eventNameStmt = db.prepare('SELECT name FROM events WHERE id = ?');
+  const producerEdgesStmt = db.prepare(
+    "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'produces_event'",
+  );
+  const consumerEdgesStmt = db.prepare(
+    "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'consumes_event'",
+  );
+  const repoByIdStmt = db.prepare('SELECT id, name FROM repos WHERE id = ?');
+
   if (direction === 'upstream') {
     // Step 1: Find events this repo consumes
-    const consumedEdges = db.prepare(
-      "SELECT target_id, relationship_type FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'consumes_event'",
-    ).all(repoId) as Array<{ target_id: number; relationship_type: string }>;
+    const consumedEdges = consumedEdgesStmt.all(repoId) as Array<{ target_id: number; relationship_type: string }>;
 
     for (const edge of consumedEdges) {
       const eventId = edge.target_id;
-      const event = db.prepare('SELECT name FROM events WHERE id = ?').get(eventId) as { name: string } | undefined;
+      const event = eventNameStmt.get(eventId) as { name: string } | undefined;
       if (!event) continue;
 
       // Step 2: Find who produces this event
-      const producerEdges = db.prepare(
-        "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'produces_event'",
-      ).all(eventId) as Array<{ source_id: number }>;
+      const producerEdges = producerEdgesStmt.all(eventId) as Array<{ source_id: number }>;
 
       for (const producer of producerEdges) {
-        const producerRepo = db.prepare('SELECT id, name FROM repos WHERE id = ?').get(producer.source_id) as {
+        const producerRepo = repoByIdStmt.get(producer.source_id) as {
           id: number; name: string;
         } | undefined;
         if (!producerRepo) continue;
@@ -142,22 +154,18 @@ function findLinkedRepos(
   } else {
     // downstream
     // Step 1: Find events this repo produces
-    const producedEdges = db.prepare(
-      "SELECT target_id, relationship_type FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'produces_event'",
-    ).all(repoId) as Array<{ target_id: number; relationship_type: string }>;
+    const producedEdges = producedEdgesStmt.all(repoId) as Array<{ target_id: number; relationship_type: string }>;
 
     for (const edge of producedEdges) {
       const eventId = edge.target_id;
-      const event = db.prepare('SELECT name FROM events WHERE id = ?').get(eventId) as { name: string } | undefined;
+      const event = eventNameStmt.get(eventId) as { name: string } | undefined;
       if (!event) continue;
 
       // Step 2: Find who consumes this event
-      const consumerEdges = db.prepare(
-        "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'consumes_event'",
-      ).all(eventId) as Array<{ source_id: number }>;
+      const consumerEdges = consumerEdgesStmt.all(eventId) as Array<{ source_id: number }>;
 
       for (const consumer of consumerEdges) {
-        const consumerRepo = db.prepare('SELECT id, name FROM repos WHERE id = ?').get(consumer.source_id) as {
+        const consumerRepo = repoByIdStmt.get(consumer.source_id) as {
           id: number; name: string;
         } | undefined;
         if (!consumerRepo) continue;

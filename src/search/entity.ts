@@ -94,10 +94,13 @@ function findExact(
     types = ['repo', 'module', 'event', 'service'] as EntityType[];
   }
 
+  // Create pre-prepared relationship lookup for the entity loop
+  const lookupRelationships = createRelationshipLookup(db);
+
   for (const type of types) {
     const entities = getEntitiesByExactName(db, type, name, filters?.repo, subTypeColumnFilter);
     for (const entity of entities) {
-      const relationships = getRelationships(db, type, entity.id);
+      const relationships = lookupRelationships(type, entity.id);
       cards.push({
         name: entity.name,
         type,
@@ -110,6 +113,130 @@ function findExact(
   }
 
   return cards;
+}
+
+/** Create a pre-prepared entity-by-id lookup to avoid db.prepare() per FTS result */
+function createEntityByIdLookup(db: Database.Database) {
+  const stmts = {
+    repo: db.prepare('SELECT id, name, path, description FROM repos WHERE id = ?'),
+    module: db.prepare(
+      `SELECT m.id, m.name, m.summary, r.name as repo_name, f.path as file_path
+       FROM modules m JOIN repos r ON m.repo_id = r.id LEFT JOIN files f ON m.file_id = f.id
+       WHERE m.id = ?`,
+    ),
+    event: db.prepare(
+      `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name
+       FROM events e JOIN repos r ON e.repo_id = r.id WHERE e.id = ?`,
+    ),
+    service: db.prepare(
+      `SELECT s.id, s.name, s.description, r.name as repo_name
+       FROM services s JOIN repos r ON s.repo_id = r.id WHERE s.id = ?`,
+    ),
+  };
+
+  return (type: EntityType, id: number, repoFilter?: string): EntityInfo[] => {
+    switch (type) {
+      case 'repo': {
+        const row = stmts.repo.get(id) as {
+          id: number; name: string; path: string; description: string | null;
+        } | undefined;
+        if (!row) return [];
+        if (repoFilter && row.name !== repoFilter) return [];
+        return [{ id: row.id, name: row.name, repoName: row.name, filePath: null, description: row.description }];
+      }
+      case 'module': {
+        const row = stmts.module.get(id) as {
+          id: number; name: string; summary: string | null; repo_name: string; file_path: string | null;
+        } | undefined;
+        if (!row) return [];
+        if (repoFilter && row.repo_name !== repoFilter) return [];
+        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.file_path, description: row.summary }];
+      }
+      case 'event': {
+        const row = stmts.event.get(id) as {
+          id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string;
+        } | undefined;
+        if (!row) return [];
+        if (repoFilter && row.repo_name !== repoFilter) return [];
+        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.source_file, description: row.schema_definition }];
+      }
+      case 'service': {
+        const row = stmts.service.get(id) as {
+          id: number; name: string; description: string | null; repo_name: string;
+        } | undefined;
+        if (!row) return [];
+        if (repoFilter && row.repo_name !== repoFilter) return [];
+        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: null, description: row.description }];
+      }
+      default:
+        return [];
+    }
+  };
+}
+
+/** Create a pre-prepared relationship lookup to avoid db.prepare() per entity */
+function createRelationshipLookup(db: Database.Database) {
+  const outgoingStmt = db.prepare(
+    'SELECT target_type, target_id, relationship_type FROM edges WHERE source_type = ? AND source_id = ?',
+  );
+  const incomingStmt = db.prepare(
+    'SELECT source_type, source_id, relationship_type FROM edges WHERE target_type = ? AND target_id = ?',
+  );
+  // Pre-prepared name resolution statements per entity type
+  const nameStmts: Record<string, Database.Statement> = {
+    repo: db.prepare('SELECT name FROM repos WHERE id = ?'),
+    module: db.prepare('SELECT name FROM modules WHERE id = ?'),
+    event: db.prepare('SELECT name FROM events WHERE id = ?'),
+    service: db.prepare('SELECT name FROM services WHERE id = ?'),
+    file: db.prepare('SELECT path as name FROM files WHERE id = ?'),
+  };
+
+  const resolveName = (type: EntityType, id: number): string | null => {
+    const stmt = nameStmts[type];
+    if (!stmt) return null;
+    const row = stmt.get(id) as { name: string } | undefined;
+    return row?.name ?? null;
+  };
+
+  return (entityType: EntityType, entityId: number): EntityRelationship[] => {
+    const relationships: EntityRelationship[] = [];
+
+    // Outgoing edges: this entity is the source
+    const outgoing = outgoingStmt.all(entityType, entityId) as Array<{
+      target_type: string; target_id: number; relationship_type: string;
+    }>;
+
+    for (const edge of outgoing) {
+      const targetName = resolveName(edge.target_type as EntityType, edge.target_id);
+      if (targetName) {
+        relationships.push({
+          direction: 'outgoing',
+          type: edge.relationship_type,
+          targetName,
+          targetType: edge.target_type,
+        });
+      }
+    }
+
+    // Incoming edges: this entity is the target
+    const incoming = incomingStmt.all(entityType, entityId) as Array<{
+      source_type: string; source_id: number; relationship_type: string;
+    }>;
+
+    for (const edge of incoming) {
+      const sourceName = resolveName(edge.source_type as EntityType, edge.source_id);
+      if (sourceName) {
+        relationships.push({
+          direction: 'incoming',
+          type: edge.relationship_type,
+          targetName: sourceName,
+          targetType: edge.source_type,
+        });
+      }
+    }
+
+    return relationships;
+  };
 }
 
 /** Search entity tables via FTS for partial matches */
@@ -155,6 +282,10 @@ function findByFts(
     }
   }
 
+  // Create pre-prepared lookups for the hydration loop
+  const lookupEntityById = createEntityByIdLookup(db);
+  const lookupRelationships = createRelationshipLookup(db);
+
   const cards: EntityCard[] = [];
   const seen = new Set<string>();
 
@@ -165,9 +296,9 @@ function findByFts(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const entities = getEntityById(db, entityType, row.entity_id, filters?.repo);
+    const entities = lookupEntityById(entityType, row.entity_id, filters?.repo);
     for (const entity of entities) {
-      const relationships = getRelationships(db, entityType, entity.id);
+      const relationships = lookupRelationships(entityType, entity.id);
       cards.push({
         name: entity.name,
         type: entityType,
@@ -256,130 +387,3 @@ function getEntitiesByExactName(
   }
 }
 
-function getEntityById(
-  db: Database.Database,
-  type: EntityType,
-  id: number,
-  repoFilter?: string,
-): EntityInfo[] {
-  switch (type) {
-    case 'repo': {
-      const row = db.prepare('SELECT id, name, path, description FROM repos WHERE id = ?').get(id) as {
-        id: number; name: string; path: string; description: string | null;
-      } | undefined;
-      if (!row) return [];
-      if (repoFilter && row.name !== repoFilter) return [];
-      return [{ id: row.id, name: row.name, repoName: row.name, filePath: null, description: row.description }];
-    }
-    case 'module': {
-      const row = db.prepare(
-        `SELECT m.id, m.name, m.summary, r.name as repo_name, f.path as file_path
-         FROM modules m JOIN repos r ON m.repo_id = r.id LEFT JOIN files f ON m.file_id = f.id
-         WHERE m.id = ?`,
-      ).get(id) as {
-        id: number; name: string; summary: string | null; repo_name: string; file_path: string | null;
-      } | undefined;
-      if (!row) return [];
-      if (repoFilter && row.repo_name !== repoFilter) return [];
-      return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.file_path, description: row.summary }];
-    }
-    case 'event': {
-      const row = db.prepare(
-        `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name
-         FROM events e JOIN repos r ON e.repo_id = r.id WHERE e.id = ?`,
-      ).get(id) as {
-        id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string;
-      } | undefined;
-      if (!row) return [];
-      if (repoFilter && row.repo_name !== repoFilter) return [];
-      return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.source_file, description: row.schema_definition }];
-    }
-    case 'service': {
-      const row = db.prepare(
-        `SELECT s.id, s.name, s.description, r.name as repo_name
-         FROM services s JOIN repos r ON s.repo_id = r.id WHERE s.id = ?`,
-      ).get(id) as {
-        id: number; name: string; description: string | null; repo_name: string;
-      } | undefined;
-      if (!row) return [];
-      if (repoFilter && row.repo_name !== repoFilter) return [];
-      return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: null, description: row.description }];
-    }
-    default:
-      return [];
-  }
-}
-
-/**
- * Get relationships for an entity from the edges table.
- * Returns both incoming and outgoing edges with resolved target names.
- */
-function getRelationships(
-  db: Database.Database,
-  entityType: EntityType,
-  entityId: number,
-): EntityRelationship[] {
-  const relationships: EntityRelationship[] = [];
-
-  // Outgoing edges: this entity is the source
-  const outgoing = db
-    .prepare(
-      'SELECT target_type, target_id, relationship_type FROM edges WHERE source_type = ? AND source_id = ?',
-    )
-    .all(entityType, entityId) as Array<{
-    target_type: string; target_id: number; relationship_type: string;
-  }>;
-
-  for (const edge of outgoing) {
-    const targetName = resolveEntityName(db, edge.target_type as EntityType, edge.target_id);
-    if (targetName) {
-      relationships.push({
-        direction: 'outgoing',
-        type: edge.relationship_type,
-        targetName,
-        targetType: edge.target_type,
-      });
-    }
-  }
-
-  // Incoming edges: this entity is the target
-  const incoming = db
-    .prepare(
-      'SELECT source_type, source_id, relationship_type FROM edges WHERE target_type = ? AND target_id = ?',
-    )
-    .all(entityType, entityId) as Array<{
-    source_type: string; source_id: number; relationship_type: string;
-  }>;
-
-  for (const edge of incoming) {
-    const sourceName = resolveEntityName(db, edge.source_type as EntityType, edge.source_id);
-    if (sourceName) {
-      relationships.push({
-        direction: 'incoming',
-        type: edge.relationship_type,
-        targetName: sourceName,
-        targetType: edge.source_type,
-      });
-    }
-  }
-
-  return relationships;
-}
-
-/** Resolve an entity's name from its type and ID */
-function resolveEntityName(db: Database.Database, type: EntityType, id: number): string | null {
-  const tableMap: Record<string, string> = {
-    repo: 'repos',
-    module: 'modules',
-    event: 'events',
-    service: 'services',
-    file: 'files',
-  };
-
-  const table = tableMap[type];
-  if (!table) return null;
-
-  const nameCol = type === 'file' ? 'path' : 'name';
-  const row = db.prepare(`SELECT ${nameCol} as name FROM ${table} WHERE id = ?`).get(id) as { name: string } | undefined;
-  return row?.name ?? null;
-}
