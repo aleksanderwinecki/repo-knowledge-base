@@ -4,18 +4,10 @@
 
 A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ repos) into a single SQLite file with FTS5 search. Any AI agent can instantly query architectural knowledge, service relationships, event flows, and implementation patterns via CLI or MCP tools — without re-scanning repos every session.
 
-## Current Milestone: v1.1 Improved Reindexing
+## Current State
 
-**Goal:** Faster, smarter indexing with branch-aware tracking, surgical file-level updates, parallel execution, and new extractors for GraphQL, gRPC, Ecto, and Event Catalog.
-
-**Target features:**
-- Track only main/master branch (ignore PR branch checkouts)
-- Surgical file-level re-indexing (only re-process changed files)
-- Parallel repo indexing for faster full re-index
-- GraphQL schema extraction (types, queries, mutations)
-- gRPC service definition extraction
-- Ecto schema and database structure extraction
-- Event Catalog as supplementary data source
+**Latest shipped:** v1.1 Improved Reindexing (2026-03-07)
+**Next milestone:** Not yet planned
 
 ## Core Value
 
@@ -25,39 +17,29 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
-- v1.1 IDX2-01: Indexer tracks only main/master branch commit SHA, ignoring checked-out PR branches — Phase 6
-- v1.1 IDX2-05: Schema migration (v3) adds columns/tables needed for new extractors — Phase 6
-- v1.0 STOR-01: SQLite database stores all indexed knowledge in a single file
-- v1.0 STOR-02: Schema supports repos, files, modules, events, services, and relationships
-- v1.0 STOR-03: FTS5 full-text search over indexed content
-- v1.0 STOR-04: Per-repo metadata tracks last indexed git commit for incremental updates
-- v1.0 IDX-01: Scan all repos under configurable root directory
-- v1.0 IDX-02: Extract repo metadata (name, description, tech stack, key files)
-- v1.0 IDX-03: Extract Elixir module definitions and responsibilities
-- v1.0 IDX-04: Extract proto file definitions (event schemas, service definitions)
-- v1.0 IDX-05: Extract Kafka event producer/consumer relationships
-- v1.0 IDX-06: Incremental re-indexing (only process repos with new commits)
-- v1.0 IDX-07: Per-repo error isolation
-- v1.0 SRCH-01: Text search across all indexed content
-- v1.0 SRCH-02: Structured entity queries
-- v1.0 SRCH-03: Service dependency queries
-- v1.0 SRCH-04: Search results include file paths, repo names, and context
-- v1.0 INTF-01: CLI tool for indexing, querying, and learning
-- v1.0 INTF-02: MCP server for mid-conversation queries
-- v1.0 INTF-03: JSON output formatting for CLI
-- v1.0 INTF-04: MCP responses sized under 4KB with structured summaries
-- v1.0 KNOW-01: Manual knowledge injection via learn command
-- v1.0 KNOW-02: Learned facts stored persistently and searchable
-- v1.0 KNOW-03: Service relationship graph queryable
+- v1.1 IDX2-01: Indexer tracks only main/master branch commit SHA — Phase 6
+- v1.1 IDX2-02: Surgical file-level re-indexing (only changed files) — Phase 7
+- v1.1 IDX2-03: Deleted file cleanup via git diff — Phase 7
+- v1.1 IDX2-04: Parallel repo indexing with configurable concurrency — Phase 9
+- v1.1 IDX2-05: Schema migration (v3) for new extractors — Phase 6
+- v1.1 EXT-01: gRPC service definitions from .proto files — Phase 8
+- v1.1 EXT-02: Ecto schema fields and associations — Phase 8
+- v1.1 EXT-03: GraphQL types/queries/mutations from .graphql SDL — Phase 8
+- v1.1 EXT-04: Absinthe macro extraction — Phase 8
+- v1.1 EXT-05: Event Catalog metadata integration — Phase 8
+- v1.1 EXT-06: gRPC client call edge detection — Phase 8
+- v1.1 TF-01..TF-08: Search type filtering with parent:subtype FTS, CLI --type, MCP type param, kb_list_types — Phase 10
+- v1.0 STOR-01..04: SQLite + FTS5 storage, schema, per-repo tracking
+- v1.0 IDX-01..07: Repo scanning, extraction, incremental indexing, error isolation
+- v1.0 SRCH-01..04: Text search, entity queries, dependency graphs, contextual results
+- v1.0 INTF-01..04: CLI, MCP server, JSON output, <4KB responses
+- v1.0 KNOW-01..03: Manual knowledge injection, persistence, relationship graphs
 
 ### Active
 
 - [ ] Embedding-based semantic search for natural language queries (SEM-01)
 - [ ] Code-aware embeddings for CamelCase/snake_case (SEM-02)
-- [ ] Extract GraphQL schema definitions (EXT-01)
-- [ ] Extract gRPC service definitions (EXT-02)
-- [ ] Extract Ecto schemas and database structure (EXT-03)
-- [ ] Extract from Event Catalog as supplementary data source (EXT-04)
+- [ ] CODEOWNERS parsing and ownership queries (OWN-01..03)
 - [ ] Auto-learn patterns from completed tasks (INT-01)
 - [ ] Suggest relevant repos/files for feature descriptions (INT-02)
 - [ ] Cross-repo impact analysis (INT-03)
@@ -73,14 +55,17 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v1.0 with 8,193 LOC TypeScript, 236 tests passing. Phase 6 added branch-aware indexing — 263 tests passing.
-Tech stack: Node.js, TypeScript, better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, vitest.
-Built in ~18 hours as a hackathon project.
+Shipped v1.1 with 13,258 LOC TypeScript (5,739 src + 7,519 tests), 388 tests passing across 25 test files.
+Tech stack: Node.js, TypeScript, better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
+Built in ~20 hours total across v1.0 and v1.1.
+
+8 MCP tools: kb_search, kb_entity, kb_deps, kb_learn, kb_forget, kb_status, kb_cleanup, kb_list_types.
+CLI: kb index, kb search (--type, --list-types, --entity), kb deps, kb status, kb learn, kb learned, kb forget, kb docs.
 
 Known limitations:
 - FTS5 keyword search only (no semantic/embedding search) — handles ~80% of queries well
 - sqlite-vec platform compatibility on macOS ARM64 untested — needed for v2 embeddings
-- Elixir/proto extractors use regex parsing (no AST) — good enough for common patterns
+- All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 
 ## Key Decisions
 
@@ -98,6 +83,12 @@ Known limitations:
 | Git plumbing over porcelain for branch reads | rev-parse/ls-tree/show are scriptable, no working tree interference | v1.1 Good |
 | main→master→null fallback chain | Simple, covers 99% of repos; no remote queries needed | v1.1 Good |
 | Extractors accept branch param, parse functions unchanged | Minimal API surface change; parseElixirFile/parseProtoFile stay pure | v1.1 Good |
+| Surgical threshold: <=200 files AND <=50% of repo | Above threshold silently falls back to full rebuild; avoids slow surgical on large changes | v1.1 Good |
+| Regex over AST for all extractors | No AST dependency; regex sufficient for well-structured macros | v1.1 Good |
+| p-limit over worker_threads for parallelism | SQLite can't share connections across threads; p-limit + Promise.all sufficient | v1.1 Good |
+| EventCatalog via filesystem parsing | SDK is file-based, no HTTP API; direct MDX/YAML parsing works | v1.1 Good |
+| FTS parent:subtype composite format | Enables both coarse and granular type filtering without separate columns | v1.1 Good |
+| UNINDEXED entity_type in FTS | Prevents type tokens from polluting MATCH results; still supports = and LIKE | v1.1 Good |
 
 ## Constraints
 
@@ -109,4 +100,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-06 after Phase 6*
+*Last updated: 2026-03-07 after v1.1 milestone*

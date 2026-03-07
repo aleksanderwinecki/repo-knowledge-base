@@ -45,6 +45,52 @@
 
 ---
 
+## Milestone: v1.1 — Improved Reindexing
+
+**Shipped:** 2026-03-07
+**Phases:** 5 (6-10) | **Plans:** 11 | **Feat Commits:** 19
+
+### What Was Built
+- Branch-aware indexing: git plumbing commands for reliable main/master resolution, ignoring local checkout state
+- Surgical file-level re-indexing: only changed files re-processed, with automatic full-rebuild fallback above threshold
+- Four new extractors: GraphQL SDL, Absinthe macros, gRPC services, Ecto schemas with associations
+- Event Catalog metadata integration via filesystem MDX/YAML parsing
+- Parallel repo indexing with p-limit concurrency control
+- Search type filtering: parent:subtype FTS convention, --type for granular sub-types, --list-types discovery
+- 388 tests across 25 test files
+
+### What Worked
+- Auto-advance pipeline (discuss -> plan -> execute) ran smoothly for Phase 10 end-to-end
+- Regex extraction approach continued to work well for GraphQL SDL, Absinthe, and Ecto macros
+- Three-phase pipeline (sequential DB prep, parallel extraction, serial persistence) was clean architecture for parallelism
+- TDD approach in plans produced reliable code — all tests passed first time on most tasks
+- Line-by-line schema block parsing (depth tracking) solved nested do...end safely
+
+### What Was Inefficient
+- Summary one-liner extraction still returns null — summaries use inconsistent frontmatter format (not fixed from v1.0)
+- ROADMAP.md got inconsistent during execution — Phase 10 was split into v1.2 by executor agents but STATE.md still tracked v1.1
+- Some plan checkboxes in ROADMAP.md weren't marked [x] during execution (Phases 6-7 plans stayed unchecked)
+
+### Patterns Established
+- Parent:subtype composite format for FTS entity_type (extensible to future entity kinds)
+- resolveTypeFilter with LIKE patterns for both coarse and granular filtering
+- UNINDEXED FTS columns for filterable-but-not-searchable metadata
+- Surgical threshold heuristic: <=200 files AND <=50% of repo
+- p-limit for parallel extraction, serial persistence for SQLite safety
+
+### Key Lessons
+1. Keep ROADMAP.md milestone assignments explicit — executor agents can create accidental milestone splits
+2. Auto-advance is powerful but milestone-level state needs manual cleanup afterward
+3. Regex extractors scale well to new languages/formats when source files are well-structured
+4. FTS UNINDEXED columns are underused — great for metadata filtering without polluting MATCH
+
+### Cost Observations
+- Model mix: quality profile (opus) for all agents
+- Sessions: ~3 sessions across 2 days
+- Notable: Phase 10 ran full pipeline (discuss + plan + execute) in a single session via auto-advance
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -52,13 +98,18 @@
 | Milestone | Commits | Phases | Key Change |
 |-----------|---------|--------|------------|
 | v1.0 | 49 | 5 | Initial build — established layered architecture |
+| v1.1 | 19 feat | 5 | Indexing infrastructure + extractors + search filtering |
 
 ### Cumulative Quality
 
 | Milestone | Tests | LOC | Files |
 |-----------|-------|-----|-------|
 | v1.0 | 236 | 8,193 | 116 |
+| v1.1 | 388 | 13,258 | ~140 |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. (First milestone — lessons to be verified in v1.1+)
+1. Regex extraction scales surprisingly well for well-structured source files (validated v1.0 Elixir/proto, v1.1 GraphQL/Ecto/Absinthe)
+2. FTS5 with application-level tokenization handles keyword search effectively without embeddings (confirmed v1.0, extended v1.1 with type filtering)
+3. Pure utility modules without framework dependencies make testing trivial (confirmed v1.0 MCP-free utils, v1.1 parallel extraction with dbSnapshot)
+4. Keep ROADMAP.md state in sync during execution — cleanup is more expensive than maintenance
