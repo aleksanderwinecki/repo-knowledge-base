@@ -92,10 +92,36 @@ export function isCommitReachable(
 
 /**
  * Resolve the default branch for a repo.
- * Tries main first, falls back to master, returns null if neither exists.
- * Hard-coded main/master only — non-standard branch names are not supported.
+ * Uses `gh repo view` to detect the actual default branch from GitHub,
+ * falls back to main/master probing for repos without a GitHub remote.
  */
 export function resolveDefaultBranch(repoPath: string): string | null {
+  // Try gh CLI first — knows the real default branch
+  try {
+    const result = execSync('gh repo view --json defaultBranchRef --jq .defaultBranchRef.name', {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 5000,
+    }).trim();
+    if (result) {
+      // Verify the branch exists locally
+      try {
+        execSync(`git rev-parse --verify refs/heads/${result}`, {
+          cwd: repoPath,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        return result;
+      } catch {
+        // Branch from GitHub not available locally, fall through
+      }
+    }
+  } catch {
+    // gh not available or no GitHub remote, fall through
+  }
+
+  // Fallback: try main, then master
   try {
     execSync('git rev-parse --verify refs/heads/main', {
       cwd: repoPath,
