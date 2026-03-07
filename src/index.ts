@@ -21,7 +21,7 @@ export type { SearchResult } from './db/fts.js';
 export { discoverRepos } from './indexer/scanner.js';
 export { extractMetadata } from './indexer/metadata.js';
 export type { RepoMetadata } from './indexer/metadata.js';
-export { getCurrentCommit, getChangedFiles, isCommitReachable } from './indexer/git.js';
+export { getCurrentCommit, isCommitReachable } from './indexer/git.js';
 export { persistRepoData, clearRepoEntities, clearRepoFiles } from './indexer/writer.js';
 export type { RepoData, ModuleData, EventData, EdgeData } from './indexer/writer.js';
 

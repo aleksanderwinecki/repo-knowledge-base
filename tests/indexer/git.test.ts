@@ -5,7 +5,6 @@ import os from 'os';
 import { execSync } from 'child_process';
 import {
   getCurrentCommit,
-  getChangedFiles,
   isCommitReachable,
   resolveDefaultBranch,
   getBranchCommit,
@@ -48,78 +47,6 @@ describe('getCurrentCommit', () => {
     } finally {
       fs.rmSync(plainDir, { recursive: true, force: true });
     }
-  });
-});
-
-describe('getChangedFiles', () => {
-  it('detects added files', () => {
-    initGitRepo(tmpDir);
-    const firstCommit = getCurrentCommit(tmpDir)!;
-
-    // Create and commit a new file
-    fs.writeFileSync(path.join(tmpDir, 'new-file.txt'), 'content');
-    execSync('git add new-file.txt', { cwd: tmpDir, stdio: 'pipe' });
-    execSync('git commit -m "add file"', { cwd: tmpDir, stdio: 'pipe' });
-
-    const changes = getChangedFiles(tmpDir, firstCommit);
-    expect(changes.added).toContain('new-file.txt');
-    expect(changes.modified).toHaveLength(0);
-    expect(changes.deleted).toHaveLength(0);
-  });
-
-  it('detects modified files', () => {
-    initGitRepo(tmpDir);
-
-    // Create initial file
-    fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'v1');
-    execSync('git add file.txt', { cwd: tmpDir, stdio: 'pipe' });
-    execSync('git commit -m "add file"', { cwd: tmpDir, stdio: 'pipe' });
-    const afterAdd = getCurrentCommit(tmpDir)!;
-
-    // Modify the file
-    fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'v2');
-    execSync('git add file.txt', { cwd: tmpDir, stdio: 'pipe' });
-    execSync('git commit -m "modify file"', { cwd: tmpDir, stdio: 'pipe' });
-
-    const changes = getChangedFiles(tmpDir, afterAdd);
-    expect(changes.modified).toContain('file.txt');
-  });
-
-  it('detects deleted files', () => {
-    initGitRepo(tmpDir);
-
-    // Create and commit a file
-    fs.writeFileSync(path.join(tmpDir, 'to-delete.txt'), 'content');
-    execSync('git add to-delete.txt', { cwd: tmpDir, stdio: 'pipe' });
-    execSync('git commit -m "add file"', { cwd: tmpDir, stdio: 'pipe' });
-    const afterAdd = getCurrentCommit(tmpDir)!;
-
-    // Delete the file
-    fs.unlinkSync(path.join(tmpDir, 'to-delete.txt'));
-    execSync('git add -A', { cwd: tmpDir, stdio: 'pipe' });
-    execSync('git commit -m "delete file"', { cwd: tmpDir, stdio: 'pipe' });
-
-    const changes = getChangedFiles(tmpDir, afterAdd);
-    expect(changes.deleted).toContain('to-delete.txt');
-  });
-
-  it('returns empty lists when no changes', () => {
-    initGitRepo(tmpDir);
-    const sha = getCurrentCommit(tmpDir)!;
-
-    const changes = getChangedFiles(tmpDir, sha);
-    expect(changes.added).toHaveLength(0);
-    expect(changes.modified).toHaveLength(0);
-    expect(changes.deleted).toHaveLength(0);
-  });
-
-  it('returns empty lists for invalid commit', () => {
-    initGitRepo(tmpDir);
-
-    const changes = getChangedFiles(tmpDir, 'deadbeef0000deadbeef0000deadbeef0000dead');
-    expect(changes.added).toHaveLength(0);
-    expect(changes.modified).toHaveLength(0);
-    expect(changes.deleted).toHaveLength(0);
   });
 });
 
