@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quick Wins
 status: completed
-stopped_at: Completed 13-02 MCP auto-sync dedup + FTS unification
-last_updated: "2026-03-07T17:35:56.931Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-03-07T17:48:50.844Z"
 last_activity: 2026-03-07 -- Completed 13-02 MCP auto-sync dedup + FTS unification (withAutoSync helper, EntityType learned_fact, V6 migration)
 progress:
   total_phases: 5
@@ -85,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T17:31:58Z
-Stopped at: Completed 13-02 MCP auto-sync dedup + FTS unification
-Resume file: .planning/phases/13-mcp-layer-dedup/13-02-SUMMARY.md
+Last session: 2026-03-07T17:48:50.842Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-core-layer-dedup/14-CONTEXT.md
