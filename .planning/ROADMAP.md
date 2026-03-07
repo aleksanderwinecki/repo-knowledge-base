@@ -109,7 +109,10 @@ Plans:
   2. Dead code in git.ts (HEAD-based getChangedFiles variant, if unused) is removed -- grep confirms no remaining callers
   3. Dependencies upstream/downstream query logic uses a single parameterized function -- the direction (upstream vs downstream) is a parameter, not duplicated code
   4. No silent catch blocks remain -- all catch blocks either log structured error information or explicitly document why silence is intentional
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Enable noUncheckedIndexedAccess + fix all 60 compiler errors across 6 indexer files
+- [ ] 15-02-PLAN.md — Dead code removal (git.ts), dependency query dedup (dependencies.ts), silent catch documentation
 
 ## Progress
 
@@ -131,4 +134,4 @@ Plans:
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
 | 13. MCP Layer Dedup | 2/2 | Complete    | 2026-03-07 | - |
 | 14. Core Layer Dedup | 3/3 | Complete   | 2026-03-07 | - |
-| 15. TypeScript Hardening | v1.2 | 0/? | Not started | - |
+| 15. TypeScript Hardening | v1.2 | 0/2 | Not started | - |
