@@ -400,6 +400,18 @@ export async function indexAllRepos(
     }
   }
 
+  // Post-index optimization: compact FTS and reclaim WAL space
+  if (success > 0) {
+    try {
+      db.exec("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')");
+    } catch (error) {
+      // FTS optimize is best-effort; don't fail the pipeline
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`FTS optimize failed: ${msg}`);
+    }
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  }
+
   return results;
 }
 
