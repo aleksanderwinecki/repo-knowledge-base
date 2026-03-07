@@ -115,62 +115,89 @@ function findExact(
   return cards;
 }
 
-/** Create a pre-prepared entity-by-id lookup to avoid db.prepare() per FTS result */
-function createEntityByIdLookup(db: Database.Database) {
+/**
+ * Create a shared entity-by-id hydrator with pre-prepared statements.
+ * Used by both text.ts (via import) and entity.ts for by-ID entity lookups.
+ * Queries are supersets that include ALL columns needed by both callers.
+ */
+export function createEntityHydrator(db: Database.Database) {
   const stmts = {
     repo: db.prepare('SELECT id, name, path, description FROM repos WHERE id = ?'),
     module: db.prepare(
-      `SELECT m.id, m.name, m.summary, r.name as repo_name, f.path as file_path
+      `SELECT m.id, m.name, m.summary, r.name as repo_name, r.path as repo_path, f.path as file_path
        FROM modules m JOIN repos r ON m.repo_id = r.id LEFT JOIN files f ON m.file_id = f.id
        WHERE m.id = ?`,
     ),
     event: db.prepare(
-      `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name
+      `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name, r.path as repo_path
        FROM events e JOIN repos r ON e.repo_id = r.id WHERE e.id = ?`,
     ),
     service: db.prepare(
-      `SELECT s.id, s.name, s.description, r.name as repo_name
+      `SELECT s.id, s.name, s.description, r.name as repo_name, r.path as repo_path
        FROM services s JOIN repos r ON s.repo_id = r.id WHERE s.id = ?`,
     ),
+    learned_fact: db.prepare('SELECT id, content, repo FROM learned_facts WHERE id = ?'),
   };
 
-  return (type: EntityType, id: number, repoFilter?: string): EntityInfo[] => {
-    switch (type) {
+  return (entityType: EntityType, entityId: number): EntityInfo | null => {
+    switch (entityType) {
       case 'repo': {
-        const row = stmts.repo.get(id) as {
+        const row = stmts.repo.get(entityId) as {
           id: number; name: string; path: string; description: string | null;
         } | undefined;
-        if (!row) return [];
-        if (repoFilter && row.name !== repoFilter) return [];
-        return [{ id: row.id, name: row.name, repoName: row.name, filePath: null, description: row.description }];
+        if (!row) return null;
+        return { id: row.id, name: row.name, repoName: row.name, repoPath: row.path, filePath: null, description: row.description };
       }
       case 'module': {
-        const row = stmts.module.get(id) as {
-          id: number; name: string; summary: string | null; repo_name: string; file_path: string | null;
+        const row = stmts.module.get(entityId) as {
+          id: number; name: string; summary: string | null; repo_name: string; repo_path: string; file_path: string | null;
         } | undefined;
-        if (!row) return [];
-        if (repoFilter && row.repo_name !== repoFilter) return [];
-        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.file_path, description: row.summary }];
+        if (!row) return null;
+        return { id: row.id, name: row.name, repoName: row.repo_name, repoPath: row.repo_path, filePath: row.file_path, description: row.summary };
       }
       case 'event': {
-        const row = stmts.event.get(id) as {
-          id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string;
+        const row = stmts.event.get(entityId) as {
+          id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string; repo_path: string;
         } | undefined;
-        if (!row) return [];
-        if (repoFilter && row.repo_name !== repoFilter) return [];
-        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: row.source_file, description: row.schema_definition }];
+        if (!row) return null;
+        return { id: row.id, name: row.name, repoName: row.repo_name, repoPath: row.repo_path, filePath: row.source_file, description: row.schema_definition };
       }
       case 'service': {
-        const row = stmts.service.get(id) as {
-          id: number; name: string; description: string | null; repo_name: string;
+        const row = stmts.service.get(entityId) as {
+          id: number; name: string; description: string | null; repo_name: string; repo_path: string;
         } | undefined;
-        if (!row) return [];
-        if (repoFilter && row.repo_name !== repoFilter) return [];
-        return [{ id: row.id, name: row.name, repoName: row.repo_name, filePath: null, description: row.description }];
+        if (!row) return null;
+        return { id: row.id, name: row.name, repoName: row.repo_name, repoPath: row.repo_path, filePath: null, description: row.description };
+      }
+      case 'learned_fact': {
+        const row = stmts.learned_fact.get(entityId) as {
+          id: number; content: string; repo: string | null;
+        } | undefined;
+        if (!row) return null;
+        return {
+          id: row.id,
+          name: row.content.length > 100 ? row.content.substring(0, 100) + '...' : row.content,
+          repoName: row.repo ?? 'user-knowledge',
+          repoPath: '',
+          filePath: null,
+          description: row.content,
+        };
       }
       default:
-        return [];
+        return null;
     }
+  };
+}
+
+/** Create a pre-prepared entity-by-id lookup (delegates to shared hydrator with repo filter) */
+function createEntityByIdLookup(db: Database.Database) {
+  const hydrate = createEntityHydrator(db);
+
+  return (type: EntityType, id: number, repoFilter?: string): EntityInfo[] => {
+    const entity = hydrate(type, id);
+    if (!entity) return [];
+    if (repoFilter && entity.repoName !== repoFilter) return [];
+    return [entity];
   };
 }
 
@@ -305,10 +332,12 @@ function findByFts(
   return cards;
 }
 
-interface EntityInfo {
+/** Entity metadata returned by the shared hydrator -- used by both text.ts and entity.ts */
+export interface EntityInfo {
   id: number;
   name: string;
   repoName: string;
+  repoPath: string;
   filePath: string | null;
   description: string | null;
 }
@@ -330,48 +359,48 @@ function getEntitiesByExactName(
         id: number; name: string; path: string; description: string | null;
       }>;
       return rows.map((r) => ({
-        id: r.id, name: r.name, repoName: r.name, filePath: null, description: r.description,
+        id: r.id, name: r.name, repoName: r.name, repoPath: r.path, filePath: null, description: r.description,
       }));
     }
     case 'module': {
-      let sql = `SELECT m.id, m.name, m.summary, r.name as repo_name, f.path as file_path
+      let sql = `SELECT m.id, m.name, m.summary, r.name as repo_name, r.path as repo_path, f.path as file_path
                   FROM modules m JOIN repos r ON m.repo_id = r.id LEFT JOIN files f ON m.file_id = f.id
                   WHERE m.name = ?`;
       const params: string[] = [name];
       if (subTypeFilter) { sql += ' AND m.type = ?'; params.push(subTypeFilter); }
       if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
       const rows = db.prepare(sql).all(...params) as Array<{
-        id: number; name: string; summary: string | null; repo_name: string; file_path: string | null;
+        id: number; name: string; summary: string | null; repo_name: string; repo_path: string; file_path: string | null;
       }>;
       return rows.map((r) => ({
-        id: r.id, name: r.name, repoName: r.repo_name, filePath: r.file_path, description: r.summary,
+        id: r.id, name: r.name, repoName: r.repo_name, repoPath: r.repo_path, filePath: r.file_path, description: r.summary,
       }));
     }
     case 'event': {
-      let sql = `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name
+      let sql = `SELECT e.id, e.name, e.schema_definition, e.source_file, r.name as repo_name, r.path as repo_path
                   FROM events e JOIN repos r ON e.repo_id = r.id
                   WHERE e.name = ?`;
       const params: string[] = [name];
       if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
       const rows = db.prepare(sql).all(...params) as Array<{
-        id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string;
+        id: number; name: string; schema_definition: string | null; source_file: string | null; repo_name: string; repo_path: string;
       }>;
       return rows.map((r) => ({
-        id: r.id, name: r.name, repoName: r.repo_name, filePath: r.source_file, description: r.schema_definition,
+        id: r.id, name: r.name, repoName: r.repo_name, repoPath: r.repo_path, filePath: r.source_file, description: r.schema_definition,
       }));
     }
     case 'service': {
-      let sql = `SELECT s.id, s.name, s.description, r.name as repo_name
+      let sql = `SELECT s.id, s.name, s.description, r.name as repo_name, r.path as repo_path
                   FROM services s JOIN repos r ON s.repo_id = r.id
                   WHERE s.name = ?`;
       const params: string[] = [name];
       if (subTypeFilter) { sql += ' AND s.service_type = ?'; params.push(subTypeFilter); }
       if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
       const rows = db.prepare(sql).all(...params) as Array<{
-        id: number; name: string; description: string | null; repo_name: string;
+        id: number; name: string; description: string | null; repo_name: string; repo_path: string;
       }>;
       return rows.map((r) => ({
-        id: r.id, name: r.name, repoName: r.repo_name, filePath: null, description: r.description,
+        id: r.id, name: r.name, repoName: r.repo_name, repoPath: r.repo_path, filePath: null, description: r.description,
       }));
     }
     default:

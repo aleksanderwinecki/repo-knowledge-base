@@ -1,8 +1,8 @@
 import type Database from 'better-sqlite3';
-import type { EntityType } from '../types/entities.js';
 import type { TextSearchResult, TextSearchOptions } from './types.js';
 import { tokenizeForFts } from '../db/tokenizer.js';
 import { resolveTypeFilter, parseCompositeType, executeFtsWithFallback } from '../db/fts.js';
+import { createEntityHydrator } from './entity.js';
 
 /**
  * Full-text search across all indexed content with contextual metadata.
@@ -28,17 +28,31 @@ export function searchText(
     return [];
   }
 
+  // Create shared hydrator for entity lookups
+  const hydrate = createEntityHydrator(db);
+
   // Hydrate each result with contextual metadata
   const hydrated: TextSearchResult[] = [];
 
   for (const match of ftsResults) {
-    const result = hydrateResult(db, match);
-    if (!result) continue;
+    const { entityType, subType } = parseCompositeType(match.entity_type);
+    const entity = hydrate(entityType, match.entity_id);
+    if (!entity) continue;
 
     // Apply repo filter after hydration
-    if (repoFilter && result.repoName !== repoFilter) continue;
+    if (repoFilter && entity.repoName !== repoFilter) continue;
 
-    hydrated.push(result);
+    hydrated.push({
+      entityType,
+      subType,
+      entityId: match.entity_id,
+      name: entity.name,
+      snippet: entity.description ?? entity.name,
+      repoName: entity.repoName,
+      repoPath: entity.repoPath,
+      filePath: entity.filePath,
+      relevance: match.relevance,
+    });
   }
 
   return hydrated;
@@ -92,162 +106,3 @@ function executeFtsQuery(
   return executeFtsWithFallback<FtsMatch>(db, sql, processedQuery, buildParams);
 }
 
-/**
- * Hydrate an FTS match with full contextual metadata from source tables.
- * Parses composite entity_type (e.g., 'module:schema') before routing.
- */
-function hydrateResult(db: Database.Database, match: FtsMatch): TextSearchResult | null {
-  const { entityType, subType } = parseCompositeType(match.entity_type);
-
-  switch (entityType as string) {
-    case 'repo':
-      return hydrateRepo(db, match, subType);
-    case 'module':
-      return hydrateModule(db, match, subType);
-    case 'event':
-      return hydrateEvent(db, match, subType);
-    case 'service':
-      return hydrateService(db, match, subType);
-    case 'learned_fact':
-      return hydrateLearnedFact(db, match, subType);
-    default:
-      return null;
-  }
-}
-
-function hydrateRepo(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
-  const row = db
-    .prepare('SELECT name, path, description FROM repos WHERE id = ?')
-    .get(match.entity_id) as { name: string; path: string; description: string | null } | undefined;
-
-  if (!row) return null;
-
-  return {
-    entityType: 'repo',
-    subType,
-    entityId: match.entity_id,
-    name: row.name,
-    snippet: row.description ?? row.name,
-    repoName: row.name,
-    repoPath: row.path,
-    filePath: null,
-    relevance: match.relevance,
-  };
-}
-
-function hydrateModule(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
-  const row = db
-    .prepare(
-      `SELECT m.name, m.summary, r.name as repo_name, r.path as repo_path, f.path as file_path
-       FROM modules m
-       JOIN repos r ON m.repo_id = r.id
-       LEFT JOIN files f ON m.file_id = f.id
-       WHERE m.id = ?`,
-    )
-    .get(match.entity_id) as {
-    name: string;
-    summary: string | null;
-    repo_name: string;
-    repo_path: string;
-    file_path: string | null;
-  } | undefined;
-
-  if (!row) return null;
-
-  return {
-    entityType: 'module',
-    subType,
-    entityId: match.entity_id,
-    name: row.name,
-    snippet: row.summary ?? row.name,
-    repoName: row.repo_name,
-    repoPath: row.repo_path,
-    filePath: row.file_path,
-    relevance: match.relevance,
-  };
-}
-
-function hydrateEvent(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
-  const row = db
-    .prepare(
-      `SELECT e.name, e.schema_definition, e.source_file, r.name as repo_name, r.path as repo_path
-       FROM events e
-       JOIN repos r ON e.repo_id = r.id
-       WHERE e.id = ?`,
-    )
-    .get(match.entity_id) as {
-    name: string;
-    schema_definition: string | null;
-    source_file: string | null;
-    repo_name: string;
-    repo_path: string;
-  } | undefined;
-
-  if (!row) return null;
-
-  return {
-    entityType: 'event',
-    subType,
-    entityId: match.entity_id,
-    name: row.name,
-    snippet: row.schema_definition ?? row.name,
-    repoName: row.repo_name,
-    repoPath: row.repo_path,
-    filePath: row.source_file,
-    relevance: match.relevance,
-  };
-}
-
-function hydrateService(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
-  const row = db
-    .prepare(
-      `SELECT s.name, s.description, r.name as repo_name, r.path as repo_path
-       FROM services s
-       JOIN repos r ON s.repo_id = r.id
-       WHERE s.id = ?`,
-    )
-    .get(match.entity_id) as {
-    name: string;
-    description: string | null;
-    repo_name: string;
-    repo_path: string;
-  } | undefined;
-
-  if (!row) return null;
-
-  return {
-    entityType: 'service',
-    subType,
-    entityId: match.entity_id,
-    name: row.name,
-    snippet: row.description ?? row.name,
-    repoName: row.repo_name,
-    repoPath: row.repo_path,
-    filePath: null,
-    relevance: match.relevance,
-  };
-}
-
-function hydrateLearnedFact(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
-  const row = db
-    .prepare('SELECT id, content, repo FROM learned_facts WHERE id = ?')
-    .get(match.entity_id) as {
-    id: number;
-    content: string;
-    repo: string | null;
-  } | undefined;
-
-  if (!row) return null;
-
-  return {
-    entityType: 'learned_fact' as EntityType, // Cast — FTS stores this string
-    subType,
-    entityId: match.entity_id,
-    name: row.content.length > 100 ? row.content.substring(0, 100) + '...' : row.content,
-    snippet: row.content,
-    repoName: row.repo ?? 'user-knowledge',
-    repoPath: '',
-    filePath: null,
-    relevance: match.relevance,
-  };
-}
