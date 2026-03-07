@@ -36,7 +36,7 @@
 - [x] **Phase 12: Database Performance** - SQLite pragma tuning, prepared statements, indexes, FTS5 optimization, benchmarking (completed 2026-03-07)
 - [x] **Phase 13: MCP Layer Dedup** - Extract shared error handling, auto-sync, response format, and DB path patterns (completed 2026-03-07)
 - [x] **Phase 14: Core Layer Dedup** - Consolidate pipeline extraction, FTS indexing, entity hydration, writer, and edge operations (completed 2026-03-07)
-- [ ] **Phase 15: TypeScript Hardening** - Enable noUncheckedIndexedAccess, remove dead code, extract shared patterns, fix silent catches
+- [x] **Phase 15: TypeScript Hardening** - Enable noUncheckedIndexedAccess, remove dead code, extract shared patterns, fix silent catches (completed 2026-03-07)
 
 ## Phase Details
 
@@ -134,4 +134,4 @@ Plans:
 | 12. Database Performance | 3/3 | Complete    | 2026-03-07 | - |
 | 13. MCP Layer Dedup | 2/2 | Complete    | 2026-03-07 | - |
 | 14. Core Layer Dedup | 3/3 | Complete   | 2026-03-07 | - |
-| 15. TypeScript Hardening | v1.2 | 0/2 | Not started | - |
+| 15. TypeScript Hardening | 2/2 | Complete   | 2026-03-07 | - |

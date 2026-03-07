@@ -44,7 +44,7 @@ Requirements for v1.2 Hardening & Quick Wins. Each maps to roadmap phases.
 
 ### TypeScript Hardening
 
-- [ ] **TS-01**: noUncheckedIndexedAccess enabled in tsconfig with all fix sites resolved
+- [x] **TS-01**: noUncheckedIndexedAccess enabled in tsconfig with all fix sites resolved
 - [ ] **TS-02**: Dead code removed from git.ts (HEAD-based getChangedFiles if unused)
 - [ ] **TS-03**: Dependencies upstream/downstream symmetry extracted to shared parameterized function
 - [ ] **TS-04**: Silent catch blocks replaced with structured error logging
@@ -101,7 +101,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-06 | Phase 14 | Complete |
 | CORE-07 | Phase 14 | Complete |
 | CORE-08 | Phase 14 | Complete |
-| TS-01 | Phase 15 | Pending |
+| TS-01 | Phase 15 | Complete |
 | TS-02 | Phase 15 | Pending |
 | TS-03 | Phase 15 | Pending |
 | TS-04 | Phase 15 | Pending |
