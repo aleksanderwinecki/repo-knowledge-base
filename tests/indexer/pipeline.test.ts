@@ -5,7 +5,7 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { indexAllRepos, indexSingleRepo } from '../../src/indexer/pipeline.js';
-import { search } from '../../src/db/fts.js';
+import { search, parseCompositeType } from '../../src/db/fts.js';
 import type Database from 'better-sqlite3';
 
 let db: Database.Database;
@@ -1253,13 +1253,13 @@ end
     // FTS: search for table name returns the Ecto schema module
     const tableResults = search(db, 'appointments');
     expect(tableResults.length).toBeGreaterThan(0);
-    const moduleResult = tableResults.find(r => r.entityType === 'module');
+    const moduleResult = tableResults.find(r => parseCompositeType(r.entityType as string).entityType === 'module');
     expect(moduleResult).toBeDefined();
 
     // FTS: search for gRPC service name returns the service
     const serviceResults = search(db, 'BookingService');
     expect(serviceResults.length).toBeGreaterThan(0);
-    const serviceResult = serviceResults.find(r => r.entityType === 'service');
+    const serviceResult = serviceResults.find(r => parseCompositeType(r.entityType as string).entityType === 'service');
     expect(serviceResult).toBeDefined();
   });
 });

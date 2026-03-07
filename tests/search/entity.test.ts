@@ -65,6 +65,20 @@ beforeEach(() => {
         filePath: 'lib/payment_processor.ex',
         summary: 'Processes payments',
       },
+      {
+        name: 'Payments.Schema.Invoice',
+        type: 'schema',
+        filePath: 'lib/payments/schema/invoice.ex',
+        summary: 'Invoice Ecto schema',
+        tableName: 'invoices',
+      },
+    ],
+    services: [
+      {
+        name: 'BillingService',
+        description: 'gRPC billing service',
+        serviceType: 'grpc',
+      },
     ],
   });
 
@@ -161,5 +175,40 @@ describe('findEntity', () => {
     // "Booking" should match BookingCreated, BookingContext via FTS
     const results = findEntity(db, 'Booking');
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  describe('sub-type filtering', () => {
+    it('type=schema returns only schema modules', () => {
+      const results = findEntity(db, 'Payments.Schema.Invoice', { type: 'schema' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const card of results) {
+        expect(card.type).toBe('module');
+      }
+    });
+
+    it('type=module returns all modules (coarse)', () => {
+      const results = findEntity(db, 'Payment', { type: 'module' });
+      expect(results.length).toBeGreaterThan(0);
+      // Should include both plain modules and schema modules
+      for (const card of results) {
+        expect(card.type).toBe('module');
+      }
+    });
+
+    it('type=grpc returns only gRPC services', () => {
+      const results = findEntity(db, 'BillingService', { type: 'grpc' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const card of results) {
+        expect(card.type).toBe('service');
+      }
+    });
+
+    it('type=service returns all services (coarse)', () => {
+      const results = findEntity(db, 'BillingService', { type: 'service' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const card of results) {
+        expect(card.type).toBe('service');
+      }
+    });
   });
 });

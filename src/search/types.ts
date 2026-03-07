@@ -3,6 +3,7 @@ import type { EntityType } from '../types/entities.js';
 /** Result from full-text search with contextual metadata */
 export interface TextSearchResult {
   entityType: EntityType;
+  subType: string;
   entityId: number;
   name: string;
   snippet: string;
@@ -18,8 +19,8 @@ export interface TextSearchOptions {
   limit?: number;
   /** Filter results to a specific repo by name */
   repoFilter?: string;
-  /** Filter results to a specific entity type */
-  entityTypeFilter?: EntityType;
+  /** Filter results to a specific entity type (coarse like 'module' or granular like 'schema') */
+  entityTypeFilter?: string;
 }
 
 /** Structured entity card with relationship data */
@@ -42,8 +43,8 @@ export interface EntityRelationship {
 
 /** Filters for entity queries */
 export interface EntityFilters {
-  /** Filter by entity type */
-  type?: EntityType;
+  /** Filter by entity type (coarse like 'module' or granular like 'schema') */
+  type?: string;
   /** Filter by relationship type (e.g. 'consumes_event') */
   relationship?: string;
   /** Filter by repo name */

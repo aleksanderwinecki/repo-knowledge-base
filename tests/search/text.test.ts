@@ -64,6 +64,26 @@ beforeEach(() => {
         filePath: 'lib/payment_processor.ex',
         summary: 'Processes payments after booking confirmation',
       },
+      {
+        name: 'Payments.Schema.Transaction',
+        type: 'schema',
+        filePath: 'lib/payments/schema/transaction.ex',
+        summary: 'Ecto schema for payment transactions',
+        tableName: 'transactions',
+      },
+      {
+        name: 'Payments.Queries.GetTransaction',
+        type: 'graphql_query',
+        filePath: 'lib/payments/queries/get_transaction.ex',
+        summary: 'GraphQL query resolver for transactions',
+      },
+    ],
+    services: [
+      {
+        name: 'PaymentGateway',
+        description: 'gRPC payment gateway service for processing charges',
+        serviceType: 'grpc',
+      },
     ],
   });
 });
@@ -170,5 +190,62 @@ describe('searchText', () => {
   it('non-matching query returns empty array', () => {
     const results = searchText(db, 'nonexistentxyz');
     expect(results).toEqual([]);
+  });
+
+  describe('sub-type filtering', () => {
+    it('coarse entityTypeFilter=module returns all module sub-types', () => {
+      const results = searchText(db, 'payment', { entityTypeFilter: 'module' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('module');
+      }
+      // Should include both the plain module and schema module
+      const subTypes = results.map(r => r.subType);
+      expect(subTypes.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('granular entityTypeFilter=schema returns only schema modules', () => {
+      const results = searchText(db, 'transaction', { entityTypeFilter: 'schema' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('module');
+        expect(r.subType).toBe('schema');
+      }
+    });
+
+    it('coarse entityTypeFilter=service returns service results', () => {
+      const results = searchText(db, 'gateway', { entityTypeFilter: 'service' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('service');
+      }
+    });
+
+    it('granular entityTypeFilter=grpc returns only gRPC services', () => {
+      const results = searchText(db, 'gateway', { entityTypeFilter: 'grpc' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('service');
+        expect(r.subType).toBe('grpc');
+      }
+    });
+
+    it('each TextSearchResult has subType field populated', () => {
+      const results = searchText(db, 'booking');
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.subType).toBeDefined();
+        expect(typeof r.subType).toBe('string');
+        expect(r.subType.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('backward compat: entityTypeFilter=module still works', () => {
+      const results = searchText(db, 'booking', { entityTypeFilter: 'module' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('module');
+      }
+    });
   });
 });

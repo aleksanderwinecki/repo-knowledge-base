@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { EntityType } from '../types/entities.js';
 import type { EntityCard, EntityFilters, EntityRelationship } from './types.js';
 import { tokenizeForFts } from '../db/tokenizer.js';
+import { COARSE_TYPES, resolveTypeFilter, parseCompositeType } from '../db/fts.js';
 
 /**
  * Find entities by name with optional filters.
@@ -43,6 +44,26 @@ export function findEntity(
   return cards;
 }
 
+/** Known module sub-types that map to the modules table */
+const MODULE_SUB_TYPES = new Set([
+  'schema', 'context', 'command', 'query',
+  'graphql_type', 'graphql_query', 'graphql_mutation',
+  'absinthe_object', 'absinthe_query', 'absinthe_mutation',
+]);
+
+/** Known service sub-types that map to the services table */
+const SERVICE_SUB_TYPES = new Set(['grpc']);
+
+/**
+ * Map a sub-type to its parent EntityType.
+ * Returns null if not a known sub-type (will fall back to querying all tables).
+ */
+function subTypeToParent(subType: string): EntityType | null {
+  if (MODULE_SUB_TYPES.has(subType)) return 'module';
+  if (SERVICE_SUB_TYPES.has(subType)) return 'service';
+  return null;
+}
+
 /** Search entity tables by exact name */
 function findExact(
   db: Database.Database,
@@ -50,10 +71,31 @@ function findExact(
   filters?: EntityFilters,
 ): EntityCard[] {
   const cards: EntityCard[] = [];
-  const types = filters?.type ? [filters.type] : (['repo', 'module', 'event', 'service'] as EntityType[]);
+
+  let types: EntityType[];
+  let subTypeColumnFilter: string | undefined;
+
+  if (filters?.type) {
+    if (COARSE_TYPES.has(filters.type)) {
+      // Coarse type: query that table directly
+      types = [filters.type as EntityType];
+    } else {
+      // Granular sub-type: determine parent table and add column filter
+      const parent = subTypeToParent(filters.type);
+      if (parent) {
+        types = [parent];
+        subTypeColumnFilter = filters.type;
+      } else {
+        // Unknown sub-type: query all tables (fallback)
+        types = ['repo', 'module', 'event', 'service'] as EntityType[];
+      }
+    }
+  } else {
+    types = ['repo', 'module', 'event', 'service'] as EntityType[];
+  }
 
   for (const type of types) {
-    const entities = getEntitiesByExactName(db, type, name, filters?.repo);
+    const entities = getEntitiesByExactName(db, type, name, filters?.repo, subTypeColumnFilter);
     for (const entity of entities) {
       const relationships = getRelationships(db, type, entity.id);
       cards.push({
@@ -79,17 +121,24 @@ function findByFts(
   const processedQuery = tokenizeForFts(name);
   if (!processedQuery) return [];
 
-  const typeFilter = filters?.type ? ' AND entity_type = ?' : '';
+  let typeFilterSql = '';
+  let typeFilterParam: string | undefined;
+  if (filters?.type) {
+    const resolved = resolveTypeFilter(filters.type);
+    typeFilterSql = ` AND ${resolved.sql}`;
+    typeFilterParam = resolved.param;
+  }
+
   const sql = `
     SELECT entity_type, entity_id, name
     FROM knowledge_fts
-    WHERE knowledge_fts MATCH ?${typeFilter}
+    WHERE knowledge_fts MATCH ?${typeFilterSql}
     ORDER BY rank
     LIMIT 20
   `;
 
   const params: (string | number)[] = [processedQuery];
-  if (filters?.type) params.push(filters.type);
+  if (typeFilterParam) params.push(typeFilterParam);
 
   let rows: Array<{ entity_type: string; entity_id: number; name: string }>;
   try {
@@ -99,7 +148,7 @@ function findByFts(
     try {
       const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
       const fallbackParams: (string | number)[] = [phraseQuery];
-      if (filters?.type) fallbackParams.push(filters.type);
+      if (typeFilterParam) fallbackParams.push(typeFilterParam);
       rows = db.prepare(sql).all(...fallbackParams) as typeof rows;
     } catch {
       return [];
@@ -110,7 +159,8 @@ function findByFts(
   const seen = new Set<string>();
 
   for (const row of rows) {
-    const entityType = row.entity_type as EntityType;
+    // Parse composite entity_type (e.g., 'module:schema' -> entityType='module')
+    const { entityType } = parseCompositeType(row.entity_type);
     const key = `${entityType}:${row.entity_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -145,6 +195,7 @@ function getEntitiesByExactName(
   type: EntityType,
   name: string,
   repoFilter?: string,
+  subTypeFilter?: string,
 ): EntityInfo[] {
   switch (type) {
     case 'repo': {
@@ -164,6 +215,7 @@ function getEntitiesByExactName(
                   FROM modules m JOIN repos r ON m.repo_id = r.id LEFT JOIN files f ON m.file_id = f.id
                   WHERE m.name = ?`;
       const params: string[] = [name];
+      if (subTypeFilter) { sql += ' AND m.type = ?'; params.push(subTypeFilter); }
       if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
       const rows = db.prepare(sql).all(...params) as Array<{
         id: number; name: string; summary: string | null; repo_name: string; file_path: string | null;
@@ -190,6 +242,7 @@ function getEntitiesByExactName(
                   FROM services s JOIN repos r ON s.repo_id = r.id
                   WHERE s.name = ?`;
       const params: string[] = [name];
+      if (subTypeFilter) { sql += ' AND s.service_type = ?'; params.push(subTypeFilter); }
       if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
       const rows = db.prepare(sql).all(...params) as Array<{
         id: number; name: string; description: string | null; repo_name: string;

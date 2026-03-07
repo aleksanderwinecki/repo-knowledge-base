@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { EntityType } from '../types/entities.js';
 import type { TextSearchResult, TextSearchOptions } from './types.js';
 import { tokenizeForFts } from '../db/tokenizer.js';
+import { resolveTypeFilter, parseCompositeType } from '../db/fts.js';
 
 /**
  * Full-text search across all indexed content with contextual metadata.
@@ -59,23 +60,30 @@ function executeFtsQuery(
   db: Database.Database,
   query: string,
   limit: number,
-  entityTypeFilter?: EntityType,
+  entityTypeFilter?: string,
 ): FtsMatch[] | null {
   const processedQuery = tokenizeForFts(query);
   if (!processedQuery) return null;
 
-  // Build query with optional entity type filter
-  const typeFilter = entityTypeFilter ? ' AND entity_type = ?' : '';
+  // Build query with optional entity type filter using resolveTypeFilter
+  let typeFilterSql = '';
+  let typeFilterParam: string | undefined;
+  if (entityTypeFilter) {
+    const resolved = resolveTypeFilter(entityTypeFilter);
+    typeFilterSql = ` AND ${resolved.sql}`;
+    typeFilterParam = resolved.param;
+  }
+
   const sql = `
     SELECT entity_type, entity_id, name, description, rank as relevance
     FROM knowledge_fts
-    WHERE knowledge_fts MATCH ?${typeFilter}
+    WHERE knowledge_fts MATCH ?${typeFilterSql}
     ORDER BY rank
     LIMIT ?
   `;
 
   const params: (string | number)[] = [processedQuery];
-  if (entityTypeFilter) params.push(entityTypeFilter);
+  if (typeFilterParam) params.push(typeFilterParam);
   params.push(limit);
 
   try {
@@ -85,7 +93,7 @@ function executeFtsQuery(
     try {
       const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
       const fallbackParams: (string | number)[] = [phraseQuery];
-      if (entityTypeFilter) fallbackParams.push(entityTypeFilter);
+      if (typeFilterParam) fallbackParams.push(typeFilterParam);
       fallbackParams.push(limit);
       return db.prepare(sql).all(...fallbackParams) as FtsMatch[];
     } catch {
@@ -96,27 +104,28 @@ function executeFtsQuery(
 
 /**
  * Hydrate an FTS match with full contextual metadata from source tables.
+ * Parses composite entity_type (e.g., 'module:schema') before routing.
  */
 function hydrateResult(db: Database.Database, match: FtsMatch): TextSearchResult | null {
-  const entityType = match.entity_type as EntityType;
+  const { entityType, subType } = parseCompositeType(match.entity_type);
 
   switch (entityType as string) {
     case 'repo':
-      return hydrateRepo(db, match);
+      return hydrateRepo(db, match, subType);
     case 'module':
-      return hydrateModule(db, match);
+      return hydrateModule(db, match, subType);
     case 'event':
-      return hydrateEvent(db, match);
+      return hydrateEvent(db, match, subType);
     case 'service':
-      return hydrateService(db, match);
+      return hydrateService(db, match, subType);
     case 'learned_fact':
-      return hydrateLearnedFact(db, match);
+      return hydrateLearnedFact(db, match, subType);
     default:
       return null;
   }
 }
 
-function hydrateRepo(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+function hydrateRepo(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
   const row = db
     .prepare('SELECT name, path, description FROM repos WHERE id = ?')
     .get(match.entity_id) as { name: string; path: string; description: string | null } | undefined;
@@ -125,6 +134,7 @@ function hydrateRepo(db: Database.Database, match: FtsMatch): TextSearchResult |
 
   return {
     entityType: 'repo',
+    subType,
     entityId: match.entity_id,
     name: row.name,
     snippet: row.description ?? row.name,
@@ -135,7 +145,7 @@ function hydrateRepo(db: Database.Database, match: FtsMatch): TextSearchResult |
   };
 }
 
-function hydrateModule(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+function hydrateModule(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
   const row = db
     .prepare(
       `SELECT m.name, m.summary, r.name as repo_name, r.path as repo_path, f.path as file_path
@@ -156,6 +166,7 @@ function hydrateModule(db: Database.Database, match: FtsMatch): TextSearchResult
 
   return {
     entityType: 'module',
+    subType,
     entityId: match.entity_id,
     name: row.name,
     snippet: row.summary ?? row.name,
@@ -166,7 +177,7 @@ function hydrateModule(db: Database.Database, match: FtsMatch): TextSearchResult
   };
 }
 
-function hydrateEvent(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+function hydrateEvent(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
   const row = db
     .prepare(
       `SELECT e.name, e.schema_definition, e.source_file, r.name as repo_name, r.path as repo_path
@@ -186,6 +197,7 @@ function hydrateEvent(db: Database.Database, match: FtsMatch): TextSearchResult 
 
   return {
     entityType: 'event',
+    subType,
     entityId: match.entity_id,
     name: row.name,
     snippet: row.schema_definition ?? row.name,
@@ -196,7 +208,7 @@ function hydrateEvent(db: Database.Database, match: FtsMatch): TextSearchResult 
   };
 }
 
-function hydrateService(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+function hydrateService(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
   const row = db
     .prepare(
       `SELECT s.name, s.description, r.name as repo_name, r.path as repo_path
@@ -215,6 +227,7 @@ function hydrateService(db: Database.Database, match: FtsMatch): TextSearchResul
 
   return {
     entityType: 'service',
+    subType,
     entityId: match.entity_id,
     name: row.name,
     snippet: row.description ?? row.name,
@@ -225,7 +238,7 @@ function hydrateService(db: Database.Database, match: FtsMatch): TextSearchResul
   };
 }
 
-function hydrateLearnedFact(db: Database.Database, match: FtsMatch): TextSearchResult | null {
+function hydrateLearnedFact(db: Database.Database, match: FtsMatch, subType: string): TextSearchResult | null {
   const row = db
     .prepare('SELECT id, content, repo FROM learned_facts WHERE id = ?')
     .get(match.entity_id) as {
@@ -238,6 +251,7 @@ function hydrateLearnedFact(db: Database.Database, match: FtsMatch): TextSearchR
 
   return {
     entityType: 'learned_fact' as EntityType, // Cast — FTS stores this string
+    subType,
     entityId: match.entity_id,
     name: row.content.length > 100 ? row.content.substring(0, 100) + '...' : row.content,
     snippet: row.content,

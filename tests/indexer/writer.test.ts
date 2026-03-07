@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
-import { search } from '../../src/db/fts.js';
+import { search, parseCompositeType } from '../../src/db/fts.js';
 import {
   persistRepoData,
   clearRepoEntities,
@@ -77,7 +77,7 @@ describe('persistRepoData', () => {
 
     const results = search(db, 'booking');
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].entityType).toBe('repo');
+    expect(parseCompositeType(results[0].entityType as string).entityType).toBe('repo');
     expect(results[0].name).toContain('booking');
   });
 
@@ -95,7 +95,7 @@ describe('persistRepoData', () => {
 
     // Check FTS
     const results = search(db, 'booking');
-    const moduleResults = results.filter(r => r.entityType === 'module');
+    const moduleResults = results.filter(r => parseCompositeType(r.entityType as string).entityType === 'module');
     expect(moduleResults.length).toBeGreaterThan(0);
   });
 
@@ -112,7 +112,7 @@ describe('persistRepoData', () => {
 
     // Check FTS
     const results = search(db, 'booking created');
-    const eventResults = results.filter(r => r.entityType === 'event');
+    const eventResults = results.filter(r => parseCompositeType(r.entityType as string).entityType === 'event');
     expect(eventResults.length).toBeGreaterThan(0);
   });
 
@@ -181,7 +181,7 @@ describe('clearRepoEntities', () => {
 
     // FTS entries should be gone
     const results = search(db, 'unique fts module');
-    expect(results.filter(r => r.entityType === 'module')).toHaveLength(0);
+    expect(results.filter(r => parseCompositeType(r.entityType as string).entityType === 'module')).toHaveLength(0);
   });
 });
 
@@ -243,13 +243,13 @@ describe('clearRepoFiles with file_id', () => {
 
     // Verify FTS has the event
     const resultsBefore = search(db, 'unique cleanup');
-    expect(resultsBefore.filter(r => r.entityType === 'event').length).toBeGreaterThan(0);
+    expect(resultsBefore.filter(r => parseCompositeType(r.entityType as string).entityType === 'event').length).toBeGreaterThan(0);
 
     clearRepoFiles(db, repoId, ['lib/cleanup.ex']);
 
     // FTS entry should be gone
     const resultsAfter = search(db, 'unique cleanup');
-    expect(resultsAfter.filter(r => r.entityType === 'event')).toHaveLength(0);
+    expect(resultsAfter.filter(r => parseCompositeType(r.entityType as string).entityType === 'event')).toHaveLength(0);
   });
 });
 
@@ -500,7 +500,7 @@ describe('clearRepoEdges', () => {
     const consEvt = db.prepare("SELECT id FROM events WHERE name = 'ConsumedOrder'").get() as { id: number };
     // FTS entry added manually for test
     db.prepare(
-      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES ('consumed order', 'consumed order placed', 'event', ?)"
+      "INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES ('consumed order', 'consumed order placed', 'event:event', ?)"
     ).run(consEvt.id);
 
     clearRepoEdges(db, repoId);
@@ -510,7 +510,7 @@ describe('clearRepoEdges', () => {
     expect(eventsAfter).toHaveLength(0);
 
     // FTS entry should be gone
-    const ftsAfter = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type = 'event' AND entity_id = ?").get(consEvt.id) as { count: number };
+    const ftsAfter = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'event:%' AND entity_id = ?").get(consEvt.id) as { count: number };
     expect(ftsAfter.count).toBe(0);
   });
 
@@ -576,12 +576,12 @@ describe('service persistence', () => {
 
     // Search by service name
     const nameResults = search(db, 'booking service');
-    const serviceResults = nameResults.filter(r => r.entityType === 'service');
+    const serviceResults = nameResults.filter(r => parseCompositeType(r.entityType as string).entityType === 'service');
     expect(serviceResults.length).toBeGreaterThan(0);
 
     // Search by RPC method name in description
     const rpcResults = search(db, 'create booking');
-    const rpcServiceResults = rpcResults.filter(r => r.entityType === 'service');
+    const rpcServiceResults = rpcResults.filter(r => parseCompositeType(r.entityType as string).entityType === 'service');
     expect(rpcServiceResults.length).toBeGreaterThan(0);
   });
 
@@ -599,7 +599,7 @@ describe('service persistence', () => {
 
     // Verify FTS entry exists
     const ftsBefore = search(db, 'unique grpc svc');
-    expect(ftsBefore.filter(r => r.entityType === 'service').length).toBeGreaterThan(0);
+    expect(ftsBefore.filter(r => parseCompositeType(r.entityType as string).entityType === 'service').length).toBeGreaterThan(0);
 
     clearRepoEntities(db, repoId);
 
@@ -609,7 +609,7 @@ describe('service persistence', () => {
 
     // FTS entries should be gone
     const ftsAfter = search(db, 'unique grpc svc');
-    expect(ftsAfter.filter(r => r.entityType === 'service')).toHaveLength(0);
+    expect(ftsAfter.filter(r => parseCompositeType(r.entityType as string).entityType === 'service')).toHaveLength(0);
   });
 
   it('persistRepoData with empty services array does not crash', () => {
