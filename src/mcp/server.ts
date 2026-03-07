@@ -8,9 +8,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type Database from 'better-sqlite3';
-import os from 'os';
-import path from 'path';
 import { openDatabase, registerShutdownHandlers } from '../db/database.js';
+import { resolveDbPath } from '../db/path.js';
 import { registerSearchTool } from './tools/search.js';
 import { registerEntityTool } from './tools/entity.js';
 import { registerDepsTool } from './tools/deps.js';
@@ -38,7 +37,7 @@ export function createServer(db: Database.Database): McpServer {
 }
 
 async function main() {
-  const dbPath = process.env.KB_DB_PATH ?? path.join(os.homedir(), '.kb', 'knowledge.db');
+  const dbPath = resolveDbPath();
   const db = openDatabase(dbPath);
   registerShutdownHandlers(db);
 

@@ -57,6 +57,20 @@ export function formatResponse<T>(
 }
 
 /**
+ * Format a single item into a McpResponse with the unified shape.
+ * Used by tools that return a single object (learn, forget, status, cleanup, list-types).
+ */
+export function formatSingleResponse<T>(item: T, summary: string): string {
+  const response: McpResponse<T> = {
+    summary,
+    data: [item],
+    total: 1,
+    truncated: false,
+  };
+  return JSON.stringify(response);
+}
+
+/**
  * Truncate string fields in a response to fit under the size limit.
  * Progressively shortens the longest string field until it fits.
  */

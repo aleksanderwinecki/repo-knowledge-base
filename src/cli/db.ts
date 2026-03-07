@@ -2,9 +2,8 @@
  * Database path resolution and lifecycle helper for CLI commands.
  */
 
-import os from 'os';
-import path from 'path';
 import { openDatabase, closeDatabase } from '../db/database.js';
+import { resolveDbPath } from '../db/path.js';
 import type Database from 'better-sqlite3';
 
 /**
@@ -12,10 +11,7 @@ import type Database from 'better-sqlite3';
  * Uses KB_DB_PATH env var if set, otherwise defaults to ~/.kb/knowledge.db.
  */
 export function getDbPath(): string {
-  return (
-    process.env.KB_DB_PATH ??
-    path.join(os.homedir(), '.kb', 'knowledge.db')
-  );
+  return resolveDbPath();
 }
 
 /**
