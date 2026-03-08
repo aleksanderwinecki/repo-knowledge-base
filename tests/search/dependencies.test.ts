@@ -5,7 +5,7 @@ import os from 'os';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { persistRepoData } from '../../src/indexer/writer.js';
-import { queryDependencies } from '../../src/search/dependencies.js';
+import { queryDependencies, VALID_MECHANISMS } from '../../src/search/dependencies.js';
 
 let db: Database.Database;
 let dbPath: string;
@@ -199,5 +199,235 @@ describe('queryDependencies', () => {
     const names = result.dependencies.map((d) => d.name);
     const uniqueNames = [...new Set(names)];
     expect(names.length).toBe(uniqueNames.length);
+  });
+
+  it('legacy event edges have null confidence', () => {
+    // Existing event edges have no metadata column -> confidence should be null
+    const result = queryDependencies(db, 'payments-service', { direction: 'upstream' });
+    const bookingDep = result.dependencies.find((d) => d.name === 'booking-service');
+    expect(bookingDep).toBeDefined();
+    expect(bookingDep!.confidence).toBeNull();
+  });
+});
+
+describe('direct topology edges', () => {
+  it('gRPC edge appears in upstream deps', () => {
+    // repo A calls_grpc repo B -> B is upstream dep of A
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'repo', repoB.id, 'calls_grpc', 'lib/client.ex', JSON.stringify({ confidence: 'high' }));
+
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream' });
+    const grpcDep = result.dependencies.find((d) => d.name === 'payments-service');
+    expect(grpcDep).toBeDefined();
+    expect(grpcDep!.mechanism).toContain('gRPC');
+    expect(grpcDep!.confidence).toBe('high');
+  });
+
+  it('HTTP edge appears in upstream deps', () => {
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'repo', repoB.id, 'calls_http', 'lib/http_client.ex', JSON.stringify({ confidence: 'low' }));
+
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream' });
+    const httpDep = result.dependencies.find((d) => d.name === 'payments-service');
+    expect(httpDep).toBeDefined();
+    expect(httpDep!.mechanism).toContain('HTTP');
+    expect(httpDep!.confidence).toBe('low');
+  });
+
+  it('gateway edge (routes_to) appears in downstream deps', () => {
+    // gateway routes_to target -> target is downstream of gateway
+    const gateway = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const target = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', gateway.id, 'repo', target.id, 'routes_to', 'compose/services/payments.ts', JSON.stringify({ confidence: 'medium' }));
+
+    // Downstream from gateway: what does gateway route to?
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream' });
+    const gwDep = result.dependencies.find((d) => d.name === 'payments-service');
+    expect(gwDep).toBeDefined();
+    expect(gwDep!.mechanism).toContain('Gateway');
+    expect(gwDep!.confidence).toBe('medium');
+  });
+});
+
+describe('unresolved edges', () => {
+  it('unresolved edges appear as leaf nodes with target name', () => {
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+
+    // Unresolved gRPC call: target_type='service_name', target_id=0
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'service_name', 0, 'calls_grpc', 'lib/client.ex',
+      JSON.stringify({ confidence: 'high', unresolved: 'true', targetName: 'Rpc.Partners.V1.RPCService' }));
+
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream' });
+    const unresolvedDep = result.dependencies.find((d) => d.type === 'unresolved');
+    expect(unresolvedDep).toBeDefined();
+    expect(unresolvedDep!.name).toContain('Rpc.Partners.V1.RPCService');
+    expect(unresolvedDep!.confidence).toBe('high');
+    expect(unresolvedDep!.mechanism).toContain('unresolved');
+  });
+});
+
+describe('kafka topic matching', () => {
+  it('connects repos through shared kafka topic', () => {
+    // repo A produces_kafka topic X, repo B consumes_kafka topic X -> B depends on A (upstream)
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    // booking-service produces_kafka 'order-events' topic
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'service_name', 0, 'produces_kafka', 'lib/producer.ex',
+      JSON.stringify({ confidence: 'high', topic: 'order-events', targetName: 'order-events' }));
+
+    // payments-service consumes_kafka 'order-events' topic
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoB.id, 'service_name', 0, 'consumes_kafka', 'lib/consumer.ex',
+      JSON.stringify({ confidence: 'high', topic: 'order-events', targetName: 'order-events' }));
+
+    // payments upstream: should find booking via shared topic
+    const result = queryDependencies(db, 'payments-service', { direction: 'upstream' });
+    const kafkaDep = result.dependencies.find((d) => d.name === 'booking-service' && d.mechanism.includes('Kafka'));
+    expect(kafkaDep).toBeDefined();
+    expect(kafkaDep!.confidence).toBe('high');
+  });
+});
+
+describe('mechanism filter', () => {
+  beforeEach(() => {
+    // Add a gRPC edge between booking and payments (in addition to the event edges from outer beforeEach)
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'repo', repoB.id, 'calls_grpc', 'lib/client.ex', JSON.stringify({ confidence: 'high' }));
+  });
+
+  it('mechanism grpc returns only gRPC edges', () => {
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream', mechanism: 'grpc' });
+    expect(result.dependencies.length).toBeGreaterThan(0);
+    for (const dep of result.dependencies) {
+      expect(dep.mechanism).toContain('gRPC');
+    }
+  });
+
+  it('mechanism event returns only event-mediated edges', () => {
+    // payments-service has event edge upstream to booking
+    const result = queryDependencies(db, 'payments-service', { direction: 'upstream', mechanism: 'event' });
+    expect(result.dependencies.length).toBeGreaterThan(0);
+    for (const dep of result.dependencies) {
+      expect(dep.mechanism).toContain('event');
+    }
+  });
+
+  it('mechanism filter applies to all hops in multi-hop traversal', () => {
+    // Add gRPC edge from payments to notifications too
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+    const repoC = db.prepare("SELECT id FROM repos WHERE name = 'notifications-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoB.id, 'repo', repoC.id, 'calls_grpc', 'lib/client2.ex', JSON.stringify({ confidence: 'high' }));
+
+    // From booking with mechanism=grpc at depth 2: should follow grpc edges only
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream', depth: 2, mechanism: 'grpc' });
+    // All deps should be gRPC-only
+    for (const dep of result.dependencies) {
+      expect(dep.mechanism).toContain('gRPC');
+    }
+  });
+
+  it('invalid mechanism value still works (validation at CLI layer)', () => {
+    // Should not crash - just return no results since no edges match
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream', mechanism: 'bogus' });
+    expect(result.dependencies).toEqual([]);
+  });
+});
+
+describe('confidence', () => {
+  it('confidence field populated from edge metadata JSON', () => {
+    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
+    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoA.id, 'repo', repoB.id, 'calls_grpc', 'lib/client.ex', JSON.stringify({ confidence: 'high' }));
+
+    const result = queryDependencies(db, 'booking-service', { direction: 'upstream' });
+    const grpcDep = result.dependencies.find((d) => d.mechanism.includes('gRPC'));
+    expect(grpcDep).toBeDefined();
+    expect(grpcDep!.confidence).toBe('high');
+  });
+
+  it('confidence is null for legacy event edges with no metadata', () => {
+    const result = queryDependencies(db, 'payments-service', { direction: 'upstream' });
+    const eventDep = result.dependencies.find((d) => d.name === 'booking-service');
+    expect(eventDep).toBeDefined();
+    expect(eventDep!.confidence).toBeNull();
+  });
+});
+
+describe('mixed multi-hop', () => {
+  it('gRPC hop 1 then event hop 2 appears at depth 2', () => {
+    // Setup: repo-x calls_grpc payments-service, payments-service produces_event consumed by notifications
+    // So from repo-x at depth 2: hop 1 = payments via gRPC, hop 2 = notifications via event
+
+    // Create repo-x
+    const { repoId: repoXId } = persistRepoData(db, {
+      metadata: {
+        name: 'repo-x',
+        path: '/repos/repo-x',
+        description: 'Test repo',
+        techStack: ['elixir'],
+        keyFiles: ['mix.exs'],
+        currentCommit: 'xxx',
+      },
+    });
+
+    const paymentsRepo = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+
+    // repo-x calls_grpc payments-service (hop 1)
+    db.prepare(
+      'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('repo', repoXId, 'repo', paymentsRepo.id, 'calls_grpc', 'lib/client.ex', JSON.stringify({ confidence: 'high' }));
+
+    // payments-service already produces PaymentProcessed consumed by notifications-service (from outer beforeEach)
+
+    // Query upstream from repo-x at depth 2
+    const result = queryDependencies(db, 'repo-x', { direction: 'upstream', depth: 2 });
+
+    const paymentsDep = result.dependencies.find((d) => d.name === 'payments-service');
+    expect(paymentsDep).toBeDefined();
+    expect(paymentsDep!.depth).toBe(1);
+    expect(paymentsDep!.mechanism).toContain('gRPC');
+
+    // At depth 2, we should see booking-service (payments consumes BookingCreated from booking)
+    const bookingDep = result.dependencies.find((d) => d.name === 'booking-service');
+    expect(bookingDep).toBeDefined();
+    expect(bookingDep!.depth).toBe(2);
+  });
+});
+
+describe('VALID_MECHANISMS export', () => {
+  it('exports valid mechanism list', () => {
+    expect(VALID_MECHANISMS).toBeDefined();
+    expect(VALID_MECHANISMS).toContain('grpc');
+    expect(VALID_MECHANISMS).toContain('http');
+    expect(VALID_MECHANISMS).toContain('gateway');
+    expect(VALID_MECHANISMS).toContain('kafka');
+    expect(VALID_MECHANISMS).toContain('event');
   });
 });
