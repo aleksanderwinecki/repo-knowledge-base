@@ -22,9 +22,9 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 - [x] **SEM-01**: sqlite-vec integration — load native extension into better-sqlite3, validate macOS ARM64
 - [x] **SEM-02**: Embedding generation pipeline — nomic-embed-text-v1.5 via Transformers.js, 256d Matryoshka, post-persistence phase
 - [x] **SEM-03**: Code-aware embedding text preprocessing — reuse tokenizeForFts() for CamelCase/snake_case splitting
-- [ ] **SEM-04**: KNN vector similarity search — `kb search --semantic "query"` returns nearest entities
-- [ ] **SEM-05**: Hybrid FTS5 + vector search with RRF scoring — combines keyword and semantic results
-- [ ] **SEM-06**: Graceful degradation — falls back to FTS5-only when sqlite-vec unavailable or embeddings not generated
+- [x] **SEM-04**: KNN vector similarity search — `kb search --semantic "query"` returns nearest entities
+- [x] **SEM-05**: Hybrid FTS5 + vector search with RRF scoring — combines keyword and semantic results
+- [x] **SEM-06**: Graceful degradation — falls back to FTS5-only when sqlite-vec unavailable or embeddings not generated
 - [ ] **SEM-07**: `kb_semantic` MCP tool for natural language queries from AI agents
 
 ## Future Requirements
@@ -41,11 +41,17 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 - **INT-02**: Suggest relevant repos/files for feature descriptions
 - **INT-03**: Cross-repo impact analysis (partially addressed by topology)
 
+### Nomik-Inspired (see nomik.co)
+
+- **NOM-01**: Impact analysis queries — "what breaks if I change this event/service?" using existing topology edges
+- **NOM-02**: Flow tracing MCP tool — "trace HTTP request → service → Kafka event → consumer" across topology graph
+- **NOM-03**: Tree-sitter AST parsing — replace regex extractors for deeper accuracy and multi-language support (big lift)
+
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| AST-based parsing | Regex sufficient for well-structured macros; AST adds heavy deps |
+| AST-based parsing | Deferred to NOM-03; regex sufficient for now, Tree-sitter is future option |
 | Real-time file watching | On-demand re-index sufficient for local tool |
 | Cloud deployment | Local-only tool, no external infrastructure |
 | UI dashboard | CLI + MCP only |
@@ -67,9 +73,9 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | SEM-01 | Phase 18 | Complete |
 | SEM-02 | Phase 18 | Complete |
 | SEM-03 | Phase 18 | Complete |
-| SEM-04 | Phase 19 | Pending |
-| SEM-05 | Phase 19 | Pending |
-| SEM-06 | Phase 19 | Pending |
+| SEM-04 | Phase 19 | Complete |
+| SEM-05 | Phase 19 | Complete |
+| SEM-06 | Phase 19 | Complete |
 | SEM-07 | Phase 19 | Pending |
 
 **Coverage:**

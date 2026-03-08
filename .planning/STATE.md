@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: completed
-stopped_at: Completed 18-02-PLAN.md (Phase 18 complete)
-last_updated: "2026-03-08T16:38:30.591Z"
-last_activity: 2026-03-08 — Completed 18-02 embedding generation pipeline
+status: in-progress
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-03-08T19:18:15Z"
+last_activity: 2026-03-08 — Completed 19-01 semantic & hybrid search core
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 9
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,28 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 18 - Embedding Infrastructure
+**Current focus:** Phase 19 - Semantic Search
 
 ## Current Position
 
-Phase: 18 of 19 (Embedding Infrastructure)
-Plan: 18-02 of 18-02
-Status: Phase 18 Complete
-Last activity: 2026-03-08 — Completed 18-02 embedding generation pipeline
+Phase: 19 of 19 (Semantic Search)
+Plan: 19-01 of 19-02
+Status: Plan 19-01 Complete
+Last activity: 2026-03-08 — Completed 19-01 semantic & hybrid search core
 
-Progress: [██████████] 100%
+Progress: [████████░░] 89%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 7
+- v2.0 plans completed: 8
 - 16-01: 5min (2 tasks, 10 files)
 - 16-03: 4min (2 tasks, 4 files)
 - 17-01: 5min (1 task TDD, 4 files)
 - 17-02: 2min (2 tasks, 3 files)
 - 18-01: 6min (2 tasks TDD, 10 files)
 - 18-02: 6min (2 tasks TDD, 6 files)
+- 19-01: 5min (2 tasks TDD, 7 files)
 
 ## Accumulated Context
 
@@ -62,6 +63,9 @@ Recent decisions affecting current work:
 - (pipeline as any)() cast for TS2590 union type complexity in @huggingface/transformers
 - Model cached at ~/.kb/models/ for stability across npm reinstalls
 - SKIP_EMBEDDING_MODEL env var for CI environments without model access
+- RRF k=60 constant per original paper, 1-indexed ranks via 1/(k+i+1)
+- FTS-only degradation preserves original FTS relevance (no RRF wrapping)
+- searchSemantic over-fetches limit*2 for post-hydration filtering headroom
 
 ### Pending Todos
 
@@ -74,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T16:33:09Z
-Stopped at: Completed 18-02-PLAN.md (Phase 18 complete)
-Resume file: Phase 19 planning
+Last session: 2026-03-08T19:18:15Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: 19-02-PLAN.md (CLI/MCP wiring for semantic search)
