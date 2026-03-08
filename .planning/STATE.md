@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: in-progress
+status: completed
 stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-03-08T12:12:43Z"
+last_updated: "2026-03-08T12:16:59.391Z"
 last_activity: 2026-03-08 — Completed 17-02 CLI/MCP mechanism wiring
 progress:
   total_phases: 4
