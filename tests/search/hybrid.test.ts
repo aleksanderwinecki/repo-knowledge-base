@@ -139,16 +139,26 @@ describe('searchHybrid', () => {
   });
 
   it('RRF scores use 1-indexed ranks (first entry = 1/(k+1))', async () => {
+    // Need results in BOTH lists to trigger RRF mode (otherwise degradation returns raw FTS)
     mockSearchText.mockReturnValue([
       mockResult({ entityId: 1, name: 'OnlyFts' }),
     ]);
-    mockSearchSemantic.mockResolvedValue([]);
+    mockSearchSemantic.mockResolvedValue([
+      mockResult({ entityId: 2, name: 'OnlyVec' }),
+    ]);
 
     const { searchHybrid, RRF_K } = await import('../../src/search/hybrid.js');
     const results = await searchHybrid({} as any, 'test query');
 
-    // First FTS entry at rank 1: score = 1/(k + 0 + 1) = 1/(60 + 1) = 1/61
-    expect(results[0]!.relevance).toBeCloseTo(1 / (RRF_K + 1), 10);
+    // entityId 1 only appears in FTS at rank 0: score = 1/(k + 0 + 1) = 1/61
+    const ftsOnlyResult = results.find((r) => r.entityId === 1);
+    expect(ftsOnlyResult).toBeDefined();
+    expect(ftsOnlyResult!.relevance).toBeCloseTo(1 / (RRF_K + 1), 10);
+
+    // entityId 2 only appears in KNN at rank 0: score = 1/(k + 0 + 1) = 1/61
+    const vecOnlyResult = results.find((r) => r.entityId === 2);
+    expect(vecOnlyResult).toBeDefined();
+    expect(vecOnlyResult!.relevance).toBeCloseTo(1 / (RRF_K + 1), 10);
   });
 
   it('no duplicate entities in output', async () => {
@@ -175,32 +185,35 @@ describe('searchHybrid', () => {
 
 describe('withAutoSyncAsync', () => {
   it('awaits async queryFn before extracting repo names', async () => {
-    const { withAutoSyncAsync } = await import('../../src/mcp/sync.js');
+    // Use a real temp DB so checkAndSyncRepos can call db.prepare
+    const tmpFs = await import('fs');
+    const tmpPath = await import('path');
+    const tmpOs = await import('os');
+    const { openDatabase, closeDatabase } = await import('../../src/db/database.js');
 
-    // Mock checkAndSyncRepos to be a no-op
-    vi.doMock('../../src/mcp/sync.js', async (importOriginal) => {
-      const original = await importOriginal<typeof import('../../src/mcp/sync.js')>();
-      return {
-        ...original,
-        checkAndSyncRepos: vi.fn().mockResolvedValue({ synced: [], skipped: [] }),
-      };
-    });
+    const tmpDir = tmpFs.default.mkdtempSync(tmpPath.default.join(tmpOs.default.tmpdir(), 'rkb-hybrid-sync-'));
+    const testDbPath = tmpPath.default.join(tmpDir, 'test.db');
+    const testDb = openDatabase(testDbPath);
 
-    const asyncQuery = vi.fn().mockResolvedValue(['result1', 'result2']);
-    const extractRepos = vi.fn().mockReturnValue(['repo-a']);
+    try {
+      const { withAutoSyncAsync } = await import('../../src/mcp/sync.js');
 
-    // withAutoSyncAsync should await the async queryFn
-    const mod = await import('../../src/mcp/sync.js');
-    const result = await mod.withAutoSyncAsync(
-      {} as any,
-      asyncQuery,
-      extractRepos,
-    );
+      const asyncQuery = vi.fn().mockResolvedValue(['result1', 'result2']);
+      const extractRepos = vi.fn().mockReturnValue(['nonexistent-repo']);
 
-    expect(result).toEqual(['result1', 'result2']);
-    expect(asyncQuery).toHaveBeenCalled();
-    expect(extractRepos).toHaveBeenCalledWith(['result1', 'result2']);
+      // withAutoSyncAsync should await the async queryFn
+      const result = await withAutoSyncAsync(
+        testDb,
+        asyncQuery,
+        extractRepos,
+      );
 
-    vi.doUnmock('../../src/mcp/sync.js');
+      expect(result).toEqual(['result1', 'result2']);
+      expect(asyncQuery).toHaveBeenCalled();
+      expect(extractRepos).toHaveBeenCalledWith(['result1', 'result2']);
+    } finally {
+      closeDatabase(testDb);
+      try { tmpFs.default.unlinkSync(testDbPath); } catch { /* ignore */ }
+    }
   });
 });

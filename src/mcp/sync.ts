@@ -88,3 +88,22 @@ export async function withAutoSync<T>(
   }
   return result;
 }
+
+/**
+ * Async variant of withAutoSync for query functions that return Promises.
+ * Awaits the async queryFn before extracting repo names and syncing.
+ * Used by hybrid/semantic search in MCP tools.
+ */
+export async function withAutoSyncAsync<T>(
+  db: Database.Database,
+  queryFn: () => Promise<T>,
+  extractRepoNames: (result: T) => string[],
+): Promise<T> {
+  let result = await queryFn();
+  const repoNames = extractRepoNames(result);
+  const syncResult = await checkAndSyncRepos(db, repoNames);
+  if (syncResult.synced.length > 0) {
+    result = await queryFn();
+  }
+  return result;
+}
