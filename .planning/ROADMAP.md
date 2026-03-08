@@ -63,11 +63,12 @@
   3. Running `kb index` on gateway repos produces edges linking the gateway to upstream services based on routing config
   4. Running `kb index` on repos with Kafka producers/consumers produces edges linking services via topic names
   5. All topology edges are persisted with a mechanism type (grpc, http, gateway, kafka) in the edges table
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 16-01: TBD
-- [ ] 16-02: TBD
+- [ ] 16-01-PLAN.md -- Types, V7 migration, gRPC/HTTP/Kafka extractors
+- [ ] 16-02-PLAN.md -- Gateway routing extractor
+- [ ] 16-03-PLAN.md -- Pipeline integration and persistence wiring
 
 ### Phase 17: Topology Query Layer
 **Goal**: Users can query the full service communication graph -- filtering by mechanism, seeing confidence levels, traversing all edge types
@@ -123,7 +124,7 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 1-5 | v1.0 | 9/9 | Complete | 2026-03-06 |
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
-| 16. Topology Extraction | v2.0 | 0/TBD | Not started | - |
+| 16. Topology Extraction | v2.0 | 0/3 | Not started | - |
 | 17. Topology Query Layer | v2.0 | 0/TBD | Not started | - |
 | 18. Embedding Infrastructure | v2.0 | 0/TBD | Not started | - |
 | 19. Semantic Search | v2.0 | 0/TBD | Not started | - |
