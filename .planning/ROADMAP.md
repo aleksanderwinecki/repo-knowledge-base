@@ -47,7 +47,7 @@
 **Milestone Goal:** Enable design-time architectural queries -- who talks to whom via what protocol -- and natural language semantic search across the entire microservice ecosystem.
 
 - [x] **Phase 16: Topology Extraction** - Extract gRPC, HTTP, gateway, and Kafka communication edges from all repos (completed 2026-03-08)
-- [ ] **Phase 17: Topology Query Layer** - Generalize dependency queries to traverse all edge types with mechanism filtering
+- [x] **Phase 17: Topology Query Layer** - Generalize dependency queries to traverse all edge types with mechanism filtering (completed 2026-03-08)
 - [ ] **Phase 18: Embedding Infrastructure** - Validate sqlite-vec, build embedding generation pipeline with nomic-embed-text-v1.5
 - [ ] **Phase 19: Semantic Search** - KNN vector search, hybrid FTS+vector ranking, MCP tool, graceful degradation
 
@@ -126,6 +126,6 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16. Topology Extraction | 3/3 | Complete    | 2026-03-08 | - |
-| 17. Topology Query Layer | 1/2 | In Progress|  | - |
+| 17. Topology Query Layer | 2/2 | Complete   | 2026-03-08 | - |
 | 18. Embedding Infrastructure | v2.0 | 0/TBD | Not started | - |
 | 19. Semantic Search | v2.0 | 0/TBD | Not started | - |

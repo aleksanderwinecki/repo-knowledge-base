@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
 status: in-progress
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-08T12:08:34Z"
-last_activity: 2026-03-08 — Completed 17-01 dependency query generalization
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-03-08T12:12:43Z"
+last_activity: 2026-03-08 — Completed 17-02 CLI/MCP mechanism wiring
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 100
 ---
 
@@ -26,20 +26,21 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 17 of 19 (Topology Query Layer)
-Plan: 17-01 of 17-02
-Status: In Progress
-Last activity: 2026-03-08 — Completed 17-01 dependency query generalization
+Plan: 17-02 of 17-02
+Status: Phase Complete
+Last activity: 2026-03-08 — Completed 17-02 CLI/MCP mechanism wiring
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 4
+- v2.0 plans completed: 5
 - 16-01: 5min (2 tasks, 10 files)
 - 16-03: 4min (2 tasks, 4 files)
 - 17-01: 5min (1 task TDD, 4 files)
+- 17-02: 2min (2 tasks, 3 files)
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - Event-mediated edges display as "event (EventName)" not "Kafka consumer (EventName)"
 - findLinkedRepos split into 4 handlers: direct, event-mediated, kafka-topic, unresolved
 - MECHANISM_FILTER_MAP maps grpc/http/gateway/kafka/event to relationship_type arrays
+- Manual outputError() validation in CLI over commander .choices() for consistent JSON error format
+- VALID_MECHANISMS cast to tuple type for zod .enum() compatibility
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T12:08:34Z
-Stopped at: Completed 17-01-PLAN.md
-Resume file: .planning/phases/17-topology-query-layer/17-01-SUMMARY.md
+Last session: 2026-03-08T12:12:43Z
+Stopped at: Completed 17-02-PLAN.md
+Resume file: .planning/phases/17-topology-query-layer/17-02-SUMMARY.md
