@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
 status: executing
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-03-08T11:21:45.402Z"
-last_activity: 2026-03-08 — Completed 16-02 gateway routing extractor
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-08T11:23:30Z"
+last_activity: 2026-03-08 — Completed 16-01 topology extractors (gRPC, HTTP, Kafka) + V7 migration
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 83
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,17 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 16 of 19 (Topology Extraction)
-Plan: 16-02 complete (16-01 in progress, 16-03 pending)
+Plan: 16-01 and 16-02 complete, 16-03 pending
 Status: Executing
-Last activity: 2026-03-08 — Completed 16-02 gateway routing extractor
+Last activity: 2026-03-08 — Completed 16-01 topology extractors + V7 migration
 
-Progress: [████████░░] 83%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
 - v2.0 plans completed: 2
+- 16-01: 5min (2 tasks, 10 files)
 
 ## Accumulated Context
 
@@ -51,6 +52,9 @@ Recent decisions affecting current work:
 - Embeddings run as post-persistence Phase 4 step, not inside extractors
 - Gateway routing is TypeScript (compose/services/*.ts), not Elixir
 - Gateway extractor regex tolerates whitespace variations in describe() pattern
+- gRPC dedup uses domain extraction from qualified Elixir module names
+- HTTP edges all confidence "low" -- Fresha uses gRPC/Kafka for inter-service
+- Kafka produces_kafka/consumes_kafka complementary to proto-based event edges
 - Gateway confidence set to 'medium' (limited sample repos)
 
 ### Pending Todos
@@ -65,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T11:21:45.400Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-03-08T11:23:30Z
+Stopped at: Completed 16-01-PLAN.md
 Resume file: None

@@ -9,10 +9,10 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 ### Service Topology
 
-- [ ] **TOPO-01**: gRPC client/server call extraction across all repos (proto imports, service stubs)
-- [ ] **TOPO-02**: HTTP client module extraction (Tesla/HTTPoison base_url, endpoint patterns)
+- [x] **TOPO-01**: gRPC client/server call extraction across all repos (proto imports, service stubs)
+- [x] **TOPO-02**: HTTP client module extraction (Tesla/HTTPoison base_url, endpoint patterns)
 - [x] **TOPO-03**: Gateway routing config extraction (compose/services definitions, schema sources)
-- [ ] **TOPO-04**: Kafka producer/consumer wiring extraction (topic names, handler modules)
+- [x] **TOPO-04**: Kafka producer/consumer wiring extraction (topic names, handler modules)
 - [ ] **TOPO-05**: Dependency query generalization — traverse all edge types (gRPC, HTTP, gateway, Kafka), not just events
 - [ ] **TOPO-06**: `--mechanism` filter on `kb deps` to filter by communication type (grpc, http, kafka, event, gateway)
 - [ ] **TOPO-07**: Confidence levels on topology edges (high for gRPC/proto, medium for gateway, low for HTTP regex)
@@ -57,10 +57,10 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOPO-01 | Phase 16 | Pending |
-| TOPO-02 | Phase 16 | Pending |
+| TOPO-01 | Phase 16 | Complete |
+| TOPO-02 | Phase 16 | Complete |
 | TOPO-03 | Phase 16 | Complete |
-| TOPO-04 | Phase 16 | Pending |
+| TOPO-04 | Phase 16 | Complete |
 | TOPO-05 | Phase 17 | Pending |
 | TOPO-06 | Phase 17 | Pending |
 | TOPO-07 | Phase 17 | Pending |
