@@ -62,8 +62,10 @@ export interface DependencyNode {
   name: string;
   type: string;
   repoName: string;
-  /** Connection mechanism (e.g. 'Kafka consumer', 'gRPC') */
+  /** Connection mechanism (e.g. 'Kafka consumer', 'gRPC [high]') */
   mechanism: string;
+  /** Confidence level from edge metadata ('high' | 'medium' | 'low' | null) */
+  confidence: string | null;
   /** Depth from the queried entity (1 = direct) */
   depth: number;
   /** Full traversal path for multi-hop queries */
@@ -78,4 +80,6 @@ export interface DependencyOptions {
   depth?: number | 'all';
   /** Filter by repo name */
   repo?: string;
+  /** Filter by communication mechanism ('grpc' | 'http' | 'gateway' | 'kafka' | 'event') */
+  mechanism?: string;
 }

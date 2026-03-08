@@ -1,6 +1,6 @@
 export { searchText } from './text.js';
 export { findEntity } from './entity.js';
-export { queryDependencies } from './dependencies.js';
+export { queryDependencies, VALID_MECHANISMS } from './dependencies.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,

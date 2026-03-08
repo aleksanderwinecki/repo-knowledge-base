@@ -101,7 +101,7 @@ describe('queryDependencies', () => {
     // Should find booking-service as upstream dependency
     const bookingDep = result.dependencies.find((d) => d.name === 'booking-service');
     expect(bookingDep).toBeDefined();
-    expect(bookingDep!.mechanism).toContain('Kafka');
+    expect(bookingDep!.mechanism).toContain('event');
   });
 
   it('downstream query returns what depends on entity', () => {
@@ -281,26 +281,46 @@ describe('unresolved edges', () => {
 
 describe('kafka topic matching', () => {
   it('connects repos through shared kafka topic', () => {
-    // repo A produces_kafka topic X, repo B consumes_kafka topic X -> B depends on A (upstream)
-    const repoA = db.prepare("SELECT id FROM repos WHERE name = 'booking-service'").get() as { id: number };
-    const repoB = db.prepare("SELECT id FROM repos WHERE name = 'payments-service'").get() as { id: number };
+    // Create two fresh repos connected ONLY by kafka topic (no event edges between them)
+    const { repoId: producerId } = persistRepoData(db, {
+      metadata: {
+        name: 'kafka-producer-svc',
+        path: '/repos/kafka-producer-svc',
+        description: 'Produces kafka messages',
+        techStack: ['elixir'],
+        keyFiles: ['mix.exs'],
+        currentCommit: 'kp1',
+      },
+    });
 
-    // booking-service produces_kafka 'order-events' topic
+    const { repoId: consumerId } = persistRepoData(db, {
+      metadata: {
+        name: 'kafka-consumer-svc',
+        path: '/repos/kafka-consumer-svc',
+        description: 'Consumes kafka messages',
+        techStack: ['elixir'],
+        keyFiles: ['mix.exs'],
+        currentCommit: 'kc1',
+      },
+    });
+
+    // kafka-producer-svc produces_kafka 'order-events' topic
     db.prepare(
       'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run('repo', repoA.id, 'service_name', 0, 'produces_kafka', 'lib/producer.ex',
+    ).run('repo', producerId, 'service_name', 0, 'produces_kafka', 'lib/producer.ex',
       JSON.stringify({ confidence: 'high', topic: 'order-events', targetName: 'order-events' }));
 
-    // payments-service consumes_kafka 'order-events' topic
+    // kafka-consumer-svc consumes_kafka 'order-events' topic
     db.prepare(
       'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run('repo', repoB.id, 'service_name', 0, 'consumes_kafka', 'lib/consumer.ex',
+    ).run('repo', consumerId, 'service_name', 0, 'consumes_kafka', 'lib/consumer.ex',
       JSON.stringify({ confidence: 'high', topic: 'order-events', targetName: 'order-events' }));
 
-    // payments upstream: should find booking via shared topic
-    const result = queryDependencies(db, 'payments-service', { direction: 'upstream' });
-    const kafkaDep = result.dependencies.find((d) => d.name === 'booking-service' && d.mechanism.includes('Kafka'));
+    // consumer upstream: should find producer via shared topic
+    const result = queryDependencies(db, 'kafka-consumer-svc', { direction: 'upstream' });
+    const kafkaDep = result.dependencies.find((d) => d.name === 'kafka-producer-svc');
     expect(kafkaDep).toBeDefined();
+    expect(kafkaDep!.mechanism).toContain('Kafka');
     expect(kafkaDep!.confidence).toBe('high');
   });
 });
