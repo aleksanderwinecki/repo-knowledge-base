@@ -154,17 +154,25 @@ describe('searchSemantic', () => {
   });
 
   it('returns [] when vec unavailable', async () => {
+    vi.resetModules();
+
     vi.doMock('../../src/db/vec.js', () => ({
       isVecAvailable: () => false,
       loadVecExtension: () => false,
     }));
 
-    // Must re-import to pick up the mock
+    // Re-mock pipeline too since resetModules cleared everything
+    vi.doMock('../../src/embeddings/pipeline.js', () => ({
+      MATRYOSHKA_DIM: 256,
+      generateQueryEmbedding: vi.fn().mockResolvedValue(QUERY_VEC),
+    }));
+
     const mod = await import('../../src/search/semantic.js');
     const results = await mod.searchSemantic(db, 'hotel booking');
     expect(results).toEqual([]);
 
     vi.doUnmock('../../src/db/vec.js');
+    vi.doUnmock('../../src/embeddings/pipeline.js');
   });
 
   it('returns [] when embeddings table empty', async () => {

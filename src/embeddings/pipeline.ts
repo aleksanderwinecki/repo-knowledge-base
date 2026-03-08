@@ -87,3 +87,26 @@ export async function generateEmbeddingsBatch(
   }
   return results;
 }
+
+/**
+ * Generate a single 256d query embedding from text.
+ * Uses "search_query: " prefix (not "search_document: ") per nomic-embed-text spec.
+ * Same Matryoshka truncation + L2 normalization as generateEmbedding.
+ */
+export async function generateQueryEmbedding(text: string): Promise<Float32Array> {
+  const pipe = await getEmbeddingPipeline();
+
+  // nomic-embed-text requires "search_query: " prefix for queries
+  const prefixedText = `search_query: ${text}`;
+
+  // Run inference with mean pooling
+  let output = await pipe(prefixedText, { pooling: 'mean' });
+
+  // Matryoshka truncation: layer_norm -> slice to 256d -> L2 normalize
+  const dimSize = output.dims[1] ?? MATRYOSHKA_DIM;
+  output = layer_norm(output, [dimSize])
+    .slice(null, [0, MATRYOSHKA_DIM])
+    .normalize(2, -1);
+
+  return new Float32Array((output.data as Float32Array).slice(0, MATRYOSHKA_DIM));
+}
