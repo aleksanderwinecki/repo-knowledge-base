@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
 status: in-progress
-stopped_at: Completed 19-01-PLAN.md
-last_updated: "2026-03-08T19:18:15Z"
-last_activity: 2026-03-08 — Completed 19-01 semantic & hybrid search core
+stopped_at: Completed 19-02-PLAN.md
+last_updated: "2026-03-08T19:25:05Z"
+last_activity: 2026-03-08 — Completed 19-02 CLI/MCP semantic search wiring
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 19 - Semantic Search
+**Current focus:** Phase 19 - Semantic Search (COMPLETE)
 
 ## Current Position
 
 Phase: 19 of 19 (Semantic Search)
-Plan: 19-01 of 19-02
-Status: Plan 19-01 Complete
-Last activity: 2026-03-08 — Completed 19-01 semantic & hybrid search core
+Plan: 19-02 of 19-02
+Status: Phase 19 Complete
+Last activity: 2026-03-08 — Completed 19-02 CLI/MCP semantic search wiring
 
-Progress: [████████░░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 8
+- v2.0 plans completed: 9
 - 16-01: 5min (2 tasks, 10 files)
 - 16-03: 4min (2 tasks, 4 files)
 - 17-01: 5min (1 task TDD, 4 files)
@@ -44,6 +44,7 @@ Progress: [████████░░] 89%
 - 18-01: 6min (2 tasks TDD, 10 files)
 - 18-02: 6min (2 tasks TDD, 6 files)
 - 19-01: 5min (2 tasks TDD, 7 files)
+- 19-02: 5min (2 tasks TDD, 6 files)
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - RRF k=60 constant per original paper, 1-indexed ranks via 1/(k+i+1)
 - FTS-only degradation preserves original FTS relevance (no RRF wrapping)
 - searchSemantic over-fetches limit*2 for post-hydration filtering headroom
+- CLI --semantic uses searchSemantic directly (pure vector), default uses searchHybrid (RRF fusion)
+- kb_semantic MCP tool uses searchHybrid for best AI agent results (keyword+vector combined)
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T19:18:15Z
-Stopped at: Completed 19-01-PLAN.md
-Resume file: 19-02-PLAN.md (CLI/MCP wiring for semantic search)
+Last session: 2026-03-08T19:25:05Z
+Stopped at: Completed 19-02-PLAN.md
+Resume file: v2.0 milestone complete

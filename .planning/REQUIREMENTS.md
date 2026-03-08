@@ -25,7 +25,7 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 - [x] **SEM-04**: KNN vector similarity search — `kb search --semantic "query"` returns nearest entities
 - [x] **SEM-05**: Hybrid FTS5 + vector search with RRF scoring — combines keyword and semantic results
 - [x] **SEM-06**: Graceful degradation — falls back to FTS5-only when sqlite-vec unavailable or embeddings not generated
-- [ ] **SEM-07**: `kb_semantic` MCP tool for natural language queries from AI agents
+- [x] **SEM-07**: `kb_semantic` MCP tool for natural language queries from AI agents
 
 ## Future Requirements
 
@@ -76,7 +76,7 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | SEM-04 | Phase 19 | Complete |
 | SEM-05 | Phase 19 | Complete |
 | SEM-06 | Phase 19 | Complete |
-| SEM-07 | Phase 19 | Pending |
+| SEM-07 | Phase 19 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 14 total
