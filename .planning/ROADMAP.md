@@ -127,5 +127,5 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16. Topology Extraction | 3/3 | Complete    | 2026-03-08 | - |
 | 17. Topology Query Layer | 2/2 | Complete    | 2026-03-08 | - |
-| 18. Embedding Infrastructure | v2.0 | 0/2 | Planned | - |
+| 18. Embedding Infrastructure | 1/2 | In Progress|  | - |
 | 19. Semantic Search | v2.0 | 0/TBD | Not started | - |

@@ -19,9 +19,9 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 ### Semantic Search
 
-- [ ] **SEM-01**: sqlite-vec integration — load native extension into better-sqlite3, validate macOS ARM64
+- [x] **SEM-01**: sqlite-vec integration — load native extension into better-sqlite3, validate macOS ARM64
 - [ ] **SEM-02**: Embedding generation pipeline — nomic-embed-text-v1.5 via Transformers.js, 256d Matryoshka, post-persistence phase
-- [ ] **SEM-03**: Code-aware embedding text preprocessing — reuse tokenizeForFts() for CamelCase/snake_case splitting
+- [x] **SEM-03**: Code-aware embedding text preprocessing — reuse tokenizeForFts() for CamelCase/snake_case splitting
 - [ ] **SEM-04**: KNN vector similarity search — `kb search --semantic "query"` returns nearest entities
 - [ ] **SEM-05**: Hybrid FTS5 + vector search with RRF scoring — combines keyword and semantic results
 - [ ] **SEM-06**: Graceful degradation — falls back to FTS5-only when sqlite-vec unavailable or embeddings not generated
@@ -64,9 +64,9 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | TOPO-05 | Phase 17 | Complete |
 | TOPO-06 | Phase 17 | Complete |
 | TOPO-07 | Phase 17 | Complete |
-| SEM-01 | Phase 18 | Pending |
+| SEM-01 | Phase 18 | Complete |
 | SEM-02 | Phase 18 | Pending |
-| SEM-03 | Phase 18 | Pending |
+| SEM-03 | Phase 18 | Complete |
 | SEM-04 | Phase 19 | Pending |
 | SEM-05 | Phase 19 | Pending |
 | SEM-06 | Phase 19 | Pending |
