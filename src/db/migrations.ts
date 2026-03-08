@@ -42,6 +42,9 @@ export function runMigrations(
     if (fromVersion < 6 && toVersion >= 6) {
       migrateToV6(db);
     }
+    if (fromVersion < 7 && toVersion >= 7) {
+      migrateToV7(db);
+    }
   });
 
   migrate();
@@ -235,4 +238,14 @@ function migrateToV6(db: Database.Database): void {
       insertStmt.run(row.name, row.description, row.entity_id);
     }
   }
+}
+
+/**
+ * V7: Add metadata JSON column to edges table for topology context.
+ * Stores mechanism-specific metadata (stub name, topic, URL, confidence).
+ */
+function migrateToV7(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE edges ADD COLUMN metadata TEXT;
+  `);
 }

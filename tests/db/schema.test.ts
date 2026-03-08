@@ -372,8 +372,8 @@ describe('v4 migration', () => {
     expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
   });
 
-  it('SCHEMA_VERSION is 6', () => {
-    expect(SCHEMA_VERSION).toBe(6);
+  it('SCHEMA_VERSION is 7', () => {
+    expect(SCHEMA_VERSION).toBe(7);
   });
 
   it('fresh database has file_id column on events', () => {
@@ -541,5 +541,97 @@ describe('v5 migration', () => {
     expect(row.description).toBe('manages users');
     expect(row.entity_type).toBe('service:service');
     expect(row.entity_id).toBe(1);
+  });
+});
+
+describe('v7 migration', () => {
+  let db: Database.Database;
+  let dbPath: string;
+
+  /**
+   * Create a raw v6 database by running v1-v6 migrations manually,
+   * then setting user_version to 6.
+   */
+  function createV6Database(filePath: string): Database.Database {
+    const rawDb = new BetterSqlite3(filePath);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('foreign_keys = ON');
+    runMigrations(rawDb, 0, 6);
+    setVersion(rawDb, 6);
+    return rawDb;
+  }
+
+  afterEach(() => {
+    if (db?.open) closeDatabase(db);
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('v7 migration adds metadata column to edges table', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v7-metadata-${Date.now()}.db`);
+    db = createV6Database(dbPath);
+
+    // Verify metadata does NOT exist in v6
+    const colsBefore = (db.pragma('table_info(edges)') as Array<{ name: string }>).map((c) => c.name);
+    expect(colsBefore).not.toContain('metadata');
+
+    // Close and reopen to trigger migration
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify metadata now exists
+    const colsAfter = (db.pragma('table_info(edges)') as Array<{ name: string }>).map((c) => c.name);
+    expect(colsAfter).toContain('metadata');
+  });
+
+  it('schema version is 7 after migration', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v7-version-${Date.now()}.db`);
+    db = createV6Database(dbPath);
+    expect(getCurrentVersion(db)).toBe(6);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    expect(getCurrentVersion(db)).toBe(7);
+  });
+
+  it('fresh database has metadata column on edges', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v7-fresh-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    const edgeCols = (db.pragma('table_info(edges)') as Array<{ name: string }>).map((c) => c.name);
+    expect(edgeCols).toContain('metadata');
+  });
+
+  it('existing edge data preserved after v7 migration', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v7-preserve-${Date.now()}.db`);
+    db = createV6Database(dbPath);
+
+    // Insert sample data
+    db.prepare("INSERT INTO repos (name, path) VALUES ('v7-test', '/tmp/v7')").run();
+    const repo = db.prepare("SELECT id FROM repos WHERE name = 'v7-test'").get() as { id: number };
+    db.prepare("INSERT INTO services (repo_id, name) VALUES (?, 'svc-a')").run(repo.id);
+    db.prepare("INSERT INTO services (repo_id, name) VALUES (?, 'svc-b')").run(repo.id);
+    const svcA = db.prepare("SELECT id FROM services WHERE name = 'svc-a'").get() as { id: number };
+    const svcB = db.prepare("SELECT id FROM services WHERE name = 'svc-b'").get() as { id: number };
+    db.prepare(
+      "INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES ('service', ?, 'service', ?, 'calls_grpc', 'src/client.ex')"
+    ).run(svcA.id, svcB.id);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify edge data preserved with null metadata
+    const edge = db.prepare("SELECT relationship_type, source_file, metadata FROM edges").get() as {
+      relationship_type: string;
+      source_file: string;
+      metadata: string | null;
+    };
+    expect(edge.relationship_type).toBe('calls_grpc');
+    expect(edge.source_file).toBe('src/client.ex');
+    expect(edge.metadata).toBeNull();
   });
 });

@@ -58,15 +58,20 @@ export interface Edge {
   targetId: number;
   relationshipType: string;
   sourceFile: string | null;
+  metadata: string | null;
   createdAt: string;
 }
 
 /** Valid entity types for the knowledge base */
 export type EntityType = 'repo' | 'file' | 'module' | 'service' | 'event' | 'learned_fact';
 
-/** Valid relationship types for v1 */
+/** Valid relationship types */
 export type RelationshipType =
   | 'produces_event'
   | 'consumes_event'
   | 'calls_grpc'
-  | 'exposes_graphql';
+  | 'exposes_graphql'
+  | 'calls_http'
+  | 'routes_to'
+  | 'produces_kafka'
+  | 'consumes_kafka';
