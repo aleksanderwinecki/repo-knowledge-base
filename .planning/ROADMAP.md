@@ -94,11 +94,11 @@ Plans:
   2. Running `kb index` generates 256-dimensional embeddings for all entities using nomic-embed-text-v1.5 as a post-persistence step
   3. Embedding text preprocessing splits CamelCase/snake_case tokens (reusing tokenizeForFts) before feeding to the model
   4. Embeddings are stored in a vec0 virtual table queryable by KNN distance
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 18-01: TBD
-- [ ] 18-02: TBD
+- [ ] 18-01-PLAN.md -- sqlite-vec loading, V8 migration, vec0 table, embedding text composition
+- [ ] 18-02-PLAN.md -- Transformers.js pipeline, batch embedding generation, indexer integration
 
 ### Phase 19: Semantic Search
 **Goal**: Users can search the knowledge base with natural language queries and get semantically relevant results
@@ -127,5 +127,5 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16. Topology Extraction | 3/3 | Complete    | 2026-03-08 | - |
 | 17. Topology Query Layer | 2/2 | Complete    | 2026-03-08 | - |
-| 18. Embedding Infrastructure | v2.0 | 0/TBD | Not started | - |
+| 18. Embedding Infrastructure | v2.0 | 0/2 | Planned | - |
 | 19. Semantic Search | v2.0 | 0/TBD | Not started | - |
