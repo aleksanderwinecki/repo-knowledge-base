@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: completed
-stopped_at: Phase 17 context gathered
-last_updated: "2026-03-08T11:52:03.044Z"
-last_activity: 2026-03-08 — Completed 16-03 topology pipeline integration
+status: in-progress
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-08T12:08:34Z"
+last_activity: 2026-03-08 — Completed 17-01 dependency query generalization
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,24 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 16 - Topology Extraction
+**Current focus:** Phase 17 - Topology Query Layer
 
 ## Current Position
 
-Phase: 16 of 19 (Topology Extraction) -- COMPLETE
-Plan: All 3 plans complete (16-01, 16-02, 16-03)
-Status: Phase Complete
-Last activity: 2026-03-08 — Completed 16-03 topology pipeline integration
+Phase: 17 of 19 (Topology Query Layer)
+Plan: 17-01 of 17-02
+Status: In Progress
+Last activity: 2026-03-08 — Completed 17-01 dependency query generalization
 
-Progress: [██████████] 100%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 3
+- v2.0 plans completed: 4
 - 16-01: 5min (2 tasks, 10 files)
 - 16-03: 4min (2 tasks, 4 files)
+- 17-01: 5min (1 task TDD, 4 files)
 
 ## Accumulated Context
 
@@ -60,6 +61,9 @@ Recent decisions affecting current work:
 - Topology target resolution: exact repo match -> LIKE -> service short name -> unresolved placeholder
 - Unresolved targets stored with target_type 'service_name' for future resolution
 - Old insertGrpcClientEdges fully replaced by topology framework
+- Event-mediated edges display as "event (EventName)" not "Kafka consumer (EventName)"
+- findLinkedRepos split into 4 handlers: direct, event-mediated, kafka-topic, unresolved
+- MECHANISM_FILTER_MAP maps grpc/http/gateway/kafka/event to relationship_type arrays
 
 ### Pending Todos
 
@@ -73,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T11:52:03.042Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-topology-query-layer/17-CONTEXT.md
+Last session: 2026-03-08T12:08:34Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: .planning/phases/17-topology-query-layer/17-01-SUMMARY.md
