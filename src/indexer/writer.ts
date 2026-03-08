@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { RepoMetadata } from './metadata.js';
 import { indexEntity, removeEntity } from '../db/fts.js';
 import type { EntityType } from '../types/entities.js';
+import type { TopologyEdge } from './topology/types.js';
 
 /** Service data from proto/gRPC extractors */
 export interface ServiceData {
@@ -458,4 +459,126 @@ export function persistSurgicalData(
     clearRepoEdges(db, data.repoId);
   });
   txn();
+}
+
+/**
+ * Resolve a topology target service name to a DB entity.
+ * Returns { type, id } or null if unresolved.
+ *
+ * Strategy varies by mechanism:
+ * - gRPC: Extract short name from qualified Elixir path, look up in services table
+ * - gateway: targetServiceName is a repo name, look up in repos table
+ * - HTTP: Try to match hostname to repo name
+ * - Kafka: Topic-based, no target resolution (returns null)
+ */
+function resolveTopologyTarget(
+  db: Database.Database,
+  targetServiceName: string,
+): { type: string; id: number } | null {
+  // Try exact match in repos table (covers gateway repo references and HTTP hostnames)
+  const repo = db
+    .prepare('SELECT id FROM repos WHERE name = ?')
+    .get(targetServiceName) as { id: number } | undefined;
+  if (repo) return { type: 'repo', id: repo.id };
+
+  // Try LIKE match for partial repo name (HTTP hostnames may be partial)
+  const repoLike = db
+    .prepare('SELECT id FROM repos WHERE name LIKE ?')
+    .get(`%${targetServiceName}%`) as { id: number } | undefined;
+  if (repoLike) return { type: 'repo', id: repoLike.id };
+
+  // For gRPC qualified names: extract short service name and look up services
+  const parts = targetServiceName.split('.');
+  if (parts.length > 1) {
+    const shortName = parts[parts.length - 1]!;
+
+    // Try exact match on short service name
+    let service = db
+      .prepare('SELECT id FROM services WHERE name = ?')
+      .get(shortName) as { id: number } | undefined;
+
+    if (!service) {
+      // Try LIKE fallback
+      service = db
+        .prepare('SELECT id FROM services WHERE name LIKE ?')
+        .get(`%${shortName}%`) as { id: number } | undefined;
+    }
+
+    if (service) {
+      // Found a service -- resolve to the repo that owns it
+      const ownerRepo = db
+        .prepare('SELECT repo_id FROM services WHERE id = ?')
+        .get(service.id) as { repo_id: number } | undefined;
+      if (ownerRepo) return { type: 'repo', id: ownerRepo.repo_id };
+      return { type: 'service', id: service.id };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Insert topology edges into the edges table with JSON metadata.
+ * Handles dedup and target resolution for gRPC, HTTP, gateway, and Kafka edges.
+ */
+export function insertTopologyEdges(
+  db: Database.Database,
+  repoId: number,
+  edges: TopologyEdge[],
+): void {
+  if (edges.length === 0) return;
+
+  const insertEdge = db.prepare(
+    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  );
+
+  // Map mechanism to relationship_type
+  const mechanismToRelType: Record<string, string> = {
+    grpc: 'calls_grpc',
+    http: 'calls_http',
+    gateway: 'routes_to',
+  };
+
+  const seenTargets = new Set<string>();
+
+  for (const edge of edges) {
+    // Determine relationship type
+    const relType = edge.mechanism === 'kafka'
+      ? (edge.metadata.role === 'consumer' ? 'consumes_kafka' : 'produces_kafka')
+      : mechanismToRelType[edge.mechanism] ?? edge.mechanism;
+
+    // Resolve target: try to find a repo or service by name
+    const target = resolveTopologyTarget(db, edge.targetServiceName);
+
+    // Dedup key: mechanism + target + relationship
+    const dedupKey = `${relType}:${target?.type ?? 'unresolved'}:${target?.id ?? edge.targetServiceName}`;
+    if (seenTargets.has(dedupKey)) continue;
+    seenTargets.add(dedupKey);
+
+    if (target) {
+      insertEdge.run(
+        'repo', repoId,
+        target.type, target.id,
+        relType,
+        edge.sourceFile,
+        JSON.stringify({ ...edge.metadata, confidence: edge.confidence }),
+      );
+    } else {
+      // Unresolved target -- still insert so the edge is visible
+      // even if the target repo isn't indexed yet.
+      // Use target_type 'service_name' to indicate unresolved.
+      insertEdge.run(
+        'repo', repoId,
+        'service_name', 0,
+        relType,
+        edge.sourceFile,
+        JSON.stringify({
+          ...edge.metadata,
+          confidence: edge.confidence,
+          unresolved: 'true',
+          targetName: edge.targetServiceName,
+        }),
+      );
+    }
+  }
 }

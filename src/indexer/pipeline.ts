@@ -12,8 +12,10 @@ import type { ProtoDefinition } from './proto.js';
 import { extractGraphqlDefinitions } from './graphql.js';
 import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
-import { persistRepoData, persistSurgicalData } from './writer.js';
+import { persistRepoData, persistSurgicalData, insertTopologyEdges } from './writer.js';
 import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
+import { extractTopologyEdges } from './topology/index.js';
+import type { TopologyEdge } from './topology/index.js';
 import { enrichFromEventCatalog } from './catalog.js';
 
 /** Options for the indexing pipeline */
@@ -29,6 +31,7 @@ export interface IndexStats {
   events: number;
   services: number;
   graphqlTypes: number;
+  topologyEdges: number;
 }
 
 /** Result of indexing a single repo */
@@ -59,6 +62,7 @@ interface ExtractedRepoData {
   elixirModules: ElixirModule[];
   protoDefinitions: ProtoDefinition[];
   eventRelationships: EventRelationship[];
+  topologyEdges: TopologyEdge[];
   // Surgical-specific
   changedFiles?: string[];
   surgicalModules?: ModuleData[];
@@ -164,6 +168,9 @@ async function extractRepoData(
   // Detect event relationships
   const eventRelationships = detectEventRelationships(repoPath, branch, protoDefinitions, elixirModules);
 
+  // Extract topology edges (gRPC, HTTP, gateway, Kafka)
+  const topologyEdges = extractTopologyEdges(repoPath, branch, elixirModules);
+
   if (useSurgical && changes && dbSnapshot.repoId !== undefined) {
     // === SURGICAL MODE ===
     const allChangedFiles = [...changes.added, ...changes.modified, ...changes.deleted];
@@ -190,6 +197,7 @@ async function extractRepoData(
       elixirModules,
       protoDefinitions,
       eventRelationships,
+      topologyEdges,
       changedFiles: allChangedFiles,
       surgicalModules,
       surgicalEvents,
@@ -217,6 +225,7 @@ async function extractRepoData(
     elixirModules,
     protoDefinitions,
     eventRelationships,
+    topologyEdges,
   };
 }
 
@@ -246,7 +255,7 @@ function persistExtractedData(
       insertEventEdges(db, extracted.existingRepoId, extracted.eventRelationships);
     }
 
-    insertGrpcClientEdges(db, extracted.existingRepoId, extracted.elixirModules);
+    insertTopologyEdges(db, extracted.existingRepoId, extracted.topologyEdges);
     insertEctoAssociationEdges(db, extracted.existingRepoId, extracted.elixirModules);
 
     return {
@@ -255,6 +264,7 @@ function persistExtractedData(
       events: extracted.eventRelationships.length,
       services: extracted.services.length,
       graphqlTypes: graphqlTypeCount,
+      topologyEdges: extracted.topologyEdges.length,
       mode: 'surgical' as const,
     };
   }
@@ -272,7 +282,7 @@ function persistExtractedData(
     insertEventEdges(db, repoId, extracted.eventRelationships);
   }
 
-  insertGrpcClientEdges(db, repoId, extracted.elixirModules);
+  insertTopologyEdges(db, repoId, extracted.topologyEdges);
   insertEctoAssociationEdges(db, repoId, extracted.elixirModules);
 
   return {
@@ -281,6 +291,7 @@ function persistExtractedData(
     events: extracted.eventRelationships.length,
     services: extracted.services.length,
     graphqlTypes: graphqlTypeCount,
+    topologyEdges: extracted.topologyEdges.length,
     mode: 'full' as const,
   };
 }
@@ -535,51 +546,6 @@ function insertEventEdges(
       rel.type,
       rel.sourceFile,
     );
-  }
-}
-
-/**
- * Insert gRPC client edges (calls_grpc) from repo to service.
- * For each Elixir module with grpcStubs, look up matching services
- * and create edges. (EXT-06)
- */
-function insertGrpcClientEdges(
-  db: Database.Database,
-  repoId: number,
-  elixirModules: ElixirModule[],
-): void {
-  const insertEdge = db.prepare(
-    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-
-  const seenServiceIds = new Set<number>();
-
-  for (const mod of elixirModules) {
-    for (const stub of mod.grpcStubs) {
-      // Extract the service name from the stub reference
-      // e.g., "Rpc.Booking.V1.BookingService.Stub" -> try "BookingService"
-      // or "Rpc.Booking.V1.BookingService.Stub" -> try matching by LIKE
-      const parts = stub.replace(/\.Stub$/, '').split('.');
-      const shortName = parts[parts.length - 1]; // Last segment
-
-      // Try exact match on short name first, then LIKE match on full stub path
-      let service = db
-        .prepare('SELECT id FROM services WHERE name = ?')
-        .get(shortName) as { id: number } | undefined;
-
-      if (!service) {
-        // Try matching by the full qualified name without .Stub
-        const fullName = stub.replace(/\.Stub$/, '');
-        service = db
-          .prepare('SELECT id FROM services WHERE name = ? OR name LIKE ?')
-          .get(fullName, `%${shortName}%`) as { id: number } | undefined;
-      }
-
-      if (service && !seenServiceIds.has(service.id)) {
-        seenServiceIds.add(service.id);
-        insertEdge.run('repo', repoId, 'service', service.id, 'calls_grpc', mod.filePath);
-      }
-    }
   }
 }
 
