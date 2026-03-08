@@ -1,606 +1,287 @@
-# Technology Stack: v1.2 Hardening & Optimization
+# Technology Stack: v2.0 Design-Time Intelligence
 
-**Project:** repo-knowledge-base
-**Researched:** 2026-03-07
-**Focus:** Stack-level optimizations for the existing Node.js/TypeScript/SQLite/FTS5 stack. No new dependencies recommended.
+**Project:** repo-knowledge-base v2.0
+**Researched:** 2026-03-08
+**Focus:** Stack additions for service topology, CODEOWNERS parsing, and embedding-based semantic search
 
----
+## Existing Stack (DO NOT CHANGE)
 
-## 1. SQLite Pragma Tuning
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| better-sqlite3 | ^12.0.0 | SQLite access (sync API) |
+| @modelcontextprotocol/sdk | ^1.27.1 | MCP server |
+| commander | ^14.0.3 | CLI framework |
+| p-limit | ^7.3.0 | Concurrency control |
+| zod | ^4.3.6 | Schema validation |
+| TypeScript | ^5.7.0 | Language (strict + noUncheckedIndexedAccess) |
+| vitest | ^3.0.0 | Testing |
 
-### Current State
+## New Stack Additions
 
+### 1. Vector Storage: sqlite-vec
+
+| Property | Value |
+|----------|-------|
+| **Package** | `sqlite-vec` |
+| **Version** | `0.1.7-alpha.2` (latest on npm) |
+| **Status** | Pre-v1 alpha, but widely adopted and actively developed |
+| **Confidence** | HIGH -- official docs + npm verified |
+
+**Why sqlite-vec:** It's the only viable option. Pure C, zero dependencies, loads directly into better-sqlite3 via `sqliteVec.load(db)`. Keeps everything in one SQLite file -- no new infrastructure. The predecessor sqlite-vss (Faiss-based) is deprecated in favor of sqlite-vec.
+
+**Integration with better-sqlite3:**
 ```typescript
-// database.ts — existing pragmas
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.pragma('synchronous = NORMAL');
-```
+import * as sqliteVec from 'sqlite-vec';
+import Database from 'better-sqlite3';
 
-This is already a solid baseline. WAL + synchronous=NORMAL is the correct choice for a single-writer local tool.
+const db = new Database(dbPath);
+sqliteVec.load(db);  // Loads vec0 extension
 
-### Recommended Additions
-
-| Pragma | Value | Why | Impact | Confidence |
-|--------|-------|-----|--------|------------|
-| `cache_size` | `-32000` (32 MB) | Default is -2000 (2 MB). With ~50 repos of indexed data, a larger page cache keeps more of the DB in memory, reducing disk reads during search hydration and dependency traversal | **MEDIUM** — search queries that JOIN across repos/modules/events will hit cache more often | HIGH |
-| `temp_store` | `memory` | Temp tables and sort spills go to RAM instead of disk. Relevant during large indexing transactions that create intermediate results | **LOW-MEDIUM** — only matters during indexing, not search | HIGH |
-| `mmap_size` | `268435456` (256 MB) | Memory-maps the DB file, letting the OS manage page caching via virtual memory instead of syscalls. For a DB that's likely 5-50 MB, this maps the entire file | **MEDIUM** — reduces syscall overhead on reads. Most impactful for repeated search queries | HIGH |
-| `optimize` | Run on close | `PRAGMA optimize` analyzes which tables would benefit from updated statistics, then runs ANALYZE selectively. Since SQLite 3.46.0, this is fast even on large DBs | **LOW-MEDIUM** — helps query planner pick optimal paths for JOINs in entity.ts and dependencies.ts | HIGH |
-
-### Pragmas to NOT Add
-
-| Pragma | Why Not |
-|--------|---------|
-| `synchronous = OFF` | Risks corruption on power loss. NORMAL is already safe + fast in WAL mode |
-| `locking_mode = EXCLUSIVE` | Would prevent concurrent reads (e.g., MCP server + CLI simultaneously) |
-| `journal_mode = MEMORY` | WAL is strictly better for this workload |
-
-### Implementation
-
-```typescript
-// database.ts — updated openDatabase()
-export function openDatabase(dbPath: string): Database.Database {
-  const dir = path.dirname(dbPath);
-  fs.mkdirSync(dir, { recursive: true });
-
-  const db = new Database(dbPath);
-
-  // Performance and safety pragmas
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('synchronous = NORMAL');
-
-  // NEW: Memory and cache tuning
-  db.pragma('cache_size = -32000');    // 32 MB page cache
-  db.pragma('temp_store = memory');     // Temp tables in RAM
-  db.pragma('mmap_size = 268435456');   // 256 MB mmap
-
-  initializeSchema(db);
-  return db;
-}
-
-// UPDATED: Run PRAGMA optimize before closing
-export function closeDatabase(db: Database.Database): void {
-  if (db.open) {
-    db.pragma('optimize');
-    db.close();
-  }
-}
-```
-
-**Confidence:** HIGH. These are well-established SQLite best practices from official docs and multiple production guides.
-
-**Sources:**
-- [SQLite PRAGMA official docs](https://sqlite.org/pragma.html)
-- [SQLite Performance Tuning (phiresky)](https://phiresky.github.io/blog/2020/sqlite-performance-tuning/)
-- [SQLite Pragma Cheatsheet (cj.rs)](https://cj.rs/blog/sqlite-pragma-cheatsheet-for-performance-and-consistency/)
-- [Forward Email SQLite Optimization Guide](https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide)
-
----
-
-## 2. Prepared Statement Reuse
-
-### Current Problem
-
-better-sqlite3 does **not** cache prepared statements internally. Every `db.prepare()` call compiles the SQL string into a new statement object. The codebase has **72 `db.prepare()` calls across 11 files**, many inside functions that run per-entity or per-result.
-
-Worst offenders (called in tight loops):
-
-| File | Function | Calls Per Invocation | Issue |
-|------|----------|---------------------|-------|
-| `fts.ts` | `indexEntity()` | 2x per entity (DELETE + INSERT) | Called for every module, event, service during indexing. With ~2000 entities across 50 repos, that's ~4000 unnecessary prepare() calls |
-| `fts.ts` | `removeEntity()` | 1x per entity | Called during clearRepoEntities loops |
-| `writer.ts` | `clearRepoFiles()` | 5-6x per file path | Nested loop: per-file, then per-entity-type |
-| `search/entity.ts` | `getRelationships()` | 2x per entity card | Called for every search result — outgoing + incoming edge queries |
-| `search/dependencies.ts` | `findLinkedRepos()` | 3-4x per BFS hop | Nested: per-edge, then per-event, then per-repo |
-| `mcp/tools/status.ts` | handler | 8x per invocation | 7 COUNT queries + 1 repo list, all separately prepared every call |
-
-### Recommended Fix: Hoist Statements Out of Hot Loops
-
-**Pattern A: Factory function (for write paths with multiple cooperating statements)**
-
-```typescript
-// fts.ts — BEFORE: prepares 2 statements per entity call
-export function indexEntity(db, entity) {
-  const upsert = db.transaction(() => {
-    db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?')
-      .run(`${entity.type}:%`, entity.id);
-    db.prepare('INSERT INTO knowledge_fts ...')
-      .run(processedName, processedDescription, compositeType, entity.id);
-  });
-  upsert();
-}
-
-// fts.ts — AFTER: create once, call many times
-export function createFtsWriter(db: Database.Database) {
-  const deleteStmt = db.prepare(
-    'DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?'
+// Create vector table with cosine distance
+db.exec(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings USING vec0(
+    entity_id INTEGER PRIMARY KEY,
+    embedding float[256] distance_metric=cosine
   );
-  const insertStmt = db.prepare(
-    'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)'
-  );
-  const upsertTxn = db.transaction(
-    (type: string, id: number, name: string, desc: string | null, compositeType: string) => {
-      deleteStmt.run(`${type}:%`, id);
-      insertStmt.run(name, desc, compositeType, id);
-    }
-  );
+`);
 
-  return {
-    indexEntity(entity: { type: string; id: number; name: string;
-                          description?: string | null; subType?: string }) {
-      const processedName = tokenizeForFts(entity.name);
-      const processedDesc = entity.description ? tokenizeForFts(entity.description) : null;
-      const compositeType = entity.subType
-        ? `${entity.type}:${entity.subType}`
-        : `${entity.type}:${entity.type}`;
-      upsertTxn(entity.type, entity.id, processedName, processedDesc, compositeType);
-    },
-    removeEntity(entityType: string, entityId: number) {
-      deleteStmt.run(`${entityType}:%`, entityId);
-    },
-  };
-}
+// Insert: vectors as Float32Array binary
+const embedding = new Float32Array([0.1, 0.2, ...]);
+db.prepare('INSERT INTO vec_embeddings(entity_id, embedding) VALUES (?, ?)')
+  .run(entityId, embedding.buffer);
+
+// KNN query
+const results = db.prepare(`
+  SELECT entity_id, distance
+  FROM vec_embeddings
+  WHERE embedding MATCH ? AND k = 10
+`).all(queryEmbedding.buffer);
 ```
 
-**Pattern B: Pre-compile at registration (for MCP tools called repeatedly)**
+**macOS ARM64 compatibility:** Prebuilt binaries available via `sqlite-vec-darwin-arm64` (auto-resolved by `sqlite-vec` package). Verified on npm. Pure C extension, no Faiss/BLAS dependencies -- much simpler than the old sqlite-vss.
 
+**Key capabilities:**
+- vec0 virtual tables with float32, int8, and binary vector types
+- Distance metrics: L2 (default), cosine, hamming (binary only)
+- KNN queries via `MATCH` operator with `k` parameter or `LIMIT`
+- Metadata columns, partition keys, auxiliary columns (v0.1.6+)
+- JSON or binary vector input formats
+- Brute-force scan (no index structure) -- fine for ~50 repos / ~10K entities
+
+**Limitations:**
+- Pre-v1: expect breaking changes between alpha versions
+- Brute-force KNN (no approximate nearest neighbors) -- not an issue at our scale
+- No built-in HNSW or IVF indexing -- again, irrelevant for ~10K vectors
+
+### 2. Embedding Model: nomic-embed-text-v1.5 via Transformers.js
+
+| Property | Value |
+|----------|-------|
+| **Runtime** | `@huggingface/transformers` |
+| **Runtime Version** | `^3.8.1` (stable; v4 preview exists but unnecessary) |
+| **Model** | `nomic-ai/nomic-embed-text-v1.5` |
+| **Parameters** | 137M |
+| **Max dimensions** | 768 (Matryoshka: truncate to 256 for our use) |
+| **Context length** | 8,192 tokens |
+| **Quantization** | q8 (ONNX quantized, ~34MB on disk) |
+| **Confidence** | HIGH -- model on HuggingFace with ONNX + Transformers.js tags |
+
+**Why nomic-embed-text-v1.5 over alternatives:**
+
+| Model | Params | Dims | Why Not |
+|-------|--------|------|---------|
+| all-MiniLM-L6-v2 | 22M | 384 | Faster but ~5-8% lower retrieval accuracy. No task prefixes. No Matryoshka. 256-token context limit is tight for architecture descriptions. |
+| nomic-embed-text-v1.5 | 137M | 768 (truncatable) | **Selected.** Task prefixes (search_query/search_document) improve retrieval. Matryoshka lets us use 256d for speed+storage. 8K context. |
+| Jina Code Embeddings V2 | 137M | 768 | Code-focused but overkill -- we're embedding module names and descriptions, not raw source code. |
+| CodeSage Large V2 | 1.3B | -- | Way too large for local inference on a CLI tool. |
+| VoyageCode3 / OpenAI | API | varies | Requires API keys + network. Violates local-only constraint. |
+
+**Why local inference over API:**
+- Project constraint: "Runtime: Local only, no external infrastructure"
+- No API keys to manage, no rate limits, no cost
+- Embedding ~10K entity descriptions is a one-time batch job per index run
+- Transformers.js with ONNX on CPU handles this in seconds
+
+**Matryoshka dimension choice: 256**
+- nomic-embed-text-v1.5 at 256d: MTEB score 61.04 (vs 62.28 at 768d)
+- Negligible quality loss, but 3x less storage and faster cosine distance
+- 256 floats * 4 bytes = 1KB per entity. At 10K entities = ~10MB. Trivially small.
+
+**Task prefix requirement (important):**
+nomic-embed-text-v1.5 requires prefixes:
+- `search_document: <text>` for indexing entity descriptions
+- `search_query: <text>` for user queries
+This is critical for good retrieval quality -- the model was trained with these prefixes.
+
+**Transformers.js integration:**
 ```typescript
-// mcp/tools/status.ts — prepare statements ONCE at registration
-export function registerStatusTool(server: McpServer, db: Database.Database): void {
-  const countRepos = db.prepare('SELECT COUNT(*) as c FROM repos');
-  const countModules = db.prepare('SELECT COUNT(*) as c FROM modules');
-  const countEvents = db.prepare('SELECT COUNT(*) as c FROM events');
-  const countServices = db.prepare('SELECT COUNT(*) as c FROM services');
-  const countEdges = db.prepare('SELECT COUNT(*) as c FROM edges');
-  const countFiles = db.prepare('SELECT COUNT(*) as c FROM files');
-  const countFacts = db.prepare('SELECT COUNT(*) as c FROM learned_facts');
-  const listRepos = db.prepare(
-    'SELECT name, path, last_indexed_commit FROM repos LIMIT ?'
-  );
-
-  server.tool('kb_status', '...', {}, async () => {
-    const counts = {
-      repos: (countRepos.get() as { c: number }).c,
-      modules: (countModules.get() as { c: number }).c,
-      // ... reuse pre-compiled statements
-    };
-    // ...
-  });
-}
-```
-
-**Pattern C: Hoist within function scope (for search paths called per-query)**
-
-```typescript
-// search/dependencies.ts — prepare statements once per queryDependencies() call
-export function queryDependencies(db, entityName, options) {
-  // Prepare all statements used in the BFS loop ONCE
-  const findConsumedEdges = db.prepare(
-    "SELECT target_id FROM edges WHERE source_type = 'repo' AND source_id = ? AND relationship_type = 'consumes_event'"
-  );
-  const findEventName = db.prepare('SELECT name FROM events WHERE id = ?');
-  const findProducerEdges = db.prepare(
-    "SELECT source_id FROM edges WHERE target_type = 'event' AND target_id = ? AND relationship_type = 'produces_event'"
-  );
-  const findRepoById = db.prepare('SELECT id, name FROM repos WHERE id = ?');
-
-  // BFS loop now reuses these statements instead of preparing each iteration
-  // ...
-}
-```
-
-### Impact Estimate
-
-| Scenario | Before (prepare calls) | After | Reduction |
-|----------|----------------------|-------|-----------|
-| Full index of 50 repos (~2000 entities) | ~4000 for FTS alone | ~2 total | ~2000x fewer |
-| Single search query (20 results) | ~60 | ~5 | ~12x fewer |
-| kb_status MCP call | 8 | 0 (pre-compiled) | Eliminated |
-| Dependency query (3 hops, 10 edges) | ~40 | ~4 | ~10x fewer |
-
-Wall-clock improvement during indexing: estimated **10-30%** on write paths. For search queries: **a few ms saved per query** (less dramatic since queries are already fast).
-
-**Confidence:** HIGH. This is the single most impactful code-level optimization available. The pattern is well-documented and fundamental to SQLite performance.
-
-**Sources:**
-- [better-sqlite3 API docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md)
-- [SQLite prepared statements performance](https://visualstudiomagazine.com/articles/2014/03/01/sqlite-performance-and-prepared-statements.aspx)
-
----
-
-## 3. FTS5 Tuning
-
-### Current FTS5 Configuration
-
-```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-  name,
-  description,
-  entity_type UNINDEXED,
-  entity_id UNINDEXED,
-  tokenize = 'unicode61'
-);
-```
-
-The `entity_type UNINDEXED` decision is already smart.
-
-### 3a. Add Prefix Index
-
-```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-  name,
-  description,
-  entity_type UNINDEXED,
-  entity_id UNINDEXED,
-  tokenize = 'unicode61',
-  prefix = '2,3'
-);
-```
-
-**Why:** Without prefix indexes, FTS5 prefix queries (e.g., `book*`) require a merge of all terms starting with "book". With `prefix='2,3'`, two- and three-character prefix lookups use a dedicated index. Since the tokenizer splits CamelCase into short tokens ("booking", "created"), prefix searches on short strings are common.
-
-**Trade-off:** Increases FTS index size by ~20-40%. For a KB-sized DB, this is negligible.
-
-**Impact:** LOW-MEDIUM. Faster prefix searches. Requires FTS table rebuild.
-
-**Confidence:** HIGH. Official SQLite FTS5 documentation.
-
-### 3b. Consider Porter Stemming (Layered)
-
-```sql
-tokenize = 'porter unicode61'
-```
-
-**Why:** The porter tokenizer wraps unicode61 and applies English stemming. "booking" and "booked" would match "book" queries. Since entity names are English-language identifiers, stemming improves recall.
-
-**Trade-off:** May cause false positives for similarly-stemmed technical terms. Needs testing against the actual knowledge base before committing.
-
-**Impact:** LOW-MEDIUM. Better recall for natural language queries. Potential false positives.
-
-**Confidence:** MEDIUM. Beneficial in theory, needs validation with real data.
-
-### 3c. Run FTS5 Optimize After Bulk Indexing
-
-```typescript
-// After indexAllRepos completes:
-db.exec("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')");
-```
-
-**Why:** After bulk inserts, FTS5 may accumulate many small b-tree segments. The `optimize` command merges them into a single segment, reducing read amplification on subsequent searches.
-
-**When:** Once after `indexAllRepos()`, not after every entity insert.
-
-**Impact:** MEDIUM. Faster subsequent FTS5 queries, smaller FTS index on disk.
-
-**Confidence:** HIGH. Official FTS5 documentation.
-
-### 3d. NOT Recommended
-
-| Option | Why Not |
-|--------|---------|
-| `detail=none` | Restricts tokens to max 3 characters. Entity names are longer. Would break search |
-| `detail=column` | Limits phrase queries. Unnecessary for KB-sized data |
-| `content=''` (contentless) | Current search reads name/description directly from FTS before hydrating. Contentless would force an extra JOIN per result |
-| `columnsize=0` | Saves minimal space, breaks BM25 ranking accuracy |
-
-**Sources:**
-- [SQLite FTS5 Extension docs](https://www.sqlite.org/fts5.html)
-- [FTS5 index structure analysis](https://darksi.de/13.sqlite-fts5-structure/)
-
----
-
-## 4. Missing Database Indexes
-
-### Current Indexes
-
-Only the edges table has explicit indexes:
-```sql
-CREATE INDEX idx_edges_source ON edges(source_type, source_id);
-CREATE INDEX idx_edges_target ON edges(target_type, target_id);
-CREATE INDEX idx_edges_relationship ON edges(relationship_type);
-```
-
-Plus implicit indexes from UNIQUE constraints:
-- `repos(name)` — UNIQUE
-- `files(repo_id, path)` — UNIQUE
-- `services(repo_id, name)` — UNIQUE
-
-### Missing Indexes That Would Help
-
-| Index | Query Pattern Used | Where Used | Priority |
-|-------|-------------------|------------|----------|
-| `modules(repo_id, name)` | `WHERE repo_id = ? AND name = ?` | `entity.ts:getEntitiesByExactName`, `pipeline.ts:insertEctoAssociationEdges` | **HIGH** — entity lookup is the core search path |
-| `modules(name)` | `WHERE name = ?` | `entity.ts:getEntitiesByExactName` (no repo filter), `pipeline.ts:insertEctoAssociationEdges` (cross-repo fallback) | **HIGH** — cross-repo name resolution |
-| `events(name, repo_id)` | `WHERE name = ? AND repo_id = ?` | `pipeline.ts:insertEventEdges` | **MEDIUM** — affects indexing speed, not search |
-| `events(repo_id)` | `WHERE repo_id = ?` | `writer.ts:clearRepoEntities`, `writer.ts:persistSurgicalData` | **LOW** — only during re-index |
-| `modules(repo_id)` | `WHERE repo_id = ?` | `writer.ts:clearRepoEntities` | **LOW** — only during re-index |
-| `services(name)` | `WHERE name = ?` or `WHERE name LIKE ?` | `pipeline.ts:insertGrpcClientEdges` | **MEDIUM** — gRPC edge resolution |
-
-### Recommended Migration (V5)
-
-```sql
--- High priority: entity search path
-CREATE INDEX IF NOT EXISTS idx_modules_repo_name ON modules(repo_id, name);
-CREATE INDEX IF NOT EXISTS idx_modules_name ON modules(name);
-
--- Medium priority: indexing and edge resolution
-CREATE INDEX IF NOT EXISTS idx_events_name_repo ON events(name, repo_id);
-CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);
-
--- Low priority: cleanup operations
-CREATE INDEX IF NOT EXISTS idx_events_repo ON events(repo_id);
-```
-
-**Impact:** Entity exact-name lookups (`findEntity` with `--entity` flag) currently do full table scans on modules and events. With thousands of rows across 50 repos, these indexes turn O(n) scans into O(log n) lookups. The `modules(name)` index is the highest-impact single addition since `--entity` searches hit it on every call.
-
-**Confidence:** HIGH. Standard database optimization. Query patterns are directly observable in the source code.
-
----
-
-## 5. TypeScript Strict Mode Hardening
-
-### Current tsconfig.json
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "sourceMap": true
-  }
-}
-```
-
-`strict: true` already enables the core strict family.
-
-### Recommended Addition
-
-| Option | What It Does | Why | Risk |
-|--------|-------------|-----|------|
-| `noUncheckedIndexedAccess` | Adds `\| undefined` to array index and record property access | Catches cases where code accesses `arr[i]` or `obj[key]` without checking for undefined. The codebase uses `as` casts on DB results which bypass this, but array access patterns and dynamic object lookups would benefit | MEDIUM effort — likely 5-15 fix sites |
-
-### NOT Recommended
-
-| Option | Why Not |
-|--------|---------|
-| `exactOptionalPropertyTypes` | Low value for this codebase. Most optional fields are simple `string \| undefined` patterns |
-| `noPropertyAccessFromIndexSignature` | Codebase doesn't use many index signatures. Minimal benefit |
-| `verbatimModuleSyntax` | Would require converting `import type` syntax. High churn, low value |
-
-### Implementation
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "noUncheckedIndexedAccess": true
-  }
-}
-```
-
-**Fix count estimate:** ~5-15 locations. Most DB query results use explicit `as` casts which bypass the check. The flag primarily catches array element access and dynamic property lookups.
-
-**Confidence:** HIGH. Standard TypeScript hardening for 2025+.
-
-**Sources:**
-- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
-- [The Strictest TypeScript Config](https://whatislove.dev/articles/the-strictest-typescript-config/)
-
----
-
-## 6. Vitest Coverage Configuration
-
-### Current State
-
-```typescript
-// vitest.config.ts — no coverage config
-export default defineConfig({
-  test: {
-    globals: true,
-    include: ['tests/**/*.test.ts'],
-  },
+import { pipeline, env } from '@huggingface/transformers';
+
+// Cache models in the KB data directory
+env.cacheDir = path.join(kbDir, 'models');
+
+// Singleton pattern (model loads once, reused across calls)
+const extractor = await pipeline('feature-extraction', 'nomic-ai/nomic-embed-text-v1.5', {
+  dtype: 'q8',           // 8-bit quantized ONNX
+  // device: 'cpu',      // default for Node.js
 });
-```
 
-388 tests across 25 files. Zero visibility into what's covered.
-
-### Recommended Configuration
-
-```typescript
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig({
-  test: {
-    globals: true,
-    include: ['tests/**/*.test.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'text-summary', 'lcov'],
-      include: ['src/**/*.ts'],
-      exclude: [
-        'src/**/types.ts',
-        'src/**/index.ts',
-      ],
-      // Set thresholds after measuring baseline — ratchet pattern
-      // thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
-    },
-  },
+// Generate embeddings
+const output = await extractor('search_document: PaymentService handles Stripe integration', {
+  pooling: 'mean',
+  normalize: true,
 });
+
+// Truncate to 256 dimensions (Matryoshka)
+const fullEmbedding = output.tolist()[0];  // 768d
+const embedding = new Float32Array(fullEmbedding.slice(0, 256));
 ```
 
-**Why V8 over Istanbul:** As of Vitest 3.2+, V8 coverage uses AST-based remapping for accuracy matching Istanbul, but runs faster because no upfront instrumentation is needed. Since the project uses Vitest 3.x, V8 is the right choice.
+**First-run behavior:** The model downloads (~130MB ONNX quantized) on first use and caches locally. Subsequent runs are instant. This is acceptable for a developer tool.
 
-**Install:** `@vitest/coverage-v8` ships with vitest 3.x. Just run `npx vitest run --coverage`.
+### 3. CODEOWNERS Parsing: Manual regex (no library)
 
-**Approach:**
-1. Add coverage config, run once to get baseline numbers
-2. Set thresholds at current levels (ratchet — prevent regression)
-3. Add npm script: `"test:coverage": "vitest run --coverage"`
+| Property | Value |
+|----------|-------|
+| **Approach** | Custom regex parser (~40 lines) |
+| **Library** | None |
+| **Confidence** | HIGH -- format is trivially simple |
 
-**Confidence:** HIGH.
+**Why no library:**
 
-**Sources:**
-- [Vitest Coverage Guide](https://vitest.dev/guide/coverage.html)
-- [Vitest Coverage Config](https://vitest.dev/config/coverage)
+The CODEOWNERS format is embarrassingly simple:
+```
+# Comment
+*.js @frontend-team
+/src/payments/ @payments-team @alice
+```
 
----
+Each non-comment, non-empty line is: `<glob-pattern> <space-separated owners>`
 
-## 7. Node.js Performance Profiling
+Available libraries and why they're all overkill:
 
-### Recommended: Built-in `perf_hooks` Instrumentation
+| Library | Weekly DL | Last Update | Why Skip |
+|---------|-----------|-------------|----------|
+| codeowners-utils | ~5K | 2020 (stale) | 7 commits total. Unmaintained. Adds minimatch dep for glob matching we don't need. |
+| codeowners | ~15K | Moderate | CLI-focused, reads from git. We just need to parse the file content. |
+| @snyk/github-codeowners | ~3K | Moderate | Enterprise-oriented, TypeScript but heavy. |
+| @gitlab/codeowners | ~2K | Active | GitLab-specific format extensions we don't need. |
 
-The project's performance-critical paths are:
-1. **Indexing** — `execSync` git commands (I/O bound), regex parsing (CPU bound), SQLite writes (I/O bound)
-2. **Search** — FTS5 queries + hydration JOINs (SQLite I/O bound)
+**What we actually need:** Parse CODEOWNERS into `{ pattern: string, owners: string[] }[]` entries, then store owners per repo. We do NOT need glob matching (we're not matching files to owners -- we're answering "who owns this repo/path?").
 
-External profiling tools (clinic.js, 0x) are overkill for a CLI tool. The codebase already has clear pipeline phases. The right move is lightweight instrumentation with Node.js built-in APIs.
-
+**Implementation sketch:**
 ```typescript
-import { performance } from 'node:perf_hooks';
+interface CodeOwnerEntry {
+  pattern: string;
+  owners: string[];  // @team or email
+}
 
-// pipeline.ts — instrument the three indexing phases
-performance.mark('phase1-start');
-// Phase 1: Sequential preparation
-performance.mark('phase1-end');
-performance.measure('Phase 1: Preparation', 'phase1-start', 'phase1-end');
-
-performance.mark('phase2-start');
-// Phase 2: Parallel extraction
-performance.mark('phase2-end');
-performance.measure('Phase 2: Extraction', 'phase2-start', 'phase2-end');
-
-performance.mark('phase3-start');
-// Phase 3: Serial persistence
-performance.mark('phase3-end');
-performance.measure('Phase 3: Persistence', 'phase3-start', 'phase3-end');
-
-// Log results
-const entries = performance.getEntriesByType('measure');
-for (const entry of entries) {
-  console.log(`${entry.name}: ${entry.duration.toFixed(0)}ms`);
+function parseCodeOwners(content: string): CodeOwnerEntry[] {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .map(line => {
+      const parts = line.split(/\s+/);
+      const pattern = parts[0]!;
+      const owners = parts.slice(1).filter(p => p.startsWith('@') || p.includes('@'));
+      return { pattern, owners };
+    })
+    .reverse();  // Later rules take precedence
 }
 ```
 
-**When to reach for heavier tools:**
-- `node --inspect kb index --force` + Chrome DevTools Performance tab — if `perf_hooks` shows Phase 2 (extraction) is slow and you need a CPU flame graph to identify which regex is the bottleneck
-- `node --inspect kb search "booking"` — if search latency is unexpectedly high and you need to see where time is spent between FTS5 and hydration
+This is ~15 lines. Adding a dependency for this is negative value.
 
-**Not recommended:**
-- `clinic.js` — designed for long-running servers, not CLI tools. The overhead of generating reports exceeds the profiling value for sub-10-second operations
-- Continuous performance monitoring — this is a local dev tool, not a production service
+**Where to find CODEOWNERS:** Check `CODEOWNERS`, `.github/CODEOWNERS`, `docs/CODEOWNERS` (in order). Read from git tree (already have `git show branch:path` infrastructure in `src/indexer/git.ts`).
 
-**Confidence:** HIGH. Built-in Node.js APIs, zero dependencies.
+### 4. Service Topology Extraction: No new libraries needed
 
-**Sources:**
-- [Node.js Performance Measurement APIs](https://nodejs.org/api/perf_hooks.html)
-- [Node.js Profiling Guide](https://nodejs.org/en/learn/getting-started/profiling)
+| Property | Value |
+|----------|-------|
+| **Approach** | New regex-based extractors following existing patterns |
+| **Dependencies** | None -- reuse existing git.ts + extractor architecture |
+| **Confidence** | HIGH -- follows validated v1.x extractor pattern |
 
----
+**Why no new dependencies:** The existing codebase already does regex-based extraction of Elixir modules, proto definitions, GraphQL types, gRPC stubs, and event relationships. Service topology extraction is the same pattern applied to different file types:
 
-## 8. WAL Checkpoint After Indexing
+| Topology Signal | File Pattern | Regex Target |
+|-----------------|--------------|--------------|
+| gRPC client calls | `*.ex` | `Stub.function_name` calls (already partially done via `grpcStubs` in elixir.ts) |
+| HTTP client calls | `*.ex` | `HTTPoison.get/post`, `Tesla.get/post`, custom client module calls |
+| Gateway routing | `config/*.exs`, `router.ex` | `forward "/path", ServiceModule` |
+| Kafka producers | `*.ex` | `:brod.produce`, `KafkaEx.produce` patterns |
+| Kafka consumers | `*.ex` | `Broadway` pipeline configs, `KafkaEx.stream` |
 
-### Recommendation
+These all follow the same `extractXxx(repoPath, branch): XxxDefinition[]` pattern established by elixir.ts, proto.ts, events.ts. New edge types (`calls_http`, `routes_to`, `produces_kafka`, `consumes_kafka`) join the existing `calls_grpc`, `produces_event`, `consumes_event` edges.
 
-```typescript
-// After indexAllRepos() completes in pipeline.ts:
-db.pragma('wal_checkpoint(TRUNCATE)');
-```
+## Alternatives Considered
 
-**Why:** After bulk indexing (~50 repos worth of writes), the WAL file can grow to several MB. SQLite auto-checkpoints at 1000 pages (~4 MB), but an explicit TRUNCATE checkpoint resets the WAL to zero length, reclaiming disk space.
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Vector DB | sqlite-vec | Separate ChromaDB/Qdrant | Violates local-only, zero-infrastructure constraint. Adds operational complexity for ~10K vectors. |
+| Vector DB | sqlite-vec | Manual brute-force in JS | Why reinvent? sqlite-vec is a single `load()` call and handles binary I/O efficiently in C. |
+| Vector DB | sqlite-vec | @sqliteai/sqlite-vector | Newer competitor, less battle-tested. sqlite-vec has broader community adoption and the author (Alex Garcia) is the acknowledged authority on SQLite extensions. |
+| Embeddings | Transformers.js | Ollama | Requires Ollama running as a daemon. Not zero-dependency. Heavier runtime for just embeddings. |
+| Embeddings | Transformers.js | node-llama-cpp | GGUF-focused, designed for LLM inference not embeddings. |
+| Embeddings | nomic-embed-text-v1.5 | OpenAI text-embedding-3-small | API-only. Local constraint. |
+| CODEOWNERS | Custom regex | codeowners-utils | Unmaintained (last commit 2020), adds deps, does more than we need. |
 
-**Why TRUNCATE over PASSIVE:** No concurrent readers are expected during the indexing CLI operation. TRUNCATE is safe and provides the cleanest result.
-
-**Impact:** LOW. Disk hygiene, not performance. Prevents WAL file bloat that might confuse users looking at `~/.kb/` directory size.
-
-**Confidence:** HIGH.
-
----
-
-## 9. Dependency Updates
-
-### Current vs Latest
-
-| Package | Pinned Range | Recommended Action | Notes |
-|---------|-------------|-------------------|-------|
-| `better-sqlite3` | `^12.0.0` | Update to 12.6.2 | Bug fixes, SQLite engine updates. Semver-compatible |
-| `vitest` | `^3.0.0` | Update to latest 3.x | Coverage accuracy improvements in 3.2+ (AST-based V8 coverage) |
-| `typescript` | `^5.7.0` | Update to latest 5.x | tsc performance improvements |
-| `@modelcontextprotocol/sdk` | `^1.27.1` | Check for latest 1.x | MCP SDK improvements |
-| `zod` | `^4.3.6` | Check for latest 4.x | Zod 4 is recent |
-
-All are semver-compatible range updates. Run `npm update` to pull latest within ranges.
-
-### NOT Recommended
-
-| Package | Why Not |
-|---------|---------|
-| Node.js built-in `node:sqlite` | Still experimental (stability 1.1 as of Node 22). Would be a regression from battle-tested better-sqlite3 |
-| Bun's `bun:sqlite` | Would lock to Bun runtime |
-
-**Confidence:** MEDIUM. Exact latest versions need verification against npm.
-
----
-
-## 10. Priority-Ordered Optimization Checklist
-
-| Priority | Optimization | Effort | Impact | Risk |
-|----------|-------------|--------|--------|------|
-| **P0** | Prepared statement reuse (Section 2) | Medium | **HIGH** — eliminates thousands of redundant SQL compilations during indexing | LOW |
-| **P0** | Missing database indexes (Section 4) | Low | **HIGH** — O(n) to O(log n) for entity lookups | LOW |
-| **P1** | SQLite pragma tuning (Section 1) | Low | **MEDIUM** — better memory utilization | LOW |
-| **P1** | FTS5 optimize after indexing (Section 3c) | Low | **MEDIUM** — faster search after bulk indexing | LOW |
-| **P1** | Vitest coverage setup (Section 6) | Low | **MEDIUM** — test gap visibility | LOW |
-| **P2** | FTS5 prefix indexes (Section 3a) | Low | **LOW-MEDIUM** — faster prefix search | LOW (requires FTS rebuild) |
-| **P2** | WAL checkpoint after indexing (Section 8) | Low | **LOW** — disk hygiene | LOW |
-| **P2** | `noUncheckedIndexedAccess` (Section 5) | Medium | **LOW-MEDIUM** — compile-time bug prevention | LOW |
-| **P3** | Porter stemming (Section 3b) | Low | **LOW** — better recall, needs testing | MEDIUM (false positives) |
-| **P3** | `perf_hooks` instrumentation (Section 7) | Medium | **LOW** — diagnostic, not optimization | LOW |
-| **P3** | Dependency updates (Section 9) | Low | **LOW** — bug fixes, marginal perf | LOW |
-
----
-
-## Migration Notes
-
-**Schema changes requiring V5 migration:**
-- New indexes on modules, events, services tables
-- Optionally: FTS5 table rebuild with `prefix='2,3'`
-
-FTS5 table changes (`prefix`, `tokenize`) require **dropping and recreating** the FTS virtual table, then re-populating it. This means `kb index --force` is needed after the migration. The regular tables and their data are unaffected.
-
-**No new dependencies.** All optimizations use existing packages or built-in Node.js APIs.
+## Installation
 
 ```bash
-# After implementing changes:
-npm run build
-kb index --force   # Required if FTS5 config changes
+# New production dependencies
+npm install sqlite-vec @huggingface/transformers
+
+# No new dev dependencies needed
 ```
 
----
+**Disk impact:**
+- `sqlite-vec`: ~2MB (native binary per platform)
+- `@huggingface/transformers`: ~15MB (includes onnxruntime-node)
+- Model download (first run): ~130MB cached in `~/.kb/models/`
+
+**Total new dependency weight:** ~17MB in node_modules, ~130MB cached model on first use
+
+## Version Pinning Strategy
+
+| Package | Pin Strategy | Reason |
+|---------|-------------|--------|
+| sqlite-vec | `^0.1.7-alpha.2` | Alpha -- pin to caret to get patch fixes but audit before minor bumps |
+| @huggingface/transformers | `^3.8.1` | Stable v3 -- caret is safe. Do NOT use v4 preview yet. |
+
+## Integration Points with Existing Code
+
+### Database Layer (src/db/)
+- `database.ts`: Add `sqliteVec.load(db)` call after opening database
+- `schema.ts`: Bump SCHEMA_VERSION to 7
+- `migrations.ts`: Add `migrateToV7()` creating vec_embeddings table + ownership tables
+
+### Indexer Layer (src/indexer/)
+- New files: `topology.ts` (HTTP/gateway/Kafka extractors), `codeowners.ts` (CODEOWNERS parser)
+- `pipeline.ts`: Add topology extractor calls + CODEOWNERS extraction to `extractRepoData()`
+- `writer.ts`: Add `TopologyEdgeData` type + persist functions
+
+### Search Layer (src/search/)
+- New file: `semantic.ts` (embedding generation + vec0 KNN queries)
+- `index.ts`: Add semantic search pathway alongside FTS5
+
+### CLI / MCP
+- New commands: `kb owners <repo>`, `kb topology <repo>`
+- New MCP tools: `kb_semantic_search`, `kb_owners`, `kb_topology`
 
 ## Sources
 
-- [SQLite PRAGMA docs](https://sqlite.org/pragma.html)
-- [SQLite FTS5 Extension](https://www.sqlite.org/fts5.html)
-- [better-sqlite3 API](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md)
-- [SQLite Performance Tuning (phiresky)](https://phiresky.github.io/blog/2020/sqlite-performance-tuning/)
-- [SQLite Pragma Cheatsheet (cj.rs)](https://cj.rs/blog/sqlite-pragma-cheatsheet-for-performance-and-consistency/)
-- [Forward Email SQLite Guide](https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide)
-- [Vitest Coverage Guide](https://vitest.dev/guide/coverage.html)
-- [Vitest Coverage Config](https://vitest.dev/config/coverage)
-- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
-- [The Strictest TypeScript Config](https://whatislove.dev/articles/the-strictest-typescript-config/)
-- [Node.js perf_hooks API](https://nodejs.org/api/perf_hooks.html)
-- [Node.js Profiling Guide](https://nodejs.org/en/learn/getting-started/profiling)
-- [FTS5 Index Structure](https://darksi.de/13.sqlite-fts5-structure/)
-- [PowerSync SQLite Optimizations](https://www.powersync.com/blog/sqlite-optimizations-for-ultra-high-performance)
+- [sqlite-vec GitHub](https://github.com/asg017/sqlite-vec) -- v0.1.6 stable, v0.1.7-alpha.2 npm
+- [sqlite-vec Node.js docs](https://alexgarcia.xyz/sqlite-vec/js.html) -- better-sqlite3 integration
+- [sqlite-vec KNN queries](https://alexgarcia.xyz/sqlite-vec/features/knn.html) -- MATCH + distance_metric=cosine
+- [sqlite-vec-darwin-arm64 npm](https://www.npmjs.com/package/sqlite-vec-darwin-arm64) -- macOS ARM64 prebuilt
+- [nomic-embed-text-v1.5 HuggingFace](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) -- 137M params, 768d, Matryoshka
+- [Transformers.js v3](https://huggingface.co/docs/transformers.js/en/index) -- @huggingface/transformers
+- [Transformers.js Node.js tutorial](https://huggingface.co/docs/transformers.js/en/tutorials/node) -- server-side inference
+- [Transformers.js dtypes guide](https://huggingface.co/docs/transformers.js/en/guides/dtypes) -- q8 quantization
+- [codeowners-utils](https://github.com/jamiebuilds/codeowners-utils) -- evaluated and rejected (unmaintained)
+- [CODEOWNERS format](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners) -- GitHub official spec
+- [Embedding model comparison (HN)](https://news.ycombinator.com/item?id=46081800) -- "Don't use all-MiniLM-L6-v2 for new datasets"
+- [Best code embedding models](https://modal.com/blog/6-best-code-embedding-models-compared) -- VoyageCode3, CodeSage, Jina evaluated
+- [Embedding model benchmarks](https://supermemory.ai/blog/best-open-source-embedding-models-benchmarked-and-ranked/) -- nomic vs MiniLM accuracy comparison

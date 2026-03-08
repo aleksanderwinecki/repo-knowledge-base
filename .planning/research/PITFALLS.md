@@ -1,345 +1,392 @@
-# Pitfalls Research: v1.2 Hardening & Quick Wins
+# Pitfalls Research: v2.0 Design-Time Intelligence
 
-**Domain:** Refactoring and optimizing an existing, working Node.js/TypeScript/SQLite codebase
-**Researched:** 2026-03-07
-**Confidence:** HIGH (based on direct codebase analysis + industry patterns)
+**Domain:** Adding embedding-based semantic search, service topology extraction, and CODEOWNERS parsing to an existing SQLite/FTS5 knowledge base
+**Researched:** 2026-03-08
+**Confidence:** HIGH (sqlite-vec integration, schema migration, codebase analysis), MEDIUM (embedding quality for code identifiers, topology extraction accuracy)
 
-This document covers pitfalls specific to *refactoring existing working code* -- a fundamentally different risk profile from building new features. The v1.1 pitfalls document covered feature-building risks. This one covers the ways you break things when trying to make them better.
+This document covers pitfalls specific to *adding three new feature pillars* to a working v1.2 system with 125K entities in SQLite, FTS5 search, and regex-based extractors. The risk profile is integration-heavy: every new feature must coexist with existing infrastructure without degrading it.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Consolidating `indexSingleRepo` and `extractRepoData` Breaks Both Code Paths
+Mistakes that cause rewrites, data corruption, or render entire feature pillars unusable.
+
+### Pitfall 1: sqlite-vec Extension Loading Fails on macOS ARM64
 
 **What goes wrong:**
-The pipeline.ts file (787 lines) has two nearly-identical extraction flows: `extractRepoData` (used by `indexAllRepos` for parallel extraction) and `indexSingleRepo` (used by MCP auto-sync and direct calls). A refactorer sees ~300 lines of duplication and extracts a shared helper. But the two functions have subtly different DB interaction patterns: `extractRepoData` takes a `DbSnapshot` and does zero DB access (designed for parallel execution), while `indexSingleRepo` reads from DB inline (`db.prepare('SELECT id, last_indexed_commit FROM repos WHERE name = ?')`). Merging them either introduces DB access into the parallel path (breaking the extract-then-persist architecture) or removes inline DB reads from the sync path (changing behavior when the DB state changes between snapshot and persist).
+You `npm install sqlite-vec` and call `sqliteVec.load(db)` on your better-sqlite3 connection. On CI or a colleague's x86 machine it works. On your M1/M2/M3 Mac, the extension either fails to load with a `dlopen` error about missing dylib files, or worse, loads successfully but uses the wrong architecture binary, producing corrupted vector data or segfaults during queries.
+
+The `sqlite-vec-darwin-arm64` package (currently v0.1.7-alpha.2) provides prebuilt binaries, but the prebuilt discovery mechanism can fail when: (a) the npm install was done under Rosetta, (b) the Node.js binary is x86 running under Rosetta while the extension is ARM64, (c) the `DYLD_LIBRARY_PATH` isn't set correctly, or (d) better-sqlite3's bundled SQLite version is incompatible with the sqlite-vec extension's expected SQLite API version.
 
 **Why it happens:**
-This is the most tempting refactoring target in the codebase. The code looks duplicated. But the duplication is *intentional* -- it exists because the v1.1 parallel pipeline specifically separated DB reads from extraction. The "duplication" is actually two implementations of the same logic with different DB isolation guarantees.
+sqlite-vec is pre-v1 (latest v0.1.6 stable, v0.1.7-alpha.2 for ARM64). The npm distribution uses optional platform-specific packages (`sqlite-vec-darwin-arm64`, `sqlite-vec-darwin-x64`, `sqlite-vec-linux-x64`) that the main `sqlite-vec` package selects at install time. This is the same pattern better-sqlite3 uses, but there's an additional complexity: sqlite-vec must be ABI-compatible with the SQLite version bundled inside better-sqlite3 (currently SQLite 3.46+ in better-sqlite3 v12). If these drift apart, the extension loads but corrupts memory.
 
 **How to avoid:**
-1. If consolidating, the shared helper MUST be pure (no DB access). It should accept pre-fetched data and return extracted results, exactly like `extractRepoData` already does.
-2. `indexSingleRepo` can call the shared helper but must handle its own DB reads before and writes after.
-3. Write a test that runs `indexSingleRepo` and `indexAllRepos` against the same repo and asserts identical output. This catches behavioral divergence.
-4. Better yet: leave the duplication alone. 300 lines of duplicated-but-clear code is safer than 200 lines of abstracted-but-fragile code. Add a code comment explaining why.
+1. **Validate extension loading in the very first PR.** Before writing any vector search code, create a minimal smoke test: `sqliteVec.load(db); db.exec("CREATE VIRTUAL TABLE test USING vec0(v float[4])"); db.prepare("INSERT INTO test VALUES (?, ?)").run(1, new Float32Array([1,2,3,4]).buffer);` -- this must pass on macOS ARM64.
+2. **Pin exact versions** of both `better-sqlite3` and `sqlite-vec` in package.json. Don't use `^` ranges for sqlite-vec. Document the validated combination.
+3. **Add a runtime compatibility check** in `openDatabase()` that detects when sqlite-vec fails to load and falls back gracefully -- vector search becomes unavailable, but FTS5 keyword search continues working. Never crash the entire CLI because a vector extension didn't load.
+4. **If the prebuilt approach fails**, have a fallback plan: brute-force cosine distance on a regular BLOB column, or consider `@dao-xyz/sqlite3-vec` as an alternative wrapper that handles prebuilt binary discovery automatically for better-sqlite3 >= 12.
 
 **Warning signs:**
-- PR introduces a function called something like `extractCore` or `sharedExtraction` that takes both a DB and snapshot parameters
-- Test count drops after the refactor (tests for one path got lost)
-- The word "should" appears in the refactoring rationale ("these *should* behave the same")
+- `npm install` succeeds but `vec_version()` throws at runtime
+- Tests pass on one developer's machine but fail on another
+- `dlopen` errors mentioning `.dylib` or architecture mismatches in stderr
+- Segfaults or bus errors during vector insert/query operations
 
-**Phase to address:** Code review phase. Flag pipeline.ts duplication as intentional -- document it, don't consolidate it.
+**Phase to address:** Phase 1 (Foundation). Extension loading validation must be the gating criterion before any vector table creation code is written.
 
 ---
 
-### Pitfall 2: Changing MCP Tool Parameter Shapes Silently Breaks All Consumers
+### Pitfall 2: Embedding Dimensions Blow Up Database Size and Query Latency
 
 **What goes wrong:**
-During refactoring, you rename a parameter (e.g., `repo` to `repoName` for consistency), change a type (e.g., `limit: z.number()` to `limit: z.string()` then parse), or restructure the response JSON shape. The MCP tool still works in tests, but every AI agent using `kb_search`, `kb_entity`, `kb_deps`, etc. through Claude Code starts getting errors or unexpected results. There's no compilation error, no test failure -- just silent breakage at the integration boundary.
+You choose a high-quality embedding model (OpenAI `text-embedding-3-large` at 3072 dimensions, or `nomic-embed-code` at 768 dimensions) and embed all 125K entities. Each float32 vector at 768 dimensions is 3KB. At 125K entities, that's ~375MB of vector data alone -- larger than the entire existing database. At 3072 dimensions, it's 1.5GB. sqlite-vec uses brute-force search (no ANN index yet), so query time scales linearly with both entity count and dimensions. At 125K entities x 768 dimensions, each query scans ~375MB of vector data.
+
+Per sqlite-vec benchmarks: 100K vectors at 768 dimensions with float32 queries in <75ms, but at 1M vectors the same query takes seconds. At 125K entities we're in the zone where dimension choice determines whether queries complete in 50ms or 500ms.
 
 **Why it happens:**
-The 8 MCP tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_learn`, `kb_forget`, `kb_status`, `kb_cleanup`, `kb_list_types`) are the primary API surface. Their parameter names and response shapes are learned by AI agents from the tool descriptions registered via `server.tool()`. The Zod schemas in each tool file define the contract. But there's no consumer-side test -- the tests in `tests/mcp/tools.test.ts` call tool handlers directly, bypassing the schema validation that MCP clients rely on. A refactoring that changes the registered schema without updating all consumers (Claude Code configs, skill files, CLAUDE.md documentation) creates a silent break.
+Developers choose embedding dimensions based on quality benchmarks without considering storage and query cost. sqlite-vec v0.1.x only supports brute-force KNN search -- there's no approximate nearest neighbor (ANN) indexing. The author explicitly states it "scales to tens of thousands or maybe hundreds of thousands" of vectors practically. At 125K entities you're at the upper bound of what brute-force can handle, and dimension count is the multiplier.
 
 **How to avoid:**
-1. Treat MCP tool schemas as a public API with semver guarantees. Parameter names (`query`, `limit`, `repo`, `type`) and response JSON structure (`{ summary, data, total, truncated }`) are frozen for v1.x.
-2. Create a contract test file (`tests/mcp/contracts.test.ts`) that asserts the exact parameter names and types for each tool. This test should fail if any schema changes.
-3. If a parameter must change, add the new parameter alongside the old one and deprecate, don't rename.
-4. The `formatResponse` output shape (`McpResponse<T>` with `summary`, `data`, `total`, `truncated`) is consumed by AI agents that parse the JSON. Changing field names here breaks every session.
+1. **Use 384-dimension embeddings.** OpenAI's `text-embedding-3-small` supports dimension truncation to 384 via the `dimensions` parameter. At 384 dims x 125K entities = ~187MB, with query times well under 75ms per sqlite-vec benchmarks.
+2. **Don't embed everything.** Not every entity benefits from semantic search. Embed entity names + descriptions (which are already in FTS5), not raw code or schema definitions. This may reduce the embeddable set to 50-80K entities.
+3. **Use binary quantization** if storage or latency is still an issue. sqlite-vec supports int8 and binary vectors, offering 4x and 32x size reduction respectively with ~95% accuracy retention on modern embedding models. Binary quantized vectors query in under 11ms even at 3072 dimensions.
+4. **Benchmark early.** Before embedding all 125K entities, embed 1K, measure insert time, query latency, and database size growth. Extrapolate. If the numbers don't work at 1K, they won't work at 125K.
 
 **Warning signs:**
-- A refactoring PR touches files in `src/mcp/tools/` and changes Zod schema definitions
-- Parameter names change in tool registration calls
-- The `McpResponse` interface in `format.ts` gets renamed or restructured
-- CLAUDE.md or skill files aren't updated in the same PR
+- Database file grows by more than 200MB after vector indexing
+- Semantic search queries take >200ms
+- WAL file grows very large during vector insertion (sqlite-vec inserts are transaction-heavy)
+- Machine memory pressure increases during vector queries
 
-**Phase to address:** First phase -- establish contract tests before any refactoring begins.
+**Phase to address:** Phase 1 (Foundation). Dimension choice and entity selection must be decided before any embedding pipeline is built.
 
 ---
 
-### Pitfall 3: Renaming Exported Symbols Breaks the Public API Without TypeScript Errors
+### Pitfall 3: Embedding Quality Is Terrible for Code Identifiers Without Preprocessing
 
 **What goes wrong:**
-`src/index.ts` exports 40+ symbols that form the library's public API. During refactoring, you rename an internal type (e.g., `TextSearchResult` to `SearchResult` for brevity, or `EdgeData` to `Edge` to match the entity type). TypeScript catches all internal usages, so the refactor appears clean. But external consumers who `import { TextSearchResult } from 'repo-knowledge-base'` get a build failure that you never see because no test covers external consumption.
+You embed entity names like `BookingContext.Commands.CreateBooking` or `Rpc.Booking.V1.BookingService.Stub` directly. The embedding model was trained on natural language, not Elixir module paths. It treats `BookingContext.Commands.CreateBooking` as a single opaque token or splits it poorly. A semantic query for "service that handles bookings" returns irrelevant results because the model doesn't understand that `BookingContext` relates to "booking" and `.Commands.` relates to "commands."
+
+Meanwhile, your existing FTS5 search with `tokenizeForFts()` correctly splits `BookingContext.Commands.CreateBooking` into `"booking context commands create booking"` and finds it easily. The expensive new embedding search performs worse than the free FTS5 search you already have.
 
 **Why it happens:**
-The project is both a CLI tool and a library (it has `"main": "dist/index.js"` and `"types": "dist/index.d.ts"` in package.json). The exports in `src/index.ts` are a public contract. TypeScript's type checker only validates internal consistency -- it can't know about downstream consumers. The test suite uses internal imports (`../../src/search/text.js`), not the public API path.
+General-purpose embedding models (even code-specific ones like `nomic-embed-code`, `jina-embeddings-v2-base-code`, or `CodeRankEmbed`) are optimized for natural language queries matching against code snippets or docstrings. They're trained on `docstring-to-code` and `code-to-code` retrieval tasks -- not on `natural-language-to-module-name` retrieval. Elixir module naming conventions (CamelCase.Dot.Separated), proto message names (CamelCase), and snake_case function names are edge cases in their training data.
 
 **How to avoid:**
-1. Add a "public API snapshot" test that imports from the package root and asserts all expected exports exist. Something like: `import * as kb from '../../src/index.js'; expect(kb.searchText).toBeDefined(); expect(kb.TextSearchResult).toBeDefined();`
-2. Before renaming any exported type or function, grep for its name in `~/.claude/` and any skill directories to check for external usage.
-3. If renaming is necessary, re-export the old name as a deprecated alias: `export { NewName as OldName }`.
+1. **Embed the preprocessed text, not the raw identifier.** You already have `tokenizeForFts()` that turns `BookingContext.Commands.CreateBooking` into `"booking context commands create booking"`. Use the tokenized form as input to the embedding model. This bridges the vocabulary gap.
+2. **Embed name + description together.** Concatenate the tokenized name with the entity's description/summary. A module with `name: "BookingContext.Commands.CreateBooking"` and `summary: "Creates a new booking in the system"` should be embedded as `"booking context commands create booking - Creates a new booking in the system"`.
+3. **Build an evaluation set before choosing a model.** Create 20 queries that users would actually ask ("which service handles payments", "how do bookings work", "what events does the gateway produce") with expected results. Test candidate models against this set. Don't choose based on MTEB leaderboard scores -- they measure different tasks.
+4. **Hybrid search is the correct architecture.** FTS5 for keyword matching + vector search for semantic similarity, with results merged. Never rely on embedding search alone -- it will always miss exact keyword matches that FTS5 catches instantly.
 
 **Warning signs:**
-- Refactoring touches `src/index.ts` export list
-- Type names change in `src/types/entities.ts` or `src/search/types.ts`
-- `npm run build` succeeds but `npm link` consumers fail
+- FTS5 search returns better results than embedding search for most queries
+- Queries using exact entity names (e.g., `kb search "BookingService"`) return worse results in semantic mode
+- Embedding similarity scores cluster tightly (everything is 0.7-0.8 similar to everything else)
 
-**Phase to address:** First phase -- add API snapshot test before any refactoring begins.
+**Phase to address:** Phase 1-2 (Embedding pipeline). Preprocessing pipeline and evaluation set must exist before model selection is finalized.
 
 ---
 
-### Pitfall 4: SQLite Schema Migration v5 That Requires Table Rebuild
+### Pitfall 4: Schema Migration Breaks Existing Databases When Adding Vector Tables
 
 **What goes wrong:**
-During hardening, you discover that a column should have a different type, a NOT NULL constraint is missing, or a column should be dropped. SQLite does not support `ALTER TABLE DROP COLUMN` before 3.35.0 (better-sqlite3 bundles its own SQLite, version varies), `ALTER TABLE RENAME COLUMN` has limitations, and `ALTER TABLE` cannot add constraints to existing columns. The "correct" migration is a table rebuild: create new table, copy data, drop old, rename. This is destructive, slow on large databases, and easy to get wrong (foreign key references, FTS entries pointing to old IDs, triggers, indexes all need rebuilding).
+You add migration V7 that creates a `vec0` virtual table for embeddings. The migration runs fine on a fresh database. But on an existing v1.2 database (schema version 6), the migration fails because: (a) `vec0` module isn't registered yet (sqlite-vec hasn't been loaded when the migration runs), (b) the migration is inside `runMigrations()` which runs before the extension is loaded in the startup sequence, or (c) the extension loads but `CREATE VIRTUAL TABLE` for vec0 can't execute inside the transaction wrapper that `runMigrations()` uses.
 
 **Why it happens:**
-The hardening milestone naturally surfaces schema imperfections. "This column should be NOT NULL" or "this index is missing" are exactly the kinds of things you notice during review. The current migration system (`src/db/migrations.ts`) uses sequential numbered migrations with `ALTER TABLE ADD COLUMN` -- which is safe. But a table rebuild migration is a fundamentally different operation that the current migration infrastructure doesn't handle.
+The current initialization sequence in `openDatabase()` is: (1) create Database, (2) set pragmas, (3) `initializeSchema()` which runs migrations wrapped in `db.transaction()`, (4) `initializeFts()`. sqlite-vec must be loaded via `sqliteVec.load(db)` BEFORE any SQL that references vec0 tables. But the migration system doesn't know about extension loading -- it assumes all SQL features are available when migrations run. The existing `initializeFts()` already works around this by creating the FTS5 virtual table outside the migration transaction -- vec0 needs the same treatment.
 
 **How to avoid:**
-1. For v1.2, restrict schema changes to `ALTER TABLE ADD COLUMN` and `CREATE INDEX IF NOT EXISTS`. These are safe, idempotent, and non-destructive.
-2. If a table rebuild is truly necessary, defer it to v2.0 where the migration can be tested against production-scale data.
-3. Never add NOT NULL to an existing column via migration. Instead, add a CHECK constraint on new inserts and handle NULLs in application code.
-4. Test every migration against a populated database, not just empty. The `openDatabase` function creates and migrates in one step -- test with a real `~/.kb/knowledge.db` copy.
+1. **Load sqlite-vec BEFORE `initializeSchema()`.** Change `openDatabase()` to: (1) create Database, (2) set pragmas, (3) try to load sqlite-vec, (4) `initializeSchema()`, (5) `initializeFts()`, (6) `initializeVec()`. Extension loading before migrations is order-critical.
+2. **Don't put vec0 creation in a migration.** Migrations should only handle regular tables (the `entity_embeddings` metadata table tracking which entities have been embedded, model version, etc.). The vec0 virtual table creation belongs in an idempotent initialization step, following the exact pattern of `initializeFts()`.
+3. **Handle extension-not-available gracefully.** If sqlite-vec fails to load (missing binary, incompatible platform), skip vec0 initialization. The regular schema and FTS5 must still work. Add a `hasVectorSupport(): boolean` function that downstream code checks.
+4. **Test migration on a copy of the production database.** Copy `~/.kb/knowledge.db` (a real v1.2 database with 125K entities), run the new `openDatabase()` against it, verify everything works.
 
 **Warning signs:**
-- Migration function contains `CREATE TABLE ... AS SELECT` or `DROP TABLE` for an existing table
-- Migration adds NOT NULL without a DEFAULT
-- Better-sqlite3 throws "UNIQUE constraint failed" or "NOT NULL constraint failed" during migration on existing data
+- `openDatabase()` throws "no such module: vec0" on existing databases
+- Migration works on fresh databases but fails on upgraded ones
+- Tests with in-memory databases work but file-based databases fail
+- Migration function calls `db.loadExtension()` -- extension loading should happen once at startup, not inside migrations
 
-**Phase to address:** Any phase that touches `db/migrations.ts`. Gate rule: no table rebuilds in v1.2.
+**Phase to address:** Phase 1 (Foundation). Startup sequence change must be the first PR, before any vec0 code.
 
 ---
 
-### Pitfall 5: Refactoring FTS Indexing Logic Causes Silent Search Quality Regression
+### Pitfall 5: Topology Extraction Regex Misses Dynamic Service Communication Patterns
 
 **What goes wrong:**
-You refactor the FTS indexing in `db/fts.ts` -- maybe consolidating `indexEntity`/`removeEntity`, changing the tokenization in `tokenizer.ts`, or optimizing the `search()` function. The tests pass because they use the same tokenizer for both indexing and querying. But the production database was indexed with the OLD tokenizer. After the refactoring, new entities are indexed with the new logic, but existing entities still have old tokenization. Searches partially work (new entities match) but miss all previously-indexed content until a full re-index.
+You write regex extractors for gRPC clients (already partially done via `extractGrpcStubs()`), HTTP clients, gateway routing, and Kafka wiring. The extractors work on the 10 repos you tested against. Then you run `kb index --force` across all 400+ repos and discover: (a) 30% of HTTP client calls use environment-variable-based URLs (`System.get_env("BOOKING_SERVICE_URL")`) that regex can't resolve, (b) gateway routing is defined in YAML/JSON config files, not code, (c) Kafka topic names are constructed dynamically (`"#{@topic_prefix}.booking.created"`), and (d) some services communicate via shared database access, not HTTP/gRPC at all.
+
+The topology graph looks confident but is actually missing 30-50% of real service connections. Users trust the graph, make architectural decisions based on it, and discover the gaps the hard way.
 
 **Why it happens:**
-FTS5's `knowledge_fts` table stores pre-tokenized text. The `tokenizeForFts()` function in `db/tokenizer.ts` processes both the indexed content and the query. If you change how tokenization works (e.g., handling CamelCase differently, changing stopword behavior, modifying the unicode61 tokenizer parameters), the query tokenization no longer matches the stored tokenization for old entries.
+Microservice communication patterns are inherently dynamic. The existing extractors (`extractGrpcStubs`, `detectEventRelationships`) work because they target well-structured, convention-following patterns in proto files and Elixir macros. But HTTP client calls, config-driven routing, and dynamic topic names don't follow single patterns across 400 repos. Each team does it differently. Regex extraction works for the common case but can't handle the long tail.
 
 **How to avoid:**
-1. If `tokenizeForFts()` changes in any way, the migration MUST include a full FTS rebuild: `DELETE FROM knowledge_fts` + `kb index --force`.
-2. Better: don't change `tokenizeForFts()` during hardening. If the tokenization needs improvement, that's a feature (SEM-01/SEM-02 semantic search), not a quick win.
-3. If optimizing the `search()` function in `db/fts.ts`, keep the FTS5 MATCH query syntax identical. The `ORDER BY rank` and BM25 scoring are handled by SQLite internally -- don't try to add custom relevance scoring on top.
-4. Write a "golden test": index a fixed set of entities, run a fixed set of queries, assert exact result sets. This catches any tokenization drift.
+1. **State confidence level with each edge.** Every extracted topology edge should have a `confidence: 'high' | 'medium' | 'low'` field. High = extracted from proto files, explicit gRPC stub references. Medium = pattern-matched from code heuristics. Low = inferred from config or naming conventions. Let consumers filter by confidence.
+2. **Start with patterns you can detect reliably:** gRPC stubs (already have this), Kafka topic declarations in module attributes (`@topic "booking.created"`), explicit HTTP client module patterns (Tesla.Middleware.BaseUrl). Don't try to resolve environment variables or dynamic string interpolation.
+3. **Add a `kb learn` extension for manual topology.** When regex can't detect a connection, let users teach it: `kb learn "booking-service calls payment-service via HTTP" --repo booking-service --type topology`. This fills gaps the extractors miss.
+4. **Ship topology with an explicit completeness metric.** After extraction, report: "Found N edges from M repos. K repos have no outbound edges detected." Repos with zero detected outbound connections are likely missing connections, not truly isolated.
+5. **Filter out comments, test files, and documentation strings** from extraction. These are the primary source of false positives.
 
 **Warning signs:**
-- Changes to `tokenizer.ts` without a corresponding `kb index --force` note
-- Search tests pass but manual testing returns different results than before
-- The FTS query in `search()` or `executeFtsQuery()` changes syntax
+- Repos known to call many services show zero or one outbound edge
+- The topology graph has isolated clusters with no connections to the rest
+- HTTP client extraction returns results for only 20-30% of repos
+- All detected connections are gRPC with no HTTP or Kafka edges
 
-**Phase to address:** Any phase that touches `db/tokenizer.ts` or `db/fts.ts`. Gate rule: tokenizer changes require FTS rebuild plan.
+**Phase to address:** Phase 2-3 (Topology extractors). Each extractor type should be a separate deliverable with its own accuracy assessment.
+
+---
+
+### Pitfall 6: CODEOWNERS Pattern Matching Is Not Gitignore (Despite Looking Like It)
+
+**What goes wrong:**
+You implement a CODEOWNERS parser using a gitignore library (like `ignore` or `minimatch`). It works for simple patterns (`*.ex @team-backend`, `/docs/* @team-docs`). Then you hit edge cases: (a) `docs/*` should match `docs/getting-started.md` but NOT `docs/build-app/troubleshooting.md` -- gitignore `*` matches across directories, but CODEOWNERS `*` only matches one level deep, (b) `!` negation patterns silently do nothing in CODEOWNERS (GitHub drops them), (c) `[]` character ranges don't work in GitHub CODEOWNERS, (d) the last matching rule wins (not first), and (e) a trailing `/` means the pattern matches the entire directory tree (equivalent to `/**`).
+
+Your parser produces wrong ownership mappings for 10-20% of files because the glob semantics are subtly different from both gitignore and standard globbing.
+
+**Why it happens:**
+GitHub's CODEOWNERS documentation says it "follows most of the same rules used in gitignore files" -- the key word being "most." The differences are specific and underdocumented: no negation (`!`), no character ranges (`[]`), no `\#` escaping, and different `*` vs `**` semantics. Every CODEOWNERS parser library has had bugs around nested directory matching (see `beaugunderson/codeowners` issue #15 about incorrect nested match rules).
+
+**How to avoid:**
+1. **Don't use a gitignore library for CODEOWNERS parsing.** Use picomatch with careful configuration, or write a dedicated matcher that handles the GitHub-specific semantics.
+2. **Test with real CODEOWNERS files from your repos.** Take 5-10 actual CODEOWNERS files from the indexed repos, manually determine expected ownership for 10 files each, and assert the parser matches.
+3. **Implement "last match wins" correctly.** Store `line_number` in the ownership data. Process all rules top-to-bottom, let later rules override earlier ones. Test with overlapping patterns.
+4. **Handle missing CODEOWNERS gracefully.** Many repos won't have a CODEOWNERS file. Some will have it in `.github/CODEOWNERS`, others in `CODEOWNERS` at root, others in `docs/CODEOWNERS`. Check all three locations per GitHub's spec.
+5. **Validate patterns at parse time.** If a CODEOWNERS line has invalid syntax, skip it (matching GitHub's behavior) rather than throwing. Log skipped lines.
+
+**Warning signs:**
+- Ownership queries return different teams than GitHub's PR review assignments
+- Files in nested directories show unexpected ownership (the `*` vs `**` trap)
+- Parser fails on patterns with `!` or `[]` characters instead of ignoring them
+- Tests only cover flat directory structures, not deeply nested paths
+
+**Phase to address:** Phase 2 (CODEOWNERS parser). Dedicated test suite with real CODEOWNERS files must exist before the parser is integrated.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 6: Test Refactoring That Silently Reduces Coverage
+### Pitfall 7: Breaking Existing Edge Semantics with Topology Edges
 
 **What goes wrong:**
-You see 25 test files with 388 tests and decide to "clean up" tests -- removing "redundant" assertions, consolidating similar test cases into parameterized tests, or extracting test helpers. The test count drops from 388 to 350, but you rationalize it as "removed duplication." In reality, the "redundant" tests were covering different edge cases with similar setup. The consolidated parameterized test misses the edge case that the individual test caught.
-
-**Why it happens:**
-Test files often look messy because they cover edge cases that required specific setup. A test that looks like it's testing the same thing as another test might actually be testing a different code path (e.g., one tests `searchText` with a repo filter, another without -- they look similar but exercise different SQL queries). Test cleanup feels productive but reducing assertion count is never a win.
+Topology extractors create edges with new relationship types (`calls_http`, `routes_to`, `produces_kafka`, `consumes_kafka`), but `queryDependencies()` in `search/dependencies.ts` is likely hardcoded to only follow specific relationship types (`produces_event`, `consumes_event`, `calls_grpc`). New edges exist in DB but don't appear in dependency queries. Users see no improvement from v2.0 topology work.
 
 **How to avoid:**
-1. Never reduce test count during a refactoring milestone. Tests can be MOVED and REORGANIZED but the total assertion count should stay the same or increase.
-2. Before touching a test file, run `vitest run --reporter=verbose` and record the test names. After refactoring, diff the test names -- any removed test needs explicit justification.
-3. If consolidating into parameterized tests, the parameter list must cover at least as many cases as the original individual tests.
-4. Add coverage tracking: `vitest run --coverage` before and after. Line coverage should not decrease.
+1. Generalize `findLinkedRepos()` / dependency queries to discover ALL relationship types, or use a configurable set
+2. Define the topology edge type vocabulary before building extractors: `calls_grpc`, `calls_http`, `routes_to`, `produces_kafka`, `consumes_kafka`
+3. Use the existing `calls_grpc` type -- don't invent a new one for the same concept
+4. Add a UNIQUE constraint on `(source_type, source_id, target_type, target_id, relationship_type)` to prevent duplicate edges
+5. Coordinate with existing `insertGrpcClientEdges()` in pipeline.ts -- either replace it or document the overlap
 
-**Warning signs:**
-- Test file changes remove `it()` blocks without adding new ones
-- Test helpers abstract away assertions (the helper calls `expect()` but the test doesn't)
-- "Cleaned up redundant tests" in commit message
-
-**Phase to address:** Every phase. Rule: test count is monotonically increasing.
+**Phase to address:** Phase 2 (Topology extractors). Edge schema design must precede any extractor implementation.
 
 ---
 
-### Pitfall 7: CLI Output Format Changes Break Downstream Piping
+### Pitfall 8: Embedding Pipeline Blocks the Indexing Flow
 
 **What goes wrong:**
-The CLI outputs JSON (`"All output is JSON"` per CLAUDE.md). During refactoring, you change the JSON structure -- maybe renaming `repoName` to `repo` in search results, restructuring nested objects, or changing array ordering. The CLI still works for interactive use, but scripts and AI agent sessions that pipe `kb search "query" | jq '.data[].repoName'` silently get null values or fail.
-
-**Why it happens:**
-The CLI and MCP tools share the same underlying functions (`searchText`, `findEntity`, `queryDependencies`) but format output differently. The CLI commands in `src/cli/commands/` format their own JSON. The MCP tools use `formatResponse` from `src/mcp/format.ts`. Changing the underlying function's return type changes both outputs. And unlike MCP tools (which have Zod schemas), CLI output has no formal schema -- just convention.
+You add embedding generation to the indexing pipeline. For each entity, you call an embedding API (or local model) to generate a vector, then insert it into the vec0 table. With 125K entities and an API that takes 50ms per call, that's 104 minutes for embeddings -- turning a 2-minute index into a 2-hour ordeal. Or with a local model at 200ms per entity, it's 7 hours. The existing `extractRepoData()` is designed for parallel extraction with no blocking operations -- embedding inference (CPU-bound ONNX) or API calls (network-bound) in this phase would destroy the pipeline's concurrency.
 
 **How to avoid:**
-1. Treat CLI JSON output as a public API. Document the JSON shapes somewhere (or add a snapshot test).
-2. Add integration tests for CLI commands that assert specific JSON structure: `const output = JSON.parse(execSync('kb search "test"').toString()); expect(output).toHaveProperty('repoName');`
-3. If restructuring return types from search/entity/deps functions, add mapping layers in the CLI and MCP commands rather than changing the output format.
-4. The `kb docs` command outputs documentation -- don't change its format without updating CLAUDE.md.
+1. **Decouple embedding from indexing.** Indexing creates/updates entities in regular tables and FTS5 (as now). A separate `kb embed` command generates vectors asynchronously. This preserves the current indexing speed.
+2. **Batch API calls.** OpenAI's embedding API accepts batches (up to ~300K tokens per request). Batch 100-200 entity texts per API call instead of one-by-one.
+3. **Incremental embedding.** Track which entities have been embedded via content hash. On re-index, only embed new/changed entities.
+4. **If using a local model**, it runs in a separate phase (Phase 4 of the pipeline, after all persistence is complete), not inside `extractRepoData()` or `persistExtractedData()`.
 
-**Warning signs:**
-- Changes to `src/search/types.ts` interfaces (`TextSearchResult`, `EntityCard`, `DependencyResult`)
-- Changes to CLI command files that alter `JSON.stringify` structure
-- No CLI integration tests in the PR
-
-**Phase to address:** Any phase that touches search return types or CLI commands.
+**Phase to address:** Phase 2 (Embedding pipeline). Architecture decision on separation is critical early.
 
 ---
 
-### Pitfall 8: "Quick Win" Performance Optimization That Becomes a Rewrite
+### Pitfall 9: Hybrid Search Result Merging Produces Confusing Rankings
 
 **What goes wrong:**
-You profile and find that `persistRepoData` is slow because it does N individual `INSERT` statements in a loop. The "quick win" is batching inserts. But batching requires restructuring the transaction, changing how FTS indexing interleaves with row inserts (because `indexEntity` needs the `lastInsertRowid`), and rethinking the `clearRepoEntities` ordering. What started as "add batch inserts" becomes "rewrite the entire persistence layer."
-
-Similarly: you notice `clearRepoEntities` in writer.ts does 4 separate queries to collect IDs before deleting. The "quick win" is a single `DELETE ... WHERE repo_id = ?` with cascading deletes. But the FTS entries need to be removed first (FTS5 virtual tables don't support cascading deletes), and the polymorphic `edges` table has no FK constraints. Now you're redesigning the cleanup flow.
-
-**Why it happens:**
-Performance optimizations in database-heavy code rarely stay localized. Each optimization touches the transaction boundary, the FTS synchronization, or the entity lifecycle -- all of which have subtle ordering requirements. The current code is slow-but-correct, and correctness is enforced by the specific ordering of operations.
+You implement hybrid search: run both FTS5 keyword search and vector similarity search, then merge results. But FTS5 returns BM25 relevance scores (negative numbers, lower is better, unbounded) and sqlite-vec returns cosine distance (0-2, lower is better). You normalize both to 0-1, apply equal weights, and merge. The result: exact keyword matches get diluted by mediocre vector matches, and great semantic matches get diluted by poor keyword matches. Users search for "BookingService" and the exact match appears at position 3 instead of position 1.
 
 **How to avoid:**
-1. Time-box every optimization to 2 hours. If it's not done in 2 hours, it's not a quick win -- defer it.
-2. Before optimizing, write the performance test first: `console.time('persist'); persistRepoData(db, testData); console.timeEnd('persist');` Measure the before, set a target, stop when you hit it.
-3. For batch inserts: better-sqlite3 supports prepared statement reuse within transactions (it's already synchronous, so there's no async batching needed). The optimization is `.prepare()` once outside the loop, not restructuring the loop.
-4. For `clearRepoEntities`: the current loop-based FTS cleanup is correct if ugly. Replace the loop with `DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id IN (SELECT id FROM modules WHERE repo_id = ?)` -- one statement instead of N, same semantics.
+1. **Keyword-first architecture.** If FTS5 returns an exact name match, always rank it #1 regardless of vector score. Embedding search augments keyword search; it doesn't replace it.
+2. **Use reciprocal rank fusion (RRF)** instead of score normalization: `1/(k + rank_fts) + 1/(k + rank_vec)` with k=60. This is position-aware and doesn't require normalizing incomparable score scales.
+3. **Let users control the mode.** `kb search "query"` uses FTS5 (fast, exact). `kb search "query" --semantic` adds vector results. Don't force hybrid on every query -- most queries are keyword-based and FTS5 is better for those.
 
-**Warning signs:**
-- Optimization PR adds more lines than it removes
-- Transaction boundaries change
-- FTS operations reorder relative to entity CRUD
-- The phrase "while I'm at it" appears in a commit message
-
-**Phase to address:** Performance optimization phase. Hard time-box, explicit scope boundaries per optimization.
+**Phase to address:** Phase 3 (Search integration). Design hybrid ranking after both FTS5 and vector search work independently.
 
 ---
 
-### Pitfall 9: Extracting Shared Utilities Creates Circular Dependencies
+### Pitfall 10: sqlite-vec Pre-v1 Breaking Changes Corrupt Existing Vector Data
 
 **What goes wrong:**
-You notice that `indexer/pipeline.ts` and `indexer/writer.ts` both import from `db/fts.ts`. You decide to extract a shared `entityManager.ts` utility. But the utility needs types from `types/entities.ts`, functions from `db/fts.ts`, and is imported by both `indexer/` and `search/` modules. You've created a module that depends on both the DB layer and the indexer layer, while being depended on by both. Node.js ESM handles circular imports differently than CommonJS -- you may get undefined imports at runtime that TypeScript doesn't catch.
-
-**Why it happens:**
-The current module structure has clean dependency direction: `types/` <- `db/` <- `indexer/` and `types/` <- `db/` <- `search/`. CLI and MCP sit on top and import from both. Extracting cross-cutting utilities breaks this layering. TypeScript compiles fine because it resolves types statically, but runtime ESM module initialization order can cause `undefined` when a circular import is encountered.
+You ship v2.0 with sqlite-vec v0.1.6. Months later, sqlite-vec releases v0.2.0 with a breaking change to the vec0 shadow table format. Users update their npm dependencies and suddenly vec0 queries return garbage or crash. The regular database (entities, FTS5) is fine, but all vector data is unreadable. There's no migration path because sqlite-vec doesn't provide one -- it's pre-v1, breaking changes are expected.
 
 **How to avoid:**
-1. Before extracting a utility, draw the import graph. If the new module would be imported by modules in two different layers AND imports from one of those layers, you have a circular dependency.
-2. The current structure is intentional: `db/fts.ts` is the shared utility for FTS operations. It's in `db/` because it only depends on `types/` and `better-sqlite3`. Don't move it.
-3. If extracting shared logic, put it in the LOWER layer (closer to `types/`), not between layers.
-4. Run `npx madge --circular --extensions ts src/` to detect circular dependencies before committing.
+1. **Pin sqlite-vec to an exact version** in package.json. Document the pinned version.
+2. **Store the sqlite-vec version in the database** (e.g., in a `meta` table). On startup, compare runtime version to stored version. If mismatched, warn the user and offer to regenerate vectors.
+3. **Design vector storage as regenerable.** Vector data is derived from entity text -- it can always be regenerated. Never treat vector data as primary storage.
+4. **Isolate vec0 tables from core schema.** If vec0 corruption occurs, it must be possible to drop and rebuild without affecting entities, FTS5, or learned facts.
 
-**Warning signs:**
-- New file created that imports from both `db/` and `indexer/`
-- Runtime error: "Cannot access 'X' before initialization"
-- Import statement at the top of a file causes mysterious `undefined`
-
-**Phase to address:** Any structural refactoring phase. Run circular dependency check as part of the build.
+**Phase to address:** Phase 1 (Foundation). Version tracking and regeneration design are part of initial architecture.
 
 ---
 
-### Pitfall 10: Changing `better-sqlite3` Pragmas Corrupts WAL State
+### Pitfall 11: API Embedding Costs Spiral on Full Re-Index
 
 **What goes wrong:**
-During optimization, you tweak SQLite pragmas in `openDatabase()`: maybe setting `PRAGMA synchronous = OFF` for speed, or changing `PRAGMA journal_mode` from WAL to something else, or adding `PRAGMA cache_size`. Some pragma changes are safe. Others corrupt the database or change durability guarantees. Changing `journal_mode` on a database that has active WAL files can cause data loss. Setting `synchronous = OFF` means a crash during write loses data.
-
-**Why it happens:**
-The current pragmas in `database.ts` are well-chosen: `journal_mode = WAL` (concurrent reads), `foreign_keys = ON` (referential integrity), `synchronous = NORMAL` (durability with WAL). These are the recommended production settings. "Optimization" of SQLite pragmas is almost always the wrong move for a local tool -- the current settings already balance speed and safety.
+You use OpenAI `text-embedding-3-small` ($0.02/1M tokens). Initial embedding of 125K entities costs ~$2-5. Then a user runs `kb index --force` which re-indexes everything, and entity IDs change during full re-index (because `clearRepoEntities()` deletes and re-inserts). The embedding pipeline detects "new" entities and re-embeds all 125K. Every full re-index costs another $2-5. Weekly during active development: $100+/year for a local dev tool.
 
 **How to avoid:**
-1. Don't change the existing pragmas. They're correct.
-2. Safe additions: `PRAGMA cache_size = -N` (negative = KB, positive = pages) is safe to tune. Default is 2000 pages (~8MB). For a ~50-repo knowledge base, the default is fine.
-3. `PRAGMA mmap_size` can speed up reads on large databases but has no effect for small ones.
-4. If you must change a pragma, test with a populated database AND test crash recovery (kill -9 during a write, verify DB integrity on restart).
+1. **Content-hash based embedding cache.** Hash the text that was embedded. If the text hasn't changed (even if the entity ID changed), reuse the cached vector. Store: `(content_hash, model_version, vector)`.
+2. **Support local models as the default.** A local model like `CodeRankEmbed` (521MB, MIT license) has zero marginal cost. Use it as default, with OpenAI as opt-in for higher quality.
+3. **Track embedding cost.** If using an API, log token count per embedding batch and display in `kb status`.
+4. **Never re-embed unchanged text.** Compare content hashes, not entity IDs or timestamps.
 
-**Warning signs:**
-- Changes to `database.ts` pragma section
-- `synchronous = OFF` or `journal_mode = DELETE` in any code
-- SQLite ".db-wal" or ".db-shm" files growing unexpectedly
+**Phase to address:** Phase 2 (Embedding pipeline). Content-hashing must be in the initial design.
 
-**Phase to address:** Performance optimization phase. Rule: no pragma changes without explicit justification and crash recovery test.
+---
+
+### Pitfall 12: vec0 Table Can't Be Created Inside Transaction
+
+**What goes wrong:**
+SQLite virtual table creation often can't happen inside an explicit transaction. The existing migration system wraps all migrations in `db.transaction(() => { ... })`. If a migration step creates vec0 inside this transaction, it may fail silently or throw.
+
+**How to avoid:**
+Run vec0 table creation outside the migration transaction, in a separate idempotent initialization step. The existing `initializeFts()` already establishes this pattern -- it creates the FTS5 virtual table outside the migration transaction. Create `initializeVec()` that follows the identical pattern.
+
+**Phase to address:** Phase 1 (Foundation). Follow the `initializeFts()` pattern exactly.
+
+---
+
+### Pitfall 13: Entity Embedding IDs Collide Across Entity Types
+
+**What goes wrong:**
+vec0 needs integer primary keys. If you naively use entity table IDs (module.id=5, event.id=5), they collide in the vec0 table because different entity types have independent auto-increment sequences.
+
+**How to avoid:**
+Use a dedicated `entity_embeddings` mapping table as the authoritative ID source. Its auto-increment `id` becomes the vec0 primary key. The table maps `(id) -> (entity_type, source_entity_id, content_hash, model_version)`. Never use source table IDs directly in vec0.
+
+**Phase to address:** Phase 1 (Foundation). Part of the embedding schema design.
+
+---
+
+### Pitfall 14: Embedding Model Download Blocks First-Time Use
+
+**What goes wrong:**
+If using a local model, first `kb embed` triggers an 80-500MB model download. If the user is offline, on a slow connection, or doesn't expect it, the command appears hung or fails.
+
+**How to avoid:**
+1. Print clear progress: "Downloading embedding model (Xmb, one-time)..."
+2. Set a timeout on the download
+3. If download fails, abort with a clear error, not a cryptic exception
+4. Support `KB_SKIP_EMBEDDINGS=1` env var for CI/testing
+5. Consider a `kb setup` command that pre-downloads the model
+
+**Phase to address:** Phase 2 (Embedding pipeline). UX consideration during model integration.
 
 ---
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems during refactoring.
-
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `as EntityType` type assertions throughout search/text.ts | Avoids type narrowing boilerplate | Runtime errors if FTS returns unexpected strings; TypeScript can't catch mismatches | Never in new code; refactoring should replace with runtime validation |
-| `as { id: number } \| undefined` casts on DB query results | Avoids defining row types | Silent shape mismatches if columns change; no autocomplete | Only in test helpers, not production code |
-| Separate `indexSingleRepo` and `extractRepoData` | Correct parallel/serial behavior | 300 lines of duplication; bugs fixed in one may not be fixed in the other | Acceptable -- the duplication is intentional for isolation |
-| Loop-based FTS cleanup in `clearRepoEntities` | Simple, correct | O(N) individual DELETE statements per entity | Acceptable for now; optimize with batch DELETE when N > 1000 |
-| Polymorphic `edges` table without FK constraints | Flexible graph model | No cascading deletes; dangling edges require manual cleanup | Acceptable for v1.x; consider typed edge tables in v2.0 |
+| Embedding all entities at once on first run | Simple one-shot pipeline | 10+ minute blocking operation; bad first-run experience | Only for local models with progress bar; never for API models |
+| Storing vectors in the main database file | Single file, simple deployment | Database file doubles in size; backups take longer; WAL checkpoints slower | Acceptable at 384 dims; unacceptable at 768+ dims |
+| Using OpenAI API as the only embedding provider | Highest quality, simplest integration | Vendor lock-in; costs money; requires internet; fails offline | Only as opt-in, never default; local model must be default |
+| Skipping content-hash dedup for vectors | Simpler embedding pipeline | Re-embeds unchanged content on every force re-index; wastes money/time | Only in initial prototype; must add before shipping |
+| Hardcoding CODEOWNERS file locations | Covers 95% of repos | Misses non-standard locations | Acceptable if checking `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS` |
+| Regex-only topology extraction | Works for well-structured codebases | Misses dynamic routing, config-driven connections, env-var URLs | Acceptable if confidence levels are surfaced; combine with `kb learn` for gaps |
+| Separate `kb embed` command instead of auto-embedding | Simpler architecture; user controls when to embed | Extra manual step; vectors can become stale | Correct for v2.0 -- auto-embedding is v2.1 optimization |
 
 ## Integration Gotchas
 
-Common mistakes when refactoring code that connects to external systems.
-
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| MCP SDK (`@modelcontextprotocol/sdk`) | Upgrading SDK version during refactoring; new SDK may change `server.tool()` registration API or response format | Pin SDK version during hardening; upgrade as a separate, dedicated task |
-| `better-sqlite3` | Upgrading major version; bundled SQLite version changes can affect FTS5 behavior or pragma semantics | Pin to current `^12.0.0`; if upgrading, re-run full test suite AND test with production database |
-| `commander.js` | Renaming commands or options for "consistency"; breaks any scripts that call `kb` | CLI command names and option flags are frozen. Add aliases, don't rename |
-| Git plumbing (`execSync`) | Refactoring git calls to use a library (simple-git, isomorphic-git); different error handling, different encoding of paths with special characters | Keep `execSync` + git plumbing commands; they're tested against 50 real repos |
-| `p-limit` for concurrency | Replacing with native `Promise.allSettled` for "fewer dependencies"; loses the concurrency limit behavior | Keep p-limit; it does exactly one thing well |
+| sqlite-vec + better-sqlite3 | Loading extension after schema initialization; vec0 creation fails | Load extension immediately after `new Database()`, before `initializeSchema()` |
+| sqlite-vec + WAL mode | vec0 inserts may hold locks longer than regular inserts | Batch vec0 inserts in transactions of 1000; test with concurrent CLI usage |
+| FTS5 + vec0 in same query | Trying to JOIN FTS5 and vec0 results in a single SQL statement | Run as two separate queries, merge in application code; virtual tables can't be joined efficiently |
+| Embedding API + Node.js | Calling embedding API synchronously or one-by-one | Use async/await with p-limit for concurrent batched API calls |
+| CODEOWNERS + git branch reads | Reading CODEOWNERS from working directory instead of git branch | Use existing `readBranchFile()` from the same branch used for extraction |
+| New topology edges + existing gRPC edges | New topology extractor duplicates edges from `insertGrpcClientEdges()` | Migrate existing gRPC edge insertion into the new topology framework; don't create a parallel system |
+| Vector dimensions + model changes | Changing embedding model (different dimensions) with existing vector data | Track model version per-embedding; rebuild vec0 table when model changes |
+| Transformer.js versions | Using deprecated `@xenova/transformers` (v2) instead of `@huggingface/transformers` (v3) | Pin to `@huggingface/transformers` ^3.x; v3 changed the package name and import paths |
 
 ## Performance Traps
 
-Patterns that look like optimizations but degrade performance.
-
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Replacing individual prepared statements with string concatenation for "batch" SQL | `SQLITE_ERROR: syntax error`; SQL injection if entity names contain quotes | Use prepared statements with `.run()` in a loop inside a transaction -- this is already fast in better-sqlite3 | Immediately on any entity with a quote in its name |
-| Adding `EXPLAIN QUERY PLAN` logging to diagnose slow queries | Doubles query execution time (EXPLAIN runs the planner); log noise obscures real issues | Profile in a separate session using `sqlite3` CLI, not in production code | At any scale |
-| Caching prepared statements in a Map to "avoid re-preparing" | Memory leak if statements are cached per unique SQL string (parameterized queries don't need this) | better-sqlite3 already caches prepared statements internally; no need for application-level caching | When statement count exceeds hundreds |
-| Moving FTS `MATCH` queries to `LIKE '%query%'` for "simpler code" | Full table scan instead of index lookup; O(N) instead of O(log N) for every search | Keep FTS5 MATCH; it exists specifically for this | At >10K entities (seconds instead of milliseconds) |
-| Adding `VACUUM` to the cleanup/maintenance flow | Blocks ALL reads and writes; rewrites the entire database file; doubles disk usage temporarily | VACUUM is almost never needed for a KB database; WAL + incremental writes keep things compact | At any scale -- VACUUM on a populated DB takes seconds and blocks everything |
+| Embedding 125K entities sequentially via API | Index takes hours; API rate limits hit | Batch 100+ texts per API call; use concurrent batches | Immediately at >1000 entities |
+| Using 768+ dimension float32 vectors with brute-force search | Query latency >200ms; database file >500MB | Use 384 dimensions or binary quantization | At 50K+ entities |
+| Running embedding inside `extractRepoData()` pipeline phase | p-limit concurrency pool blocked; other repos stall | Embedding is a separate post-persistence phase | At any entity count |
+| Full vec0 table scan on every semantic query | Embedding search slower than FTS5 | Pre-filter with FTS5, then rank top-K with vectors | At 10K+ vectors |
+| Not batching vec0 inserts in a transaction | Insert 125K vectors takes 30+ minutes | Wrap batches of 1000 inserts in a single transaction | At 1K+ vectors |
+| `VACUUM` after adding vectors | Blocks all reads/writes; rewrites entire file; doubles disk usage temporarily | WAL + incremental writes keep things compact; VACUUM is almost never needed | At any scale |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete after refactoring but are missing critical verification.
-
-- [ ] **Function rename:** All 40+ exports in `src/index.ts` still resolve -- run `tsc --noEmit` AND check the dist output
-- [ ] **Type rename:** All `as` casts in search/text.ts and writer.ts still match actual runtime values -- these bypass type checking
-- [ ] **Test refactoring:** Total assertion count is >= 388 (the pre-refactoring count) -- count `expect()` calls, not test count
-- [ ] **MCP tool schemas:** All 8 tools still register with the exact same parameter names and types -- run contract test
-- [ ] **CLI commands:** `kb search`, `kb deps`, `kb status` all produce parseable JSON with the same field names -- run integration test
-- [ ] **FTS consistency:** After refactoring, `kb index --force && kb search "booking"` returns the same results as before -- golden test
-- [ ] **Database migration:** `openDatabase` on an existing v1.1 database succeeds without errors -- test with real DB copy
-- [ ] **Module boundaries:** `npx madge --circular --extensions ts src/` returns no circular dependencies
-- [ ] **Build output:** `npm run build && npm link && kb status` works end-to-end -- catches import path issues in compiled JS
+- [ ] **sqlite-vec loading:** Extension loads on macOS ARM64 AND x86_64 AND Linux x64 -- test all target platforms
+- [ ] **Vector search quality:** Semantic search outperforms FTS5 on >50% of natural-language queries in evaluation set -- if not, the feature isn't providing value
+- [ ] **Embedding staleness:** After `kb index --force`, vectors match current entity content (content hash check) or are flagged as stale
+- [ ] **Topology completeness:** Manual verification of 10 known service connections across 5 repos -- if <70% are found, extractors need work
+- [ ] **CODEOWNERS accuracy:** Compare parser output against GitHub's actual PR review assignments for 5 PRs
+- [ ] **Hybrid search ranking:** Exact name matches rank #1 even with hybrid search enabled
+- [ ] **Graceful degradation:** When sqlite-vec is unavailable, all existing v1.2 functionality works identically -- remove extension, run full test suite
+- [ ] **Migration safety:** Opening a v2.0 database with a v1.2 binary doesn't crash -- it should ignore unknown tables
+- [ ] **Edge schema consistency:** New topology edge types documented and consistent with existing `calls_grpc`, `produces_event`, `consumes_event` types
+- [ ] **Cost tracking:** If using API embedding model, `kb status` shows total tokens embedded and estimated cost
+- [ ] **Dependency query updates:** `kb deps` returns new topology edge types, not just existing event/gRPC edges
 
 ## Recovery Strategies
 
-When pitfalls occur despite prevention, how to recover.
-
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Broken MCP tool contract | MEDIUM | Revert the tool schema change; update any cached tool descriptions in MCP clients by reconnecting |
-| Orphaned FTS entries after refactoring | LOW | `kb index --force` rebuilds everything; 10 minutes for 50 repos |
-| Circular dependency at runtime | LOW | Revert the file extraction; restore original module structure |
-| Silent search regression from tokenizer change | MEDIUM | Revert tokenizer; `DELETE FROM knowledge_fts`; `kb index --force` to rebuild FTS |
-| Database corruption from pragma change | HIGH | Restore from `~/.kb/knowledge.db` backup (if exists); otherwise `rm ~/.kb/knowledge.db && kb index --force` |
-| Public API rename breaks consumers | LOW | Re-export old name as alias; notify consumers |
-| Test coverage drop | MEDIUM | `git diff` the test files; manually re-add removed assertions; run coverage comparison |
-| Quick win that became a rewrite | MEDIUM | `git stash` the work; create a proper milestone for it; return to the quick-win scope |
+| sqlite-vec extension won't load | LOW | Fall back to FTS5-only search; no data loss; investigate platform binary |
+| Vector data corrupted by sqlite-vec upgrade | LOW | Drop vec0 table; re-run `kb embed`; entity data unaffected |
+| Embeddings are low quality | MEDIUM | Change preprocessing; change model; re-run `kb embed`; update model version in meta |
+| Topology edges wrong/incomplete | LOW | Re-run `kb index --force`; topology edges regenerated on every index |
+| CODEOWNERS parser wrong results | LOW | Fix parser; re-run `kb index --force`; ownership data regenerated |
+| Database file too large from vectors | MEDIUM | Reduce dimensions; use quantization; or move vec0 to separate db file |
+| Embedding costs too high | LOW | Switch to local model; re-embed; entity data unaffected |
+| Schema migration fails on upgrade | HIGH | Backup database before upgrade; restore backup; fix migration code |
+| Hybrid search ranking worse than FTS5 alone | LOW | Disable vector component via `--no-semantic`; FTS5 continues working |
+| Embedding pipeline blocks indexing | LOW | Move embedding to separate `kb embed` command; `kb index` stays fast |
 
 ## Pitfall-to-Phase Mapping
 
-How roadmap phases should address these pitfalls.
-
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Pipeline duplication consolidation (#1) | Code review phase | Document intent; don't consolidate unless shared helper is pure |
-| MCP tool contract breakage (#2) | Pre-refactoring setup | Contract tests exist and pass; run before and after every change |
-| Public API rename (#3) | Pre-refactoring setup | API snapshot test exists; export count stable |
-| Schema migration risks (#4) | Database optimization phase | Test migration on copy of production DB; no table rebuilds |
-| FTS search quality regression (#5) | Search optimization phase | Golden test with fixed entities/queries; no tokenizer changes without FTS rebuild |
-| Test coverage reduction (#6) | Every phase | Assertion count monotonically increasing; coverage report comparison |
-| CLI output format changes (#7) | CLI refactoring phase | JSON structure snapshot tests; integration tests for piped output |
-| Quick win scope creep (#8) | Performance optimization phase | 2-hour time box per optimization; explicit before/after metrics |
-| Circular dependencies (#9) | Structural refactoring phase | `madge --circular` in CI; import graph stays unidirectional |
-| Pragma corruption (#10) | Performance optimization phase | No pragma changes; crash recovery test if unavoidable |
+| sqlite-vec ARM64 loading (#1) | Phase 1 (Foundation) | Smoke test passes on macOS ARM64 with `vec_version()` |
+| Dimension/size blowup (#2) | Phase 1 (Foundation) | 1K entity benchmark; extrapolate; database growth <200MB target |
+| Embedding quality for code (#3) | Phase 1-2 (Embedding) | 20-query evaluation set; semantic outperforms FTS5 on >50% of NL queries |
+| Schema migration + vec0 (#4) | Phase 1 (Foundation) | `openDatabase()` succeeds on both fresh and existing v1.2 databases |
+| Topology regex accuracy (#5) | Phase 2-3 (Topology) | Manual check 10 known connections; >70% detection rate |
+| CODEOWNERS glob semantics (#6) | Phase 2 (CODEOWNERS) | Real CODEOWNERS files test suite; matches GitHub behavior |
+| Breaking edge semantics (#7) | Phase 2 (Topology) | `kb deps` returns new topology types; integration test |
+| Embedding blocks indexing (#8) | Phase 2 (Embedding) | `kb index --force` completes in <10 min (same as v1.2) |
+| Hybrid ranking confusion (#9) | Phase 3 (Search) | Exact matches always rank #1; RRF tested |
+| sqlite-vec breaking changes (#10) | Phase 1 (Foundation) | Version stored in DB; mismatch detected; re-embed pathway works |
+| API cost spiral (#11) | Phase 2 (Embedding) | Content-hash dedup; second `kb embed` on unchanged data takes <10s |
+| vec0 in transaction (#12) | Phase 1 (Foundation) | `initializeVec()` follows `initializeFts()` pattern |
+| Entity ID collision (#13) | Phase 1 (Foundation) | `entity_embeddings` mapping table with own auto-increment |
+| Model download blocks UX (#14) | Phase 2 (Embedding) | Progress bar; timeout; graceful failure |
 
 ## Sources
 
-- Direct codebase analysis of `src/indexer/pipeline.ts`, `src/indexer/writer.ts`, `src/db/fts.ts`, `src/db/database.ts`, `src/db/migrations.ts`, `src/mcp/server.ts`, `src/mcp/tools/search.ts`, `src/index.ts`, `src/types/entities.ts`, `src/search/types.ts` (HIGH confidence)
-- [SQLite ALTER TABLE limitations](https://sqlite.org/lang_altertable.html) - Schema migration constraints (HIGH confidence)
-- [SQLite FTS5 documentation](https://sqlite.org/fts5.html) - Tokenization consistency requirements (HIGH confidence)
-- [SQLite FTS5 performance regression in 3.51.0](https://sqlite.org/forum/info/226c412cdc7ce538e3bc0f6e94cffc230255aa05447d0be4f9f9429c5f7e9a62) - FTS optimization risks (HIGH confidence)
-- [better-sqlite3 threading documentation](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/threads.md) - Connection and pragma safety (HIGH confidence)
-- [MCP specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) - Tool contract stability expectations (HIGH confidence)
-- [Avoiding scope creep during refactoring](https://andreigridnev.com/blog/2019-01-20-four-tips-to-avoid-scope-creep-during-refactoring/) - Scope management patterns (MEDIUM confidence)
-- [Test coverage of impacted code elements for detecting refactoring faults](https://www.sciencedirect.com/science/article/abs/pii/S0164121216000388) - Refactoring-specific test coverage research (MEDIUM confidence)
-- [FTS5 performance tuning pitfalls](https://www.slingacademy.com/article/full-text-search-performance-tuning-avoiding-pitfalls-in-sqlite/) - FTS optimization anti-patterns (MEDIUM confidence)
+- [sqlite-vec GitHub repository](https://github.com/asg017/sqlite-vec) - Pre-v1 status, brute-force only, breaking changes warning (HIGH confidence)
+- [sqlite-vec v0.1.0 stable release blog](https://alexgarcia.xyz/blog/2024/sqlite-vec-stable-release/index.html) - Performance benchmarks, binary quantization, dimension scaling (HIGH confidence)
+- [sqlite-vec Node.js documentation](https://alexgarcia.xyz/sqlite-vec/js.html) - better-sqlite3 integration API, Float32Array usage (HIGH confidence)
+- [sqlite-vec-darwin-arm64 npm](https://www.npmjs.com/package/sqlite-vec-darwin-arm64) - v0.1.7-alpha.2 prebuilt ARM64 binary (HIGH confidence)
+- [sqlite-vec macOS ARM64 issue #189](https://github.com/asg017/sqlite-vec/issues/189) - dlopen errors, DYLD_LIBRARY_PATH workaround (HIGH confidence)
+- [@dao-xyz/sqlite3-vec npm](https://www.npmjs.com/package/@dao-xyz/sqlite3-vec) - Alternative wrapper, auto-loads prebuilt extension (MEDIUM confidence)
+- [6 Best Code Embedding Models Compared](https://modal.com/blog/6-best-code-embedding-models-compared) - VoyageCode3, CodeRankEmbed, Jina Code V2 comparison (MEDIUM confidence)
+- [Nomic Embed Code on Hugging Face](https://huggingface.co/nomic-ai/nomic-embed-code) - 768 dimensions, code retrieval (MEDIUM confidence)
+- [GitHub CODEOWNERS documentation](https://docs.github.com/articles/about-code-owners) - Pattern rules, last-match-wins, file locations (HIGH confidence)
+- [Understanding GitHub CODEOWNERS (Graphite)](https://graphite.com/guides/in-depth-guide-github-codeowners) - Edge cases, differences from gitignore (MEDIUM confidence)
+- [Incorrect nested match rules - codeowners #15](https://github.com/beaugunderson/codeowners/issues/15) - Parser bugs in npm library (HIGH confidence)
+- [OpenAI Embedding API pricing](https://developers.openai.com/api/docs/pricing) - $0.02/1M tokens for text-embedding-3-small (HIGH confidence)
+- [better-sqlite3 API docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md) - loadExtension API (HIGH confidence)
+- [Transformers.js v3 migration](https://huggingface.co/blog/transformersjs-v3) - Package rename from @xenova/transformers (MEDIUM confidence)
+- Direct codebase analysis: `src/db/database.ts`, `src/db/schema.ts`, `src/db/migrations.ts`, `src/db/fts.ts`, `src/db/tokenizer.ts`, `src/indexer/pipeline.ts`, `src/indexer/writer.ts`, `src/indexer/elixir.ts`, `src/search/dependencies.ts`, `package.json` (HIGH confidence)
 
 ---
-*Pitfalls research for: v1.2 Hardening & Quick Wins (refactoring existing working code)*
-*Researched: 2026-03-07*
-*Supersedes: v1.1 pitfalls from 2026-03-06 (those covered feature-building risks; this covers refactoring risks)*
+*Pitfalls research for: v2.0 Design-Time Intelligence (embedding search, service topology, CODEOWNERS)*
+*Researched: 2026-03-08*
+*Supersedes: v1.2 pitfalls from 2026-03-07 (those covered refactoring risks; this covers new feature integration risks)*
