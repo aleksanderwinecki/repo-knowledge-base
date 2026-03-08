@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { loadVecExtension } from './vec.js';
 import { initializeSchema } from './schema.js';
 
 /**
@@ -23,6 +24,9 @@ export function openDatabase(dbPath: string): Database.Database {
   db.pragma('cache_size = -64000');
   db.pragma('temp_store = MEMORY');
   db.pragma('mmap_size = 268435456');
+
+  // Try loading sqlite-vec (non-fatal if unavailable)
+  loadVecExtension(db);
 
   // Initialize schema (runs migrations if needed)
   initializeSchema(db);

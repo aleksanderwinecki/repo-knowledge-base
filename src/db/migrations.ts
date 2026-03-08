@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { isVecAvailable } from './vec.js';
 
 /**
  * Get the current schema version from the database.
@@ -44,6 +45,9 @@ export function runMigrations(
     }
     if (fromVersion < 7 && toVersion >= 7) {
       migrateToV7(db);
+    }
+    if (fromVersion < 8 && toVersion >= 8) {
+      migrateToV8(db);
     }
   });
 
@@ -247,5 +251,21 @@ function migrateToV6(db: Database.Database): void {
 function migrateToV7(db: Database.Database): void {
   db.exec(`
     ALTER TABLE edges ADD COLUMN metadata TEXT;
+  `);
+}
+
+/**
+ * V8: Create vec0 virtual table for entity embeddings (vector storage + KNN).
+ * Only created when sqlite-vec extension is available; skipped otherwise.
+ */
+function migrateToV8(db: Database.Database): void {
+  if (!isVecAvailable()) return;
+
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS entity_embeddings USING vec0(
+      embedding float[256],
+      entity_type text,
+      entity_id text
+    );
   `);
 }
