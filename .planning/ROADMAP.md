@@ -109,11 +109,11 @@ Plans:
   2. `kb search "payments"` (without --semantic) combines FTS5 keyword results with vector similarity via RRF scoring for hybrid search
   3. When sqlite-vec is unavailable or embeddings have not been generated, all search commands gracefully fall back to FTS5-only with no errors
   4. `kb_semantic` MCP tool accepts natural language queries and returns semantically relevant entities for AI agent consumption
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 19-01: TBD
-- [ ] 19-02: TBD
+- [ ] 19-01-PLAN.md -- Core search functions: generateQueryEmbedding, searchSemantic (KNN), searchHybrid (RRF), withAutoSyncAsync
+- [ ] 19-02-PLAN.md -- CLI --semantic flag, hybrid default search, kb_semantic MCP tool
 
 ## Progress
 
@@ -128,4 +128,4 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 16. Topology Extraction | 3/3 | Complete    | 2026-03-08 | - |
 | 17. Topology Query Layer | 2/2 | Complete    | 2026-03-08 | - |
 | 18. Embedding Infrastructure | 2/2 | Complete    | 2026-03-08 | - |
-| 19. Semantic Search | v2.0 | 0/TBD | Not started | - |
+| 19. Semantic Search | v2.0 | 0/2 | Not started | - |
