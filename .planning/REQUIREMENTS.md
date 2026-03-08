@@ -57,26 +57,26 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOPO-01 | TBD | Pending |
-| TOPO-02 | TBD | Pending |
-| TOPO-03 | TBD | Pending |
-| TOPO-04 | TBD | Pending |
-| TOPO-05 | TBD | Pending |
-| TOPO-06 | TBD | Pending |
-| TOPO-07 | TBD | Pending |
-| SEM-01 | TBD | Pending |
-| SEM-02 | TBD | Pending |
-| SEM-03 | TBD | Pending |
-| SEM-04 | TBD | Pending |
-| SEM-05 | TBD | Pending |
-| SEM-06 | TBD | Pending |
-| SEM-07 | TBD | Pending |
+| TOPO-01 | Phase 16 | Pending |
+| TOPO-02 | Phase 16 | Pending |
+| TOPO-03 | Phase 16 | Pending |
+| TOPO-04 | Phase 16 | Pending |
+| TOPO-05 | Phase 17 | Pending |
+| TOPO-06 | Phase 17 | Pending |
+| TOPO-07 | Phase 17 | Pending |
+| SEM-01 | Phase 18 | Pending |
+| SEM-02 | Phase 18 | Pending |
+| SEM-03 | Phase 18 | Pending |
+| SEM-04 | Phase 19 | Pending |
+| SEM-05 | Phase 19 | Pending |
+| SEM-06 | Phase 19 | Pending |
+| SEM-07 | Phase 19 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14 (pending roadmap creation)
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after initial definition*
+*Last updated: 2026-03-08 after roadmap creation*
