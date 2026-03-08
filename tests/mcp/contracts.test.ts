@@ -154,15 +154,16 @@ describe('input schema contracts', () => {
     expect(getParamType('kb_entity', 'repo')).toBe('optional');
   });
 
-  it('kb_deps: name (required), direction (optional), depth (optional), repo (optional)', () => {
+  it('kb_deps: name (required), direction (optional), depth (optional), repo (optional), mechanism (optional)', () => {
     const params = getParamNames('kb_deps');
-    expect(params).toEqual(['name', 'direction', 'depth', 'repo']);
-    expect(params).toHaveLength(4);
+    expect(params).toEqual(['name', 'direction', 'depth', 'repo', 'mechanism']);
+    expect(params).toHaveLength(5);
 
     expect(getParamType('kb_deps', 'name')).toBe('string');
     expect(getParamType('kb_deps', 'direction')).toBe('optional');
     expect(getParamType('kb_deps', 'depth')).toBe('optional');
     expect(getParamType('kb_deps', 'repo')).toBe('optional');
+    expect(getParamType('kb_deps', 'mechanism')).toBe('optional');
   });
 
   it('kb_learn: content (required), repo (optional)', () => {
