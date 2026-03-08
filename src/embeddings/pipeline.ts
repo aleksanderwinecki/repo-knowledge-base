@@ -24,7 +24,7 @@ export async function getEmbeddingPipeline(): Promise<FeatureExtractionPipeline>
     console.log('Downloading embedding model (first run only)...');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extractor = (await (pipeline as any)('feature-extraction', MODEL_ID, {
-      dtype: 'fp32',
+      dtype: 'q8',
     })) as FeatureExtractionPipeline;
   }
   return extractor;

@@ -24,6 +24,7 @@ import { generateAllEmbeddings } from '../embeddings/generate.js';
 export interface IndexOptions {
   force: boolean;
   rootDir: string;
+  embed?: boolean;
 }
 
 /** Stats for a single repo index operation */
@@ -417,7 +418,7 @@ export async function indexAllRepos(
   }
 
   // === Phase 4: Embedding generation (async, after all persistence) ===
-  if (success > 0 && isVecAvailable()) {
+  if (success > 0 && options.embed && isVecAvailable()) {
     try {
       const startMs = Date.now();
       const embeddingCount = await generateAllEmbeddings(db, options.force);

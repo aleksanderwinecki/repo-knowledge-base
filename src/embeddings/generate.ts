@@ -5,7 +5,7 @@ import type { EmbeddingEntity } from './text.js';
 import { generateEmbeddingsBatch } from './pipeline.js';
 
 /** Number of entities to embed in one batch */
-const CHUNK_SIZE = 32;
+const CHUNK_SIZE = 256;
 
 /** Entity types and their DB table/column mappings for querying */
 const ENTITY_QUERIES = [

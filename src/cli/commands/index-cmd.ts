@@ -21,11 +21,12 @@ export function registerIndex(program: Command) {
       path.join(os.homedir(), 'Documents', 'Repos'),
     )
     .option('--force', 'force re-index all repos', false)
+    .option('--embed', 'generate vector embeddings after indexing', false)
     .option('--timing', 'report timing to stderr', false)
     .action(async (opts) => {
       const results = await withDbAsync(async (db) =>
         withTimingAsync('index-all', () =>
-          indexAllRepos(db, { rootDir: opts.root, force: opts.force }),
+          indexAllRepos(db, { rootDir: opts.root, force: opts.force, embed: opts.embed }),
         ),
       );
       output(results);
