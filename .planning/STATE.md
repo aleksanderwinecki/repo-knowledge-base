@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-08T11:23:30Z"
-last_activity: 2026-03-08 — Completed 16-01 topology extractors (gRPC, HTTP, Kafka) + V7 migration
+stopped_at: Completed 16-03-PLAN.md (Phase 16 complete)
+last_updated: "2026-03-08T11:30:31Z"
+last_activity: 2026-03-08 — Completed 16-03 topology pipeline integration
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -25,19 +25,20 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 ## Current Position
 
-Phase: 16 of 19 (Topology Extraction)
-Plan: 16-01 and 16-02 complete, 16-03 pending
-Status: Executing
-Last activity: 2026-03-08 — Completed 16-01 topology extractors + V7 migration
+Phase: 16 of 19 (Topology Extraction) -- COMPLETE
+Plan: All 3 plans complete (16-01, 16-02, 16-03)
+Status: Phase Complete
+Last activity: 2026-03-08 — Completed 16-03 topology pipeline integration
 
-Progress: [██████░░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 2
+- v2.0 plans completed: 3
 - 16-01: 5min (2 tasks, 10 files)
+- 16-03: 4min (2 tasks, 4 files)
 
 ## Accumulated Context
 
@@ -56,6 +57,9 @@ Recent decisions affecting current work:
 - HTTP edges all confidence "low" -- Fresha uses gRPC/Kafka for inter-service
 - Kafka produces_kafka/consumes_kafka complementary to proto-based event edges
 - Gateway confidence set to 'medium' (limited sample repos)
+- Topology target resolution: exact repo match -> LIKE -> service short name -> unresolved placeholder
+- Unresolved targets stored with target_type 'service_name' for future resolution
+- Old insertGrpcClientEdges fully replaced by topology framework
 
 ### Pending Todos
 
@@ -69,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T11:23:30Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-03-08T11:30:31Z
+Stopped at: Completed 16-03-PLAN.md (Phase 16 complete)
 Resume file: None
