@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: ready_to_plan
-stopped_at: Roadmap created for v2.0, ready to plan Phase 16
-last_updated: "2026-03-08"
-last_activity: 2026-03-08 -- Roadmap created with 4 phases (16-19)
+status: executing
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-03-08T11:21:45.402Z"
+last_activity: 2026-03-08 — Completed 16-02 gateway routing extractor
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 1
+  percent: 83
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 16 of 19 (Topology Extraction)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-08 — Roadmap created for v2.0 Design-Time Intelligence
+Plan: 16-02 complete (16-01 in progress, 16-03 pending)
+Status: Executing
+Last activity: 2026-03-08 — Completed 16-02 gateway routing extractor
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 0
+- v2.0 plans completed: 2
 
 ## Accumulated Context
 
@@ -50,6 +50,8 @@ Recent decisions affecting current work:
 - V7 migration for topology (edges.metadata), V8 for embeddings (vec0, conditional on sqlite-vec)
 - Embeddings run as post-persistence Phase 4 step, not inside extractors
 - Gateway routing is TypeScript (compose/services/*.ts), not Elixir
+- Gateway extractor regex tolerates whitespace variations in describe() pattern
+- Gateway confidence set to 'medium' (limited sample repos)
 
 ### Pending Todos
 
@@ -58,11 +60,11 @@ None.
 ### Blockers/Concerns
 
 - sqlite-vec macOS ARM64 compatibility untested — blocks Phase 18 embedding storage
-- Gateway config format unknown until real repos inspected — may narrow TOPO-03 scope
+- Gateway config format confirmed (compose/services/*.ts describe()) — TOPO-03 resolved
 - Transformers.js ESM compatibility with project's "type": "module" needs validation
 
 ## Session Continuity
 
-Last session: 2026-03-08
-Stopped at: Roadmap created, ready to plan Phase 16
+Last session: 2026-03-08T11:21:45.400Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None

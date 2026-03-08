@@ -11,7 +11,7 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 - [ ] **TOPO-01**: gRPC client/server call extraction across all repos (proto imports, service stubs)
 - [ ] **TOPO-02**: HTTP client module extraction (Tesla/HTTPoison base_url, endpoint patterns)
-- [ ] **TOPO-03**: Gateway routing config extraction (compose/services definitions, schema sources)
+- [x] **TOPO-03**: Gateway routing config extraction (compose/services definitions, schema sources)
 - [ ] **TOPO-04**: Kafka producer/consumer wiring extraction (topic names, handler modules)
 - [ ] **TOPO-05**: Dependency query generalization — traverse all edge types (gRPC, HTTP, gateway, Kafka), not just events
 - [ ] **TOPO-06**: `--mechanism` filter on `kb deps` to filter by communication type (grpc, http, kafka, event, gateway)
@@ -59,7 +59,7 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 |-------------|-------|--------|
 | TOPO-01 | Phase 16 | Pending |
 | TOPO-02 | Phase 16 | Pending |
-| TOPO-03 | Phase 16 | Pending |
+| TOPO-03 | Phase 16 | Complete |
 | TOPO-04 | Phase 16 | Pending |
 | TOPO-05 | Phase 17 | Pending |
 | TOPO-06 | Phase 17 | Pending |
