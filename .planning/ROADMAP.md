@@ -97,11 +97,12 @@ Plans:
   2. Results can be filtered by mechanism (grpc, http, kafka, event, gateway) and capped by depth (default 3)
   3. Each affected service is classified as direct, indirect, or transitive with an aggregated stats block including blast radius score
   4. Response for hub nodes (300+ affected services) fits within the 4KB MCP response cap using compact formatting
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 24-01: TBD
-- [ ] 24-02: TBD
+- [ ] 24-01-PLAN.md -- bfsUpstream traversal primitive with mechanism filtering (TDD)
+- [ ] 24-02-PLAN.md -- Impact analysis module with tier classification, stats, and compact formatter (TDD)
+- [ ] 24-03-PLAN.md -- MCP tool and CLI command registration with tests
 
 ### Phase 25: Flow Tracing
 **Goal**: Agents can trace the path a request takes between any two services
@@ -141,6 +142,6 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23. Graph Infrastructure | 2/2 | Complete    | 2026-03-09 | - |
-| 24. Blast Radius | v3.0 | 0/? | Not started | - |
+| 24. Blast Radius | v3.0 | 0/3 | Planned | - |
 | 25. Flow Tracing | v3.0 | 0/? | Not started | - |
 | 26. Service Explanation | v3.0 | 0/? | Not started | - |
