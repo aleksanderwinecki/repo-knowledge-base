@@ -103,7 +103,7 @@ export function traceRoute(
  */
 function buildPathSummary(hops: TraceHop[]): string {
   if (hops.length === 0) return '';
-  let result = hops[0].from;
+  let result = hops[0]!.from;
   for (const hop of hops) {
     const label = hop.via ? `${hop.mechanism}: ${hop.via}` : hop.mechanism;
     result += ` -[${label}]-> ${hop.to}`;
