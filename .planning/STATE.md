@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
 status: active
-stopped_at: Defining requirements
-last_updated: "2026-03-09T12:00:00.000Z"
-last_activity: 2026-03-09 — Milestone v3.0 started
+stopped_at: Roadmap created
+last_updated: "2026-03-09T13:00:00.000Z"
+last_activity: 2026-03-09 — Roadmap created for v3.0
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v3.0 Graph Intelligence — defining requirements
+**Current focus:** v3.0 Graph Intelligence — Phase 23: Graph Infrastructure
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 23 of 26 (Graph Infrastructure)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-09 — Milestone v3.0 started
+Status: Ready to plan
+Last activity: 2026-03-09 — Roadmap created for v3.0 (4 phases, 21 requirements)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -44,9 +44,11 @@ Progress: [░░░░░░░░░░] 0%
 See PROJECT.md Key Decisions table for full log.
 
 Recent decisions affecting current work:
-- SQLite recursive CTEs for graph traversal (no Neo4j) — graph is ~12K edges, SQLite handles this in <50ms
-- Three new MCP tools: kb_impact, kb_trace, kb_explain
-- Agent-first design — optimized for MCP consumption, not human reading
+- JS BFS is 200-1000x faster than SQLite recursive CTEs — SQL loads edges, JS traverses
+- Graph module (`src/search/graph.ts`) is the only new architectural component
+- kb_explain is independent of graph module — pure SQL aggregation
+- Extract shared edge utilities from dependencies.ts before building graph module
+- Compact response format for hub nodes (flat list + stats, not generic halving)
 
 ### Pending Todos
 
@@ -59,5 +61,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-09
-Stopped at: Defining requirements
+Stopped at: Roadmap created, ready to plan Phase 23
 Resume file: None
