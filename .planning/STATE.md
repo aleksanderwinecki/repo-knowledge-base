@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
-status: completed
-stopped_at: Phase 26 context gathered
-last_updated: "2026-03-09T16:21:17.580Z"
-last_activity: 2026-03-09 — Completed Plan 02 (MCP & CLI Wiring)
+status: in-progress
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-03-09T16:36:13Z"
+last_activity: 2026-03-09 — Completed Plan 01 (Core Explain Module)
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 9
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,21 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v3.0 Graph Intelligence — Phase 25: Flow Tracing
+**Current focus:** v3.0 Graph Intelligence — Phase 26: Service Explanation
 
 ## Current Position
 
-Phase: 25 of 26 (Flow Tracing)
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-03-09 — Completed Plan 02 (MCP & CLI Wiring)
+Phase: 26 of 26 (Service Explanation)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-03-09 — Completed Plan 01 (Core Explain Module)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 89%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 48 (across v1.0-v2.1)
+- Total plans completed: 49 (across v1.0-v2.1)
+- Phase 26 Plan 01: 4min (1 TDD task, 3 files)
 
 ## Accumulated Context
 
@@ -64,6 +65,10 @@ Recent decisions affecting current work:
 - [Phase 25]: via field conditionally included only for event/kafka mechanisms with non-null value
 - [Phase 25]: Barrel exports for trace already in place from Plan 01, no src/search/index.ts changes needed in Plan 02
 - [Phase 25]: CLI trace uses try/catch with outputError for explicit error handling
+- [Phase 26]: Short mechanism keys (grpc, http, gateway, event, kafka) for explain connection map keys
+- [Phase 26]: Static agent hints with placeholder substitution -- simpler than dynamic
+- [Phase 26]: Summary line uses pre-truncation counts for accuracy
+- [Phase 26]: Truncation trims largest mechanism groups first, keeps at least 1 per group
 
 ### Pending Todos
 
@@ -75,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T16:21:17.578Z
-Stopped at: Phase 26 context gathered
-Resume file: .planning/phases/26-service-explanation/26-CONTEXT.md
+Last session: 2026-03-09T16:36:13Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: .planning/phases/26-service-explanation/26-02-PLAN.md
