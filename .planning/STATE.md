@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
-status: completed
-stopped_at: Phase 25 context gathered
-last_updated: "2026-03-09T15:16:58.937Z"
-last_activity: 2026-03-09 — Completed Plan 03 (MCP & CLI wiring)
+status: executing
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-03-09T15:34:08.049Z"
+last_activity: 2026-03-09 — Completed Plan 01 (Core Trace Module)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_plans: 7
+  completed_plans: 6
+  percent: 96
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v3.0 Graph Intelligence — Phase 24: Blast Radius
+**Current focus:** v3.0 Graph Intelligence — Phase 25: Flow Tracing
 
 ## Current Position
 
-Phase: 24 of 26 (Blast Radius)
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-03-09 — Completed Plan 03 (MCP & CLI wiring)
+Phase: 25 of 26 (Flow Tracing)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-03-09 — Completed Plan 01 (Core Trace Module)
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -59,6 +59,9 @@ Recent decisions affecting current work:
 - [Phase 24]: Compact formatter reserves truncation budget before filling transitive entries
 - [Phase 24]: MCP tool uses compact formatter (ImpactCompact), CLI uses verbose formatter (ImpactResult)
 - [Phase 24]: withAutoSync only triggered when result has dependents to avoid unnecessary sync
+- [Phase 25]: via field conditionally included only for event/kafka mechanisms with non-null value
+- [Phase 25]: Non-null assertion for hops[0] after length guard (TS strict mode workaround)
+- [Phase 25]: via field conditionally included only for event/kafka mechanisms with non-null value
 
 ### Pending Todos
 
@@ -70,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T15:16:58.936Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-flow-tracing/25-CONTEXT.md
+Last session: 2026-03-09T15:34:04.562Z
+Stopped at: Completed 25-01-PLAN.md
+Resume file: None

@@ -27,10 +27,10 @@ Requirements for Graph Intelligence milestone. Each maps to roadmap phases.
 
 ### Flow Tracing
 
-- [ ] **TRACE-01**: Agent can find shortest path between two services via MCP tool `kb_trace` or CLI `kb trace`
-- [ ] **TRACE-02**: Response includes ordered hop list with mechanism per hop and a path_summary string
-- [ ] **TRACE-03**: Distinct error responses for "service not found" vs "no path exists"
-- [ ] **TRACE-04**: Each hop annotated with confidence level; response includes min-path confidence (weakest link)
+- [x] **TRACE-01**: Agent can find shortest path between two services via MCP tool `kb_trace` or CLI `kb trace`
+- [x] **TRACE-02**: Response includes ordered hop list with mechanism per hop and a path_summary string
+- [x] **TRACE-03**: Distinct error responses for "service not found" vs "no path exists"
+- [x] **TRACE-04**: Each hop annotated with confidence level; response includes min-path confidence (weakest link)
 
 ### Service Explanation
 
@@ -84,10 +84,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IMPACT-05 | Phase 24 | Complete |
 | IMPACT-06 | Phase 24 | Complete |
 | IMPACT-07 | Phase 24 | Complete |
-| TRACE-01 | Phase 25 | Pending |
-| TRACE-02 | Phase 25 | Pending |
-| TRACE-03 | Phase 25 | Pending |
-| TRACE-04 | Phase 25 | Pending |
+| TRACE-01 | Phase 25 | Complete |
+| TRACE-02 | Phase 25 | Complete |
+| TRACE-03 | Phase 25 | Complete |
+| TRACE-04 | Phase 25 | Complete |
 | EXPLAIN-01 | Phase 26 | Pending |
 | EXPLAIN-02 | Phase 26 | Pending |
 | EXPLAIN-03 | Phase 26 | Pending |
