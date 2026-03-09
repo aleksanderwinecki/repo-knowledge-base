@@ -49,6 +49,9 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 - [ ] Auto-learn patterns from completed tasks (INT-01)
 - [ ] Suggest relevant repos/files for feature descriptions (INT-02)
 - [ ] Cross-repo impact analysis (INT-03) — partially addressed by topology
+- [ ] Impact analysis queries over topology graph (NOM-01) — inspired by nomik.co
+- [ ] Flow tracing MCP tool across service topology (NOM-02) — inspired by nomik.co
+- [ ] Tree-sitter AST parsing for multi-language support (NOM-03) — inspired by nomik.co
 
 ### Out of Scope
 

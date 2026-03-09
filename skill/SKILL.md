@@ -7,17 +7,18 @@ allowed-tools: Bash(kb:*)
 
 # Repository Knowledge Base
 
-Query a persistent knowledge base that indexes all microservice repos. Use this to find services, modules, events, dependencies, and learned facts without re-scanning repos.
+Query a persistent knowledge base that indexes 400+ microservice repos. Use this to find services, modules, events, dependencies, topology edges, and learned facts without re-scanning repos.
 
 ## Arguments
 
 `$ARGUMENTS` is interpreted as follows:
 
 - **A search query** (default): `booking cancellation`, `PaymentProcessed`, `checkout flow`
-- **`deps <name>`**: Show service dependencies — `deps app-auth`, `deps payments-service`
-- **`entity <name>`**: Structured entity card — `entity BookingCreated`, `entity ShedulAPI.Calendar.Booking`
-- **`learn <fact>`**: Teach a new fact — `learn "payments owns billing" --repo payments-service`
+- **`deps <name>`**: Show service dependencies — `deps app-auth`, `deps app-payments`
+- **`entity <name>`**: Structured entity card — `entity BookingCreated`, `entity Resources.Schemas.Resource`
+- **`learn <fact>`**: Teach a new fact — `learn "payments owns billing" --repo app-payments`
 - **`status`**: Show database stats
+- **`index --repo <names...>`**: Re-index specific repos — `index --repo app-resources --refresh`
 - **`index`**: Re-index all repos (use `index --force` to force full re-index)
 
 ## Execution
@@ -29,14 +30,22 @@ Parse `$ARGUMENTS` and run the appropriate `kb` command:
 kb search "$ARGUMENTS"
 ```
 
-If results seem too broad, try adding `--repo <name>` or `--type module|event`.
-For granular filtering, use sub-types: `--type schema`, `--type grpc`, `--type graphql_query`.
-To discover available types: `kb search --list-types`.
+Refine results with:
+- `--repo <name>` — filter by repo
+- `--type <type>` — filter by type: coarse (`repo`, `module`, `event`, `service`) or sub-type (`schema`, `context`, `graphql_query`, `grpc`, etc.)
+- `--entity` — structured entity card with relationships
+- `--semantic` — pure vector similarity search (requires embeddings)
+- `--list-types` — discover available entity types with counts
+- `--limit <n>` — max results (default 20)
 
 ### Dependencies
 ```bash
 kb deps "<entity_name>"
 ```
+
+Options:
+- `--mechanism <type>` — filter by communication type: `grpc`, `http`, `gateway`, `kafka`, `event`
+- `--direction <dir>` — `upstream` (default) or `downstream`
 
 ### Entity lookup
 ```bash
@@ -48,6 +57,14 @@ kb search "$ENTITY_NAME" --entity
 kb learn "$FACT_TEXT" [--repo <name>]
 ```
 
+### Index (targeted)
+```bash
+kb index --repo <names...> [--refresh] [--force]
+```
+- `--repo <names...>` — specific repos to reindex (space-separated)
+- `--refresh` — git fetch + reset to latest on default branch before indexing
+- `--force` — force re-index even if no new commits
+
 ### Status
 ```bash
 kb status
@@ -58,7 +75,7 @@ kb status
 All output is JSON. Key fields:
 
 **Search results** — array of matches:
-- `entityType`: module, event, learned_fact
+- `entityType`: module, event, service, repo, learned_fact
 - `name`: entity name
 - `repoName`: which repo it belongs to
 - `filePath`: file where it was found
@@ -68,17 +85,20 @@ All output is JSON. Key fields:
 - `name`, `type`, `repoName`, `filePath`, `description`
 - `relationships[]`: incoming/outgoing edges with direction, type, target
 
-**Dependencies** — graph neighbors:
+**Dependencies** — topology graph:
 - `entity`: the queried service
-- `dependencies[]`: connected services with mechanism (Kafka, etc.) and path
+- `dependencies[]`: connected services with `mechanism` (gRPC, HTTP, Kafka, gateway, event), `confidence` (high/medium/low), and `path`
 
 ## When to use this skill
 
 - "Which service handles X?" → `kb search "X"`
 - "What does service Y depend on?" → `kb deps Y`
+- "What gRPC services does Y call?" → `kb deps Y --mechanism grpc`
 - "What is BookingCreated?" → `kb search "BookingCreated" --entity`
 - "What modules exist for billing?" → `kb search "billing" --type module`
+- "What GraphQL types exist?" → `kb search --list-types`
 - "Remember that X does Y" → `kb learn "X does Y" --repo X`
+- "Reindex app-resources with latest code" → `kb index --repo app-resources --refresh`
 
 ## Prerequisites
 
