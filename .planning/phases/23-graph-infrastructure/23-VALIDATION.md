@@ -2,8 +2,8 @@
 phase: 23
 slug: graph-infrastructure
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-09
 ---
 
@@ -40,11 +40,9 @@ created: 2026-03-09
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
 | 23-01-01 | 01 | 1 | GRAPH-05 | unit | `npx vitest run tests/search/edge-utils.test.ts` | Wave 0 | pending |
 | 23-01-02 | 01 | 1 | GRAPH-05 | regression | `npx vitest run tests/search/dependencies.test.ts` | Exists | pending |
-| 23-02-01 | 02 | 1 | GRAPH-01 | unit | `npx vitest run tests/search/graph.test.ts -t "buildGraph"` | Wave 0 | pending |
-| 23-02-02 | 02 | 1 | GRAPH-01 | unit | `npx vitest run tests/search/graph.test.ts -t "performance"` | Wave 0 | pending |
-| 23-02-03 | 02 | 1 | GRAPH-02 | unit | `npx vitest run tests/search/graph.test.ts -t "bfsDownstream"` | Wave 0 | pending |
-| 23-02-04 | 02 | 1 | GRAPH-03 | unit | `npx vitest run tests/search/graph.test.ts -t "shortestPath"` | Wave 0 | pending |
-| 23-02-05 | 02 | 1 | GRAPH-04 | unit | `npx vitest run tests/search/graph.test.ts -t "event\|kafka"` | Wave 0 | pending |
+| 23-02-01 | 02 | 2 | GRAPH-01, GRAPH-04 | unit (RED) | `npx vitest run tests/search/graph.test.ts 2>&1 \| tail -5 \| grep -q "FAIL"` | Wave 0 | pending |
+| 23-02-02 | 02 | 2 | GRAPH-01, GRAPH-02, GRAPH-03, GRAPH-04 | unit (GREEN) | `npx vitest run tests/search/graph.test.ts` | Task 1 creates | pending |
+| 23-02-03 | 02 | 2 | GRAPH-01, GRAPH-02, GRAPH-03, GRAPH-04 | regression | `npm run build && npx vitest run` | Exists | pending |
 
 *Status: pending / green / red / flaky*
 
@@ -52,8 +50,8 @@ created: 2026-03-09
 
 ## Wave 0 Requirements
 
-- [ ] `tests/search/graph.test.ts` — stubs for GRAPH-01 through GRAPH-04
-- [ ] `tests/search/edge-utils.test.ts` — stubs for GRAPH-05
+- [x] `tests/search/graph.test.ts` — created in Plan 02 Task 1 (RED phase, TDD)
+- [ ] `tests/search/edge-utils.test.ts` — created in Plan 01 Task 1 (TDD)
 
 *Existing `tests/search/dependencies.test.ts` covers regression safety for the refactor.*
 
@@ -67,11 +65,11 @@ created: 2026-03-09
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 8s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 8s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved
