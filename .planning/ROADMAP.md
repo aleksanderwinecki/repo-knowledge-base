@@ -66,7 +66,7 @@
 ### v3.0 Graph Intelligence (Phases 23-26)
 
 - [x] **Phase 23: Graph Infrastructure** - Shared edge utilities and in-memory graph module with BFS primitives (completed 2026-03-09)
-- [ ] **Phase 24: Blast Radius** - kb_impact MCP tool and CLI for downstream impact analysis
+- [x] **Phase 24: Blast Radius** - kb_impact MCP tool and CLI for downstream impact analysis (completed 2026-03-09)
 - [ ] **Phase 25: Flow Tracing** - kb_trace MCP tool and CLI for shortest-path queries between services
 - [ ] **Phase 26: Service Explanation** - kb_explain MCP tool and CLI for structured service summary cards
 
@@ -142,6 +142,6 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23. Graph Infrastructure | 2/2 | Complete    | 2026-03-09 | - |
-| 24. Blast Radius | 2/3 | In Progress|  | - |
+| 24. Blast Radius | 3/3 | Complete   | 2026-03-09 | - |
 | 25. Flow Tracing | v3.0 | 0/? | Not started | - |
 | 26. Service Explanation | v3.0 | 0/? | Not started | - |
