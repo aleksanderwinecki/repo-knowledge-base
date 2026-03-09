@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
 status: executing
-stopped_at: Completed 23-01-PLAN.md
-last_updated: "2026-03-09T13:20:30.088Z"
-last_activity: 2026-03-09 — Completed Plan 01 (edge-utils extraction)
+stopped_at: Completed 23-02-PLAN.md
+last_updated: "2026-03-09T13:26:32.090Z"
+last_activity: 2026-03-09 — Completed Plan 02 (graph module)
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
   percent: 95
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 23 of 26 (Graph Infrastructure)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-09 — Completed Plan 01 (edge-utils extraction)
+Phase: 23 of 26 (Graph Infrastructure) -- COMPLETE
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-03-09 — Completed Plan 02 (graph module)
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -50,6 +50,8 @@ Recent decisions affecting current work:
 - Extract shared edge utilities from dependencies.ts before building graph module
 - Compact response format for hub nodes (flat list + stats, not generic halving)
 - [Phase 23]: Re-export VALID_MECHANISMS from both edge-utils.ts and dependencies.ts for backward compatibility
+- [Phase 23]: bfsDownstream uses forward adjacency — downstream means repos reachable via outgoing call edges
+- [Phase 23]: Graph mechanism labels use normalized short forms (grpc, http, gateway, event, kafka)
 
 ### Pending Todos
 
@@ -61,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T13:20:30.086Z
-Stopped at: Completed 23-01-PLAN.md
+Last session: 2026-03-09T13:26:32.088Z
+Stopped at: Completed 23-02-PLAN.md
 Resume file: None

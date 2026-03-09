@@ -9,10 +9,10 @@ Requirements for Graph Intelligence milestone. Each maps to roadmap phases.
 
 ### Graph Infrastructure
 
-- [ ] **GRAPH-01**: Graph module builds in-memory forward and reverse adjacency lists from a single bulk SQL query
-- [ ] **GRAPH-02**: BFS downstream traversal returns all reachable nodes with depth tracking
-- [ ] **GRAPH-03**: Shortest path returns ordered hop list between any two services
-- [ ] **GRAPH-04**: Event/Kafka intermediate nodes are resolved transparently (two-hop repo->event->repo collapsed to single logical edge)
+- [x] **GRAPH-01**: Graph module builds in-memory forward and reverse adjacency lists from a single bulk SQL query
+- [x] **GRAPH-02**: BFS downstream traversal returns all reachable nodes with depth tracking
+- [x] **GRAPH-03**: Shortest path returns ordered hop list between any two services
+- [x] **GRAPH-04**: Event/Kafka intermediate nodes are resolved transparently (two-hop repo->event->repo collapsed to single logical edge)
 - [x] **GRAPH-05**: Shared edge utilities (confidence extraction, mechanism formatting, metadata parsing) extracted from dependencies.ts into reusable module
 
 ### Impact Analysis
@@ -72,10 +72,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRAPH-01 | Phase 23 | Pending |
-| GRAPH-02 | Phase 23 | Pending |
-| GRAPH-03 | Phase 23 | Pending |
-| GRAPH-04 | Phase 23 | Pending |
+| GRAPH-01 | Phase 23 | Complete |
+| GRAPH-02 | Phase 23 | Complete |
+| GRAPH-03 | Phase 23 | Complete |
+| GRAPH-04 | Phase 23 | Complete |
 | GRAPH-05 | Phase 23 | Complete |
 | IMPACT-01 | Phase 24 | Pending |
 | IMPACT-02 | Phase 24 | Pending |
