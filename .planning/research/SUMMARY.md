@@ -1,108 +1,156 @@
-# Research Summary: v2.0 Design-Time Intelligence
+# Project Research Summary
 
-**Domain:** Service topology extraction, CODEOWNERS parsing, and embedding-based semantic search for microservice knowledge base
-**Researched:** 2026-03-08
-**Overall confidence:** HIGH
+**Project:** repo-knowledge-base v3.0 — Graph Intelligence
+**Domain:** Code intelligence graph traversal for AI agent consumption (MCP)
+**Researched:** 2026-03-09
+**Confidence:** HIGH
 
 ## Executive Summary
 
-v2.0 adds three pillars to the existing repo-knowledge-base: service topology edges (gRPC clients, HTTP clients, gateway routing, Kafka wiring), CODEOWNERS-based ownership queries, and embedding-powered semantic search. The existing architecture -- three-phase pipeline, polymorphic edges table, FTS5 search, extractor pattern -- extends naturally for all three. No architectural restructuring is needed.
+JS BFS is 200-1000x faster than SQLite recursive CTEs for graph traversal on this topology (400 repos, ~12K edges). This single finding reshapes the entire implementation: SQL loads edges in a bulk query (~6ms), JavaScript builds an in-memory adjacency list (~3ms build), and BFS traverses in 0.2-0.6ms. Total query time under 10ms vs 150-2700ms for pure CTEs. The design doc's original "recursive CTEs replace BFS loops" direction is wrong -- benchmarks proved it conclusively. The correct architecture is the inverse: BFS stays, per-hop SQL queries get replaced by a single bulk load.
 
-The technology additions are minimal and well-validated: **sqlite-vec** (v0.1.7-alpha.2) loads as a native extension into better-sqlite3 for vector storage and KNN search, **@huggingface/transformers** (v3.8.1) runs **nomic-embed-text-v1.5** locally via ONNX for embedding generation (256d via Matryoshka truncation from 768d), and CODEOWNERS parsing requires no library at all (the format is trivially simple -- a ~15-line custom parser handles it). Total new dependency weight: ~17MB in node_modules plus ~130MB ONNX model cached on first use.
+The v3.0 milestone adds three tools (kb_impact, kb_trace, kb_explain) with zero new dependencies. The existing stack (better-sqlite3 ^12.0.0, TypeScript ^5.7.0, vitest ^3.0.0) handles everything. The only new architectural component is a graph module (`src/search/graph.ts`) that builds forward and reverse adjacency lists from one SQL query. kb_impact and kb_trace share this module; kb_explain is independent (pure SQL aggregation, no graph traversal).
 
-The primary risk is sqlite-vec platform compatibility on macOS ARM64. Prebuilt binaries exist on npm (`sqlite-vec-darwin-arm64`), but this is a "validate first, build second" situation. The mitigation is clear: smoke-test native extension loading as the very first task in the embedding phase. If it fails, a brute-force cosine distance fallback on a regular BLOB column provides degraded-but-functional semantic search. The other two pillars (topology, CODEOWNERS) have zero new dependencies and carry low risk.
-
-Build order is driven by dependencies and risk: topology first (pure extraction extending existing patterns, provides richer data for later embedding text), CODEOWNERS second (independent simple parsing, new table, new CLI/MCP commands), and embeddings last (most complex, benefits from having all entity data including topology edges for richer embedding text construction).
+The top risks are: (1) missing event/Kafka intermediate nodes in the adjacency list, which silently produces incomplete blast radii; (2) hub node responses exceeding the 4KB MCP cap, where the existing halving strategy would be actively misleading for impact analysis; and (3) direction confusion between "downstream" (what depends on me) vs "upstream" (what I depend on), which produces wrong results silently. All three have concrete mitigations from existing codebase patterns.
 
 ## Key Findings
 
-**Stack:** sqlite-vec for vector storage, @huggingface/transformers v3.8.1 with nomic-embed-text-v1.5 (256d Matryoshka, q8 quantized ONNX) for local embeddings, no library needed for CODEOWNERS, no new dependencies for topology extraction.
+### Recommended Stack
 
-**Architecture:** Three pillars extend existing extractor -> writer -> search -> tool patterns with no restructuring. Topology and CODEOWNERS fit into Phase 2 extraction / Phase 3 persistence. Embeddings require a new Phase 4 post-persistence step (CPU-bound ONNX inference must not block the p-limit parallel extraction pool). Two schema migrations: V7 (edges.metadata column + owners table) and V8 (vec0 virtual table + entity_embeddings, conditional on sqlite-vec).
+No new dependencies. This is a pure application-logic milestone.
 
-**Critical pitfall:** sqlite-vec native extension failing to load on macOS ARM64 kills the entire semantic search pillar. Must validate before building any embedding pipeline code.
+- **better-sqlite3 ^12.0.0** (existing): Bulk edge loading via synchronous `.all()`, single V8/native boundary crossing for 12K rows
+- **TypeScript ^5.7.0** (existing): Graph module, BFS implementations, type-safe results
+- **vitest ^3.0.0** (existing): Graph algorithm tests, cycle detection, path reconstruction
+
+SQLite's role changes from "traversal engine" to "storage + filtering." Recursive CTEs are still useful in kb_explain for non-recursive multi-table aggregation, but never for graph traversal. No graph library needed -- BFS on 400 nodes is ~20 lines of code, and every candidate library (graphlib, ngraph, cytoscape, graphology) brings more weight than value at this scale.
+
+### Expected Features
+
+**Must have (table stakes):**
+- kb_impact: Downstream BFS with depth-grouped results, mechanism labels, confidence per edge, mechanism filter (`--mechanism grpc`), depth limit (default 3)
+- kb_trace: Shortest path (BFS on unweighted graph), ordered hop list with mechanism per hop, path_summary string, distinct "not found" vs "no path" errors
+- kb_explain: Service identity + description, inbound/outbound connections grouped by mechanism, events produced/consumed, entity counts, repo metadata
+- All tools: Event/Kafka intermediate node transparency (two-hop repo->event->repo collapsed to single logical edge)
+- All tools: 4KB-compliant response formatting
+
+**Should have (differentiators):**
+- kb_impact: Severity tiers (direct/indirect/transitive), aggregated mechanism summary in stats block, blast radius score
+- kb_trace: Annotated hops with confidence, min-path confidence (weakest link)
+- kb_explain: "Talks to" / "called by" summaries, top modules by type, next-step hints (`"Run kb_impact app-payments to see blast radius"`)
+
+**Defer (post-v3.0):**
+- Multiple path discovery (top N paths) in kb_trace
+- `--detail` flag for rich path data in kb_impact
+- Architecture rules engine ("X should not call Y")
+- Historical graph comparison / snapshots
+- Code-level (function granularity) impact analysis
+- Graph caching layer (9ms load, 2-second budget = 200x headroom)
+- outputSchema in MCP tool registration (SDK 1.27.1 doesn't require it)
+
+### Architecture Approach
+
+Three layers: CLI commands and MCP tools (presentation) call query functions in `src/search/` (logic), which use `src/db/` (storage). The graph module sits in the search layer, loaded by impact.ts and trace.ts. kb_explain bypasses the graph module entirely. Before building anything new, extract shared utilities (`extractConfidence`, `extractMetadataField`, `formatMechanism`) from the private scope of `dependencies.ts` into a shared `src/search/edge-utils.ts`.
+
+**New files:**
+1. **`src/search/graph.ts`** — In-memory adjacency list builder + BFS primitives (downstream, shortest path). The only genuinely new architectural component.
+2. **`src/search/impact.ts`** — Downstream blast radius aggregation using graph.bfsDownstream, with compact response formatting
+3. **`src/search/trace.ts`** — Shortest path with parent-pointer reconstruction using graph.shortestPath
+4. **`src/search/explain.ts`** — Multi-table SQL aggregation (no graph dependency), counts + top-N pattern
+5. **`src/search/edge-utils.ts`** — Shared utilities extracted from dependencies.ts (mechanism maps, confidence extraction, metadata parsing)
+6. **MCP tools** (`src/mcp/tools/impact.ts`, `trace.ts`, `explain.ts`) — Following existing registration pattern from deps.ts
+7. **CLI commands** (`src/cli/commands/impact.ts`, `trace.ts`, `explain.ts`) — Following existing CLI patterns
+
+**Modified files (additive only):** `src/search/index.ts`, `src/mcp/server.ts`, `src/cli/index.ts`, `src/index.ts` -- all re-exports and registrations.
+
+**Untouched:** `dependencies.ts` stays as-is. Existing 503 tests unaffected.
+
+### Critical Pitfalls
+
+1. **Recursive CTEs for traversal (Critical)** — 200-1000x slower than JS BFS. No progress handler available (OMIT_PROGRESS_CALLBACK compiled into bundled SQLite) so a runaway CTE blocks the Node.js thread with no escape. Use SQL for loading only.
+2. **Missing event/Kafka edges (Critical)** — Naive `WHERE target_type='repo'` misses two-hop event-mediated paths. Port `findKafkaTopicEdges()` and `findEventMediatedEdges()` from dependencies.ts into graph builder as upfront resolution step. Test by comparing kb_impact results against `kb deps --mechanism kafka`.
+3. **Hub node 4KB explosion (Critical)** — Gateway impacts 300+ services. Existing `formatResponse()` halving would show 3 of 300 services -- actively misleading. Use dedicated compact format: flat service name list + stats envelope (~20 chars per service = ~150 services in 4KB). Do NOT reuse the generic halving strategy.
+4. **Direction confusion (Moderate)** — Impact = "what depends on me" = reverse adjacency (follow edges pointing TO me). Trace = any path = both directions. Wrong direction produces silently wrong results. Build both forward and reverse adjacency lists; document semantics explicitly in code.
+5. **Logic duplication (Moderate)** — Graph module must not reimplement mechanism labels, confidence extraction, metadata parsing. Extract shared utils into edge-utils.ts first, update dependencies.ts to import from there, verify existing tests pass.
 
 ## Implications for Roadmap
 
 Based on research, suggested phase structure:
 
-1. **Service Topology Extraction** - No new dependencies, extends existing extractors and edge model
-   - Addresses: TOPO-01..04 (gRPC clients, HTTP clients, gateway routing, Kafka wiring)
-   - Delivers: topology extractors in `src/indexer/topology/`, edges.metadata column (V7), generalized dependency traversal, `--mechanism` filter on `kb deps`
-   - Avoids: Pitfall #3 (new edges invisible in queries) by generalizing `findLinkedRepos()`
-   - Risk: LOW -- pure regex extraction following established patterns
+### Phase 1: Shared Infrastructure & Graph Module
+**Rationale:** Everything else depends on this. The graph module is the shared foundation for kb_impact and kb_trace. Extracting shared utils prevents duplication from day one.
+**Delivers:** `edge-utils.ts` (extracted shared code), `graph.ts` (adjacency list builder + BFS primitives with `ServiceGraph`, `buildGraph()`, `bfsDownstream()`, `shortestPath()`), comprehensive test suite for graph algorithms including cycles, disconnected nodes, event/Kafka resolution
+**Addresses:** Table stakes infrastructure, event/Kafka transparency
+**Avoids:** Pitfalls #2 (missing event edges), #4 (direction confusion), #5 (logic duplication)
 
-2. **CODEOWNERS Parsing & Ownership Queries** - Independent of topology, simple file parsing
-   - Addresses: OWN-01..03 (parsing, team queries, file-level ownership)
-   - Delivers: CODEOWNERS parser, owners table (V7), ownership search functions, `kb owners` CLI, `kb_owners` MCP tool, 'owner' entity type in FTS
-   - Avoids: Pitfall #4 (last-match-wins semantics) by storing line_number and resolving at query time
-   - Risk: LOW -- well-defined file format, well-understood semantics
+### Phase 2: kb_impact (Blast Radius)
+**Rationale:** Highest-value tool. Validates the graph module against real data. "What breaks if I change X?" is the primary use case driving v3.0.
+**Delivers:** `impact.ts` query function, MCP tool registration, CLI command, compact response formatter that fits 300+ services in 4KB
+**Addresses:** All kb_impact table stakes + differentiators (severity tiers, mechanism summary, blast radius score)
+**Avoids:** Pitfalls #1 (CTE traversal), #3 (4KB explosion)
 
-3. **Embedding Infrastructure & Semantic Search** - sqlite-vec + Transformers.js, most complex pillar
-   - Addresses: SEM-01..02 (semantic search, code-aware embeddings)
-   - Delivers: sqlite-vec integration, nomic-embed-text-v1.5 embedding pipeline (Phase 4 post-persistence), vec_entities + entity_embeddings (V8 migration), KNN semantic search, `kb_semantic` MCP tool, `kb search --semantic` CLI flag, graceful degradation
-   - Avoids: Pitfall #1 (platform failure) by smoke-testing first; Pitfall #2 (embedding in wrong phase) by running as Phase 4; Pitfall #5 (model download blocks) with progress output and graceful skip
-   - Risk: MEDIUM -- sqlite-vec platform compatibility, model download UX
+### Phase 3: kb_trace (Flow Tracing)
+**Rationale:** Reuses graph module from Phase 1. Adds parent-pointer path reconstruction on top of existing BFS. Lower implementation risk than impact.
+**Delivers:** `trace.ts` query function, MCP tool registration, CLI command, path_summary string generation, min-confidence tracking
+**Addresses:** All kb_trace table stakes + differentiators (annotated hops, min-confidence)
+**Avoids:** Pitfall #5 (path memory -- use parent pointers, not path copying), #7 (direction -- trace uses undirected graph)
 
-**Phase ordering rationale:**
-- Topology first: no dependencies, extends proven patterns, enriches embedding text for later phases
-- CODEOWNERS second: independent of topology, small scope, immediate user value
-- Embeddings last: most complex, most risk (sqlite-vec platform), benefits from having all data available for richer embedding text ("BookingService calls PaymentService via gRPC, owned by @org/payments-team" is a better embedding than just "BookingService")
-- V7 migration groups topology + CODEOWNERS (pure SQL DDL, no new dependencies). V8 migration (vec0) is conditional on sqlite-vec loading, enabling graceful degradation
+### Phase 4: kb_explain (Service Summary)
+**Rationale:** Fully independent of graph module -- can technically be built in parallel with Phase 2/3, but sequencing it last reduces WIP. Pure SQL aggregation, lowest risk.
+**Delivers:** `explain.ts` query function, MCP tool registration, CLI command, counts + top-N response format
+**Addresses:** All kb_explain table stakes + differentiators (talks-to/called-by summaries, top modules, hints)
+**Avoids:** Pitfall #12 (4KB overflow on content-heavy services -- cap lists during query, before formatting)
 
-**Research flags for phases:**
-- Phase 1 (Topology): May need phase-specific research on actual gateway config format used by Fresha repos. HTTP client regex patterns need real-world validation.
-- Phase 2 (CODEOWNERS): Standard patterns, unlikely to need additional research. picomatch for glob matching is well-documented.
-- Phase 3 (Embeddings): Needs early platform validation (sqlite-vec on macOS ARM64). Transformers.js ESM compatibility with the project's `"type": "module"` setup needs validation. If sqlite-vec smoke test fails, evaluate brute-force fallback approach.
+### Phase Ordering Rationale
+
+- **Graph module first** because kb_impact and kb_trace both depend on it. Building tools before their shared infrastructure leads to either duplication or rework.
+- **kb_impact before kb_trace** because impact is the higher-value tool and exercises more of the graph module (full downstream traversal vs single shortest path). Issues caught here save time on trace.
+- **kb_explain last** because it has zero dependency on the graph module and is pure SQL. It's the lowest-risk phase and benefits from all patterns established in prior phases.
+- **Shared utils extracted in Phase 1** to prevent the moderate pitfall of logic duplication between dependencies.ts and the new graph module.
+
+### Research Flags
+
+Phases likely needing deeper research during planning:
+- **Phase 1 (Graph Module):** Event/Kafka resolution logic is the trickiest part. The existing code in `dependencies.ts` (`findKafkaTopicEdges()` for Kafka, `findEventMediatedEdges()` for events) must be studied carefully and ported correctly. Direction semantics (forward vs reverse) need explicit documentation in code.
+
+Phases with standard patterns (skip research-phase):
+- **Phase 2 (kb_impact):** BFS downstream is straightforward once graph module exists. Response formatting is the main design decision (compact format already specified in FEATURES.md).
+- **Phase 3 (kb_trace):** Parent-pointer BFS for shortest path is textbook. Path reconstruction is O(path_length).
+- **Phase 4 (kb_explain):** Standard SQL aggregation following existing entity.ts patterns. No novel decisions.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | sqlite-vec verified via official docs + npm. nomic-embed-text-v1.5 verified on HuggingFace with ONNX + Transformers.js tags. CODEOWNERS format documented by GitHub. All versions current as of 2026-03-08. |
-| Features | HIGH | Feature landscape based on direct codebase analysis of all 46 source files. Feature dependencies mapped against actual pipeline interfaces. |
-| Architecture | HIGH | Three-pillar extension maps cleanly onto existing three-phase pipeline. Schema migrations are additive (ALTER TABLE + CREATE TABLE). No existing code restructuring required. |
-| Pitfalls | HIGH | 11 pitfalls identified through codebase analysis + library documentation. Platform risk (sqlite-vec) flagged with concrete mitigation. Pipeline phase isolation concern verified against actual extractRepoData() / persistExtractedData() code. |
+| Stack | HIGH | Benchmarked locally on production-scale data. Zero new dependencies. SQLite 3.51.2 compile options verified. |
+| Features | HIGH | Derived from existing codebase capabilities and approved design doc. Response formats specified with JSON examples. |
+| Architecture | HIGH | All patterns derived from direct codebase inspection. File locations, module boundaries, and shared utils mapped to specific source lines. |
+| Pitfalls | HIGH | Performance pitfall quantified via benchmarks. Event/Kafka resolution pattern understood from existing code. Response size constraints from existing 4KB MCP limit with concrete math. |
 
-## Known Discrepancy
+**Overall confidence:** HIGH
 
-ARCHITECTURE.md (written by a parallel researcher or earlier run) references `all-MiniLM-L6-v2` (384d embeddings) as the embedding model. STACK.md (this research cycle) recommends **nomic-embed-text-v1.5** (768d, truncated to 256d via Matryoshka) based on superior retrieval accuracy, task prefix support, 8K context length, and Matryoshka dimension flexibility. **STACK.md should be treated as authoritative for model choice.** ARCHITECTURE.md vector dimensions and model references need updating during roadmap/planning to align with STACK.md (256d instead of 384d, nomic-embed-text-v1.5 instead of all-MiniLM-L6-v2).
+### Gaps to Address
 
-## Gaps to Address
-
-- **sqlite-vec macOS ARM64 runtime validation:** Prebuilt binary exists on npm but has not been smoke-tested on the actual development machine. This is the single most important validation task before building any embedding code.
-- **Gateway config format:** The actual gateway technology and config format used across Fresha repos is unknown. Phase A may need to defer gateway extraction (TOPO-03) or narrow scope to the specific format encountered.
-- **HTTP client regex accuracy:** HTTP client detection via regex is inherently lower-confidence than gRPC stub detection. The `confidence` field on topology edges mitigates this, but real-world false positive rates are unknown until tested against actual repos.
-- **Embedding quality for code/architecture descriptions:** nomic-embed-text-v1.5 is a general-purpose model. Its retrieval accuracy on microservice architecture descriptions (module names, Elixir terminology) is theoretically good (MTEB 61.04 at 256d) but unvalidated with project-specific data.
-- **Transformers.js ESM compatibility:** The project uses `"type": "module"` with ESNext modules and bundler moduleResolution. Transformers.js v3 supports ESM, but the exact import patterns and potential resolution issues with ONNX runtime native bindings need validation.
-- **ARCHITECTURE.md alignment:** Model choice and vector dimensions need updating to match STACK.md recommendations (see Known Discrepancy above).
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `.planning/research/SUMMARY.md` | This file -- executive summary with roadmap implications |
-| `.planning/research/STACK.md` | Technology recommendations for v2.0 additions (sqlite-vec, nomic-embed-text-v1.5, Transformers.js) |
-| `.planning/research/FEATURES.md` | Feature landscape: table stakes, differentiators, anti-features, dependency graph |
-| `.planning/research/ARCHITECTURE.md` | Detailed integration architecture: schema, pipeline, data flow, component map |
-| `.planning/research/PITFALLS.md` | 11 domain pitfalls with prevention strategies, phase-specific warnings |
+- **Event/Kafka edge resolution correctness:** The logic exists in dependencies.ts but hasn't been tested in isolation as a bulk upfront operation. Phase 1 tests should include known event-mediated paths from the real database to validate the port. May need topic name dedup if multiple repos produce the same topic.
+- **4KB budget for real hub nodes:** The compact format math (~150 services in 4KB) is estimated from ~20 chars per service name. Validate with actual gateway blast radius during Phase 2 implementation.
+- **Bidirectional trace semantics:** Should kb_trace follow directed edges only (source->target) or treat the graph as undirected? Architecture research says undirected; validate this matches user expectations during Phase 3. An agent asking "how does A connect to B" probably wants any path regardless of call direction.
+- **Multiple mechanisms between same pair:** BFS visits a node once (first mechanism discovered). If A->B has both gRPC and Kafka edges, only one mechanism is recorded. Phase 2 should decide whether to aggregate all mechanisms per affected service during adjacency list iteration.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis of all 46 source files in `src/`
-- [sqlite-vec GitHub](https://github.com/asg017/sqlite-vec) -- v0.1.7-alpha.2, vec0 API
-- [sqlite-vec Node.js docs](https://alexgarcia.xyz/sqlite-vec/js.html) -- better-sqlite3 integration
-- [nomic-embed-text-v1.5 HuggingFace](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) -- 137M params, Matryoshka, task prefixes
-- [Transformers.js v3](https://huggingface.co/docs/transformers.js/en/index) -- @huggingface/transformers, ONNX runtime
-- [GitHub CODEOWNERS docs](https://docs.github.com/articles/about-code-owners) -- format specification
+- Local benchmarks: 400 repos, 9K-12K edges, better-sqlite3 ^12.0.0, SQLite 3.51.2 on darwin arm64
+- Codebase inspection: `src/search/dependencies.ts`, `src/db/migrations.ts`, `src/mcp/tools/deps.ts`, `src/mcp/format.ts`, `src/mcp/handler.ts`, `src/mcp/sync.ts`, `src/db/database.ts`
+- [SQLite WITH clause](https://sqlite.org/lang_with.html) — recursive CTE limitations, UNION vs UNION ALL
+- [SQLite implementation limits](https://sqlite.org/limits.html) — MAX_COMPOUND_SELECT=500
+- [SQLite Forum: BFS traversal](https://sqlite.org/forum/info/3b309a9765636b79) — cycle detection, performance
 
 ### Secondary (MEDIUM confidence)
-- [Embedding model benchmarks](https://supermemory.ai/blog/best-open-source-embedding-models-benchmarked-and-ranked/) -- nomic vs MiniLM comparison
-- [Best code embedding models](https://modal.com/blog/6-best-code-embedding-models-compared) -- evaluation methodology
-- [Transformers.js dtypes guide](https://huggingface.co/docs/transformers.js/en/guides/dtypes) -- q8 quantization
-- [Embedding model discussion (HN)](https://news.ycombinator.com/item?id=46081800) -- "Don't use all-MiniLM-L6-v2 for new datasets"
+- [better-sqlite3 API docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md) — synchronous API, prepared statements
+- [better-sqlite3 interrupt issue #568](https://github.com/JoshuaWise/better-sqlite3/issues/568) — no sqlite3_interrupt() exposed
+- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- Approved design doc: `docs/plans/2026-03-09-graph-intelligence-design.md`
 
 ---
-*Research completed: 2026-03-08*
+*Research completed: 2026-03-09*
 *Ready for roadmap: yes*

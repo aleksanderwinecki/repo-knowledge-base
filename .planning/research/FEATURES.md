@@ -1,81 +1,211 @@
-# Feature Landscape: v2.0 Design-Time Intelligence
+# Feature Landscape: v3.0 Graph Intelligence
 
-**Domain:** Service topology, ownership, and semantic search for microservice knowledge base
-**Researched:** 2026-03-08
+**Domain:** Code intelligence graph traversal for AI agent consumption via MCP
+**Researched:** 2026-03-09
+**Update:** Adjusted for hybrid SQL+JS architecture (CTE replaced by JS BFS for traversal)
+
+## Context
+
+Three new tools for an existing knowledge base with ~12K topology edges across ~400 repos. All tools use SQL for data loading and JS BFS for graph traversal. Output is JSON over MCP, constrained to 4KB per response.
+
+Existing infrastructure already provides: BFS traversal (`queryDependencies`), mechanism filtering, confidence extraction from edge metadata, `formatResponse` with recursive halving, `wrapToolHandler` HOF, `withAutoSync`.
 
 ---
 
 ## Table Stakes
 
-Features that make v2.0 feel complete. Missing any = partial delivery.
+Features users expect. Missing = tool feels broken.
+
+### kb_impact (Blast Radius)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| gRPC client edge extraction | Already partially exists (grpcStubs in elixir.ts). Users expect service-to-service gRPC calls to show in `kb deps` | Low | Enhance existing extraction, add metadata |
-| Kafka producer/consumer edges | Already partially exists (events.ts). Users expect Kafka wiring in dependency graph | Low | Enhance existing extraction, add topic metadata |
-| CODEOWNERS parsing | Core promise of "who owns what". Simple file format, well-defined semantics | Low | Standard locations: CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS |
-| Team-based ownership queries | "What does @org/team own?" across all repos | Low | Simple GROUP BY on owners table |
-| File-level ownership resolution | "Who owns this file?" with last-match-wins CODEOWNERS semantics | Medium | Requires gitignore-style glob matching (picomatch) |
-| Embedding-based semantic search | Core promise of "natural language queries". Users type "which services handle payments" and get relevant results | High | sqlite-vec + transformers.js + new pipeline phase |
-| Incremental embedding updates | Don't re-embed 5000 entities on every index | Medium | text_hash comparison to skip unchanged entities |
-| Graceful degradation when sqlite-vec unavailable | Don't crash if native extension fails to load | Low | Conditional schema init, feature flag check |
+| Downstream traversal from a service | Core purpose -- "what breaks if X changes?" | Low | JS BFS on in-memory adjacency list |
+| Depth-grouped results (direct/indirect/transitive) | Agents need to distinguish severity | Low | Hop count from BFS |
+| Mechanism label per affected service | Agent needs to know HOW impact propagates | Low | Existing `MECHANISM_LABELS` |
+| Confidence level per edge | Already in edge metadata; omitting = regression from kb_deps | Low | Existing `extractConfidence` |
+| Mechanism filter (`--mechanism grpc`) | Parity with kb_deps | Low | Existing `MECHANISM_FILTER_MAP` |
+| Depth limit (`--depth N`, default 3) | Control response size, prevent hub explosion | Low | BFS depth counter |
+| Total affected count in summary | Single number for agent decisions | Low | Array.length |
+| Event/Kafka-mediated paths transparent | Two-hop repo->event->repo must collapse to single logical edge | Medium | Pre-resolve in graph builder |
+| Compact response format | Must fit 300+ service blast radius in 4KB | Medium | Service names + stats, not full paths |
+
+### kb_trace (Flow Tracing)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Shortest path between two services | Core purpose -- "how does a request get from A to B?" | Low | BFS on unweighted graph = optimal |
+| Ordered hop list with mechanism per hop | Agent needs the chain, not just "path exists" | Low | Parent-pointer backtracking |
+| Event/Kafka transparency in path display | `app-checkout -[kafka: payment.completed]-> app-notifications` | Medium | Same collapsing as impact |
+| "No path found" vs "service not found" | Must distinguish disconnected from nonexistent | Low | Pre-check repos table |
+| Path summary string | One-liner agent can paste into explanations | Low | String join from hop array |
+
+### kb_explain (Service Summary)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Service name + description | Basic identity | Low | repos.description |
+| Inbound connections grouped by mechanism | "Who calls this service?" | Low | Edges WHERE target = repo |
+| Outbound connections grouped by mechanism | "What does this service call?" | Low | Edges WHERE source = repo |
+| Events produced/consumed | Key for async behavior understanding | Low | Event edges |
+| Entity counts (modules, events, services) | "How big is this?" | Low | COUNT on entities table |
+| Repo metadata (path, branch, last commit) | Agent needs to know where to look | Low | repos table |
+
+---
 
 ## Differentiators
 
-Features that add significant value beyond the minimum promise.
+Features that set these tools apart from manually combining kb_deps + kb_entity + kb_search.
+
+### kb_impact
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| HTTP client edge extraction | Maps service-to-service HTTP calls (Tesla, HTTPoison patterns) | Medium | Regex-based, confidence varies. High value for understanding service mesh |
-| Gateway routing extraction | Maps URL paths to upstream services through gateway config | Medium | Depends on gateway technology. May need to support multiple config formats |
-| Edge metadata (endpoint, topic, method) | Rich context on HOW services communicate, not just THAT they do | Low | JSON in edges.metadata column. Cheap to add, high value in query results |
-| Dependency mechanism filter | `kb deps booking --mechanism grpc` to filter by communication type | Low | Filter on relationship_type. Trivial once topology edges exist |
-| Combined FTS + semantic search | Use FTS for exact matches, semantic for fuzzy/conceptual queries. Best of both worlds | Medium | Run both, merge/rank results. Or: user chooses mode explicitly |
-| Embedding text enrichment with topology | Include "calls BookingService via gRPC" in embedding text so semantic search understands service relationships | Low | Build richer embedding text from entity + edges. Requires topology data first |
-| Owner information in entity cards | Entity card for a module shows its CODEOWNERS owner | Low | JOIN through file path matching at query time |
-| `kb status` enhanced with v2 stats | Show topology edge counts, owner counts, embedding coverage in status output | Low | Additional COUNT queries |
+| Severity tiers (direct/indirect/transitive) | Depth 1 = "will break", 2+ = "may break" | Low | Map depth to tier label |
+| Aggregated mechanism summary | "3 via gRPC, 2 via Kafka" in stats block | Low | Group-by before serialization |
+| Blast radius score | Single number for commit messages / PR descriptions | Low | Count distinct services |
+| Sub-millisecond response | 0.6ms JS BFS vs seconds of manual investigation | Low | Already achieved via architecture |
+
+### kb_trace
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Annotated hops with confidence | Each hop shows [high]/[medium]/[low] | Low | Already in edge metadata |
+| Min-path confidence | Weakest link in the chain highlighted | Low | Track min through BFS |
+
+### kb_explain
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| "Talks to" and "called by" summaries | Quick topology overview | Low | COUNT on edge groups |
+| Top modules by type | Shows what service DOES, not just what it connects to | Low | GROUP BY type on modules |
+| Next-step hints | `"Run kb_impact app-payments to see blast radius"` | Low | Static strings based on result |
+
+---
 
 ## Anti-Features
 
-Features to explicitly NOT build in v2.0.
+Features to explicitly NOT build.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| Real-time embedding updates on file save | Adds complexity (file watching), not needed for on-demand tool | Re-embed during `kb index`, not on file change |
-| Cloud-hosted embedding model API | Violates local-only constraint | Use @huggingface/transformers with local ONNX model |
-| Interactive ownership editing | CODEOWNERS files are the source of truth, not our DB | Parse and query, never write back |
-| Automatic CODEOWNERS generation | Out of scope -- we index existing ownership, not suggest new ownership | Could be a future feature |
-| Multi-model embedding support | One model is enough for 5000 entities | Hardcode all-MiniLM-L6-v2. Add model selection if users request it |
-| Embedding similarity threshold auto-tuning | Over-engineering for the scale we operate at | Fixed cosine distance threshold, tunable via config if needed |
-| Graph visualization / ASCII art | Nice but not the core value. CLI outputs JSON | Defer to future. External tools can consume the JSON |
-| Cross-repo CODEOWNERS inheritance | CODEOWNERS is per-repo. No inheritance semantics exist in GitHub's spec | Each repo's CODEOWNERS is independent |
+| Neo4j / external graph DB | 12K edges fits in a JS Map (~12MB). Adding infrastructure for zero performance gain. | JS BFS on SQLite-loaded adjacency list |
+| Visual graph rendering (SVG/ASCII) | Agents consume JSON. 4KB cap makes graphics impractical. | Structured JSON with path_summary strings |
+| All-pairs shortest path precomputation | O(V^2) storage for 400 repos = 160K entries. Called occasionally. | On-demand BFS, 0.2ms per query |
+| Code-level impact (function granularity) | Needs AST parsing (tree-sitter), different graph, larger storage | Service-level blast radius is the right abstraction |
+| Architecture rules engine | "X should not call Y" is a different concern | Defer to future milestone; these are read-only tools |
+| Weighted edges / importance scoring | No reliable signal for weight exists | Use existing confidence levels (high/medium/low) |
+| Historical graph comparison | Requires snapshots, diffing, schema expansion | Out of scope. git log serves indirectly. |
+| Recursive CTEs for traversal | 200-1000x slower than JS BFS (benchmarked) | SQL for loading, JS for traversal |
+| Graph algorithm library | BFS is 20 lines on 400 nodes | Hand-written, zero dependencies |
+| Edge caching layer | 9ms load, 2-second budget = 200x headroom | Add only if profiling shows need |
+
+---
 
 ## Feature Dependencies
 
 ```
-gRPC client extraction ─────────┐
-HTTP client extraction ──────────┤
-Gateway routing extraction ──────┼──> Topology edges in DB ──> Enhanced dependency queries
-Kafka wiring extraction ─────────┘                          ──> Richer embedding text
+Existing edges table (v2.0)
+  |
+  +-- Graph module (src/search/graph.ts)
+  |     +-- Adjacency list builder (SQL load + JS construction)
+  |     +-- Event/Kafka intermediate node resolution
+  |     +-- BFS downstream traversal
+  |     +-- BFS shortest path
+  |
+  +-- kb_impact (uses graph.bfsDownstream)
+  |     +-- mechanism filter
+  |     +-- compact response formatter
+  |
+  +-- kb_trace (uses graph.shortestPath)
+  |     +-- path reconstruction
+  |     +-- mechanism annotations
+  |
+  +-- kb_explain (NO dependency on graph module)
+        +-- Multi-table SQL aggregation
+        +-- repos + entities + edges
 
-CODEOWNERS parsing ──> owners table ──> Ownership queries
-                                     ──> Owner info in entity cards
-                                     ──> Richer embedding text
-
-sqlite-vec loading ──> vec_entities table ──> Embedding pipeline ──> Semantic search
-                                                                  ──> kb_semantic MCP tool
-                                                                  ──> kb search --semantic CLI
+kb_impact and kb_trace share the graph module.
+kb_explain is fully independent -- can be built in parallel.
+All three share: wrapToolHandler, formatResponse, withAutoSync, zod schemas.
 ```
+
+---
+
+## MCP Output Format Design
+
+### kb_impact Response
+
+```json
+{
+  "summary": "app-payments: 47 downstream services, max depth 4",
+  "services": [
+    { "name": "app-checkout", "mechanism": "grpc", "confidence": "high", "depth": 1, "tier": "direct" }
+  ],
+  "total": 47,
+  "truncated": false,
+  "stats": {
+    "direct": 8, "indirect": 15, "transitive": 24,
+    "by_mechanism": { "grpc": 12, "kafka": 23, "http": 8, "event": 4 }
+  },
+  "hints": ["Use --mechanism grpc to filter to gRPC-only impact"]
+}
+```
+
+**Key:** `stats` block survives truncation (in envelope, not in `services` array). Service names are compact. Paths omitted by default.
+
+### kb_trace Response
+
+```json
+{
+  "summary": "Path found: app-gateway -> app-checkout -> app-payments (2 hops)",
+  "hops": [
+    { "from": "app-gateway", "to": "app-checkout", "mechanism": "gateway", "confidence": "medium" },
+    { "from": "app-checkout", "to": "app-payments", "mechanism": "grpc", "confidence": "high" }
+  ],
+  "path_summary": "app-gateway -[gateway]-> app-checkout -[grpc]-> app-payments",
+  "total_hops": 2,
+  "min_confidence": "medium"
+}
+```
+
+### kb_explain Response
+
+```json
+{
+  "summary": "app-payments: Payment processing service. 8 inbound, 5 outbound.",
+  "service": "app-payments",
+  "description": "Handles payment processing...",
+  "connections": {
+    "inbound": [{ "service": "app-checkout", "mechanism": "grpc", "confidence": "high" }],
+    "outbound": [{ "service": "app-notifications", "mechanism": "kafka", "topic": "payment.completed" }]
+  },
+  "entities": { "modules": 45, "schemas": 12, "events_produced": 3, "events_consumed": 2 },
+  "top_modules": ["Payments.Payment", "Payments.ProcessPayment"],
+  "hints": ["Run kb_impact app-payments to see blast radius"]
+}
+```
+
+---
 
 ## MVP Recommendation
 
-Prioritize (delivers core value with least risk):
+Prioritize:
+1. **Graph module** -- shared BFS infrastructure, edge loading, adjacency list builder
+2. **kb_impact** -- highest value ("what breaks?"), validates graph module
+3. **kb_trace** -- reuses graph module, adds path reconstruction
+4. **kb_explain** -- independent of graph module, pure SQL aggregation
 
-1. **gRPC + Kafka topology edges** -- Low complexity, extends existing extractors, immediate value in `kb deps`
-2. **CODEOWNERS parsing + team queries** -- Low complexity, new table, independent of other pillars
-3. **Embedding semantic search** -- High complexity but core differentiator. Build last, benefit from topology data
+Defer to post-v3.0:
+- Multiple path discovery (top N paths) in kb_trace
+- `--detail` flag for rich path data in kb_impact
+- outputSchema in MCP tool registration (SDK 1.27.1 doesn't require it)
 
-Defer to v2.1:
-- **HTTP client extraction** -- Medium confidence regex patterns, can iterate
-- **Gateway routing extraction** -- Config format dependent, needs real gateway config examples
-- **Combined FTS + semantic ranking** -- Get semantic search working first, optimize ranking later
+---
+
+## Sources
+
+- Codebase: `src/search/dependencies.ts`, `src/db/migrations.ts`, `src/mcp/tools/deps.ts`, `src/mcp/format.ts`
+- Approved design: `docs/plans/2026-03-09-graph-intelligence-design.md`
+- Local benchmarks: SQL vs JS BFS performance (this research cycle)
+- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
