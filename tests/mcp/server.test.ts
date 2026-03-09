@@ -51,13 +51,14 @@ describe('MCP server', () => {
       'kb_cleanup',
       'kb_list_types',
       'kb_reindex',
+      'kb_impact',
     ];
 
     for (const name of expectedTools) {
       expect(tools[name], `Tool ${name} should be registered`).toBeDefined();
     }
 
-    expect(Object.keys(tools)).toHaveLength(9);
+    expect(Object.keys(tools)).toHaveLength(10);
   });
 
   it('server has name=kb and version=1.0.0', () => {

@@ -24,6 +24,7 @@ import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
 import { registerReindexTool } from '../../src/mcp/tools/reindex.js';
+import { registerImpactTool } from '../../src/mcp/tools/impact.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { indexAllRepos } from '../../src/indexer/pipeline.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
@@ -58,6 +59,17 @@ function insertRepo(name: string, repoPath: string, lastCommit: string | null): 
   return Number(result.lastInsertRowid);
 }
 
+/** Insert a direct edge between repos */
+function insertDirectEdge(
+  sourceRepoId: number,
+  targetRepoId: number,
+  relType: string,
+): void {
+  db.prepare(
+    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run('repo', sourceRepoId, 'repo', targetRepoId, relType, 'src/client.ex');
+}
+
 /** Insert a module for FTS/entity testing */
 function insertModule(repoId: number, name: string, summary: string | null, subType?: string): number {
   const result = db.prepare(
@@ -90,6 +102,7 @@ beforeEach(() => {
   registerCleanupTool(server, db);
   registerListTypesTool(server, db);
   registerReindexTool(server, db);
+  registerImpactTool(server, db);
 
   vi.clearAllMocks();
   // Default: all repos have current commit (not stale)
@@ -417,6 +430,79 @@ describe('kb_reindex', () => {
   });
 });
 
+describe('kb_impact', () => {
+  it('returns compact JSON with tiers and stats for known service', async () => {
+    // Setup: A -> B via grpc, C -> B via http (A and C depend on B)
+    const idB = insertRepo('impact-target', tmpDir, 'current-commit');
+    const idA = insertRepo('impact-caller-a', tmpDir, 'current-commit');
+    const idC = insertRepo('impact-caller-c', tmpDir, 'current-commit');
+    insertDirectEdge(idA, idB, 'calls_grpc');
+    insertDirectEdge(idC, idB, 'calls_http');
+
+    const result = await callTool('kb_impact', { name: 'impact-target' });
+    const parsed = parseResponse(result);
+
+    expect(parsed).toHaveProperty('summary');
+    expect(parsed).toHaveProperty('stats');
+    expect(parsed).toHaveProperty('direct');
+    expect(parsed).toHaveProperty('indirect');
+    expect(parsed).toHaveProperty('transitive');
+
+    const stats = parsed.stats as Record<string, unknown>;
+    expect(stats.total).toBe(2);
+  });
+
+  it('returns error response for unknown service', async () => {
+    const result = await callTool('kb_impact', { name: 'ghost-service' });
+    const r = result as { content: Array<{ text: string }>; isError?: boolean };
+
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('Error');
+    expect(r.content[0].text).toContain('ghost-service');
+  });
+
+  it('filters by mechanism when provided', async () => {
+    // A -> B via grpc, C -> B via http
+    const idB = insertRepo('mech-target', tmpDir, 'current-commit');
+    const idA = insertRepo('mech-grpc-caller', tmpDir, 'current-commit');
+    const idC = insertRepo('mech-http-caller', tmpDir, 'current-commit');
+    insertDirectEdge(idA, idB, 'calls_grpc');
+    insertDirectEdge(idC, idB, 'calls_http');
+
+    // Filter to grpc only
+    const result = await callTool('kb_impact', { name: 'mech-target', mechanism: 'grpc' });
+    const parsed = parseResponse(result);
+
+    const direct = parsed.direct as Record<string, string[]>;
+    // Only grpc caller should appear
+    expect(direct).toHaveProperty('mech-grpc-caller');
+    expect(direct).not.toHaveProperty('mech-http-caller');
+  });
+
+  it('respects depth parameter', async () => {
+    // Chain: A -> B -> C (A calls B, B calls C)
+    // Impact of C with depth=1 should only show B
+    const idC = insertRepo('depth-c', tmpDir, 'current-commit');
+    const idB = insertRepo('depth-b', tmpDir, 'current-commit');
+    const idA = insertRepo('depth-a', tmpDir, 'current-commit');
+    insertDirectEdge(idB, idC, 'calls_grpc');
+    insertDirectEdge(idA, idB, 'calls_grpc');
+
+    const result = await callTool('kb_impact', { name: 'depth-c', depth: 1 });
+    const parsed = parseResponse(result);
+
+    const direct = parsed.direct as Record<string, string[]>;
+    const indirect = parsed.indirect as Record<string, string[]>;
+    const transitive = parsed.transitive as Record<string, string[]>;
+
+    // Only direct dependents (depth 1)
+    expect(Object.keys(direct)).toHaveLength(1);
+    expect(direct).toHaveProperty('depth-b');
+    expect(Object.keys(indirect)).toHaveLength(0);
+    expect(Object.keys(transitive)).toHaveLength(0);
+  });
+});
+
 describe('all tools', () => {
   it('all tool responses are valid JSON under 4000 characters', async () => {
     const repoId = insertRepo('all-test-repo', tmpDir, 'current-commit');
@@ -431,6 +517,7 @@ describe('all tools', () => {
       { name: 'kb_status', args: {} },
       { name: 'kb_cleanup', args: {} },
       { name: 'kb_list_types', args: {} },
+      { name: 'kb_impact', args: { name: 'all-test-repo' } },
     ];
 
     for (const { name, args } of tools) {

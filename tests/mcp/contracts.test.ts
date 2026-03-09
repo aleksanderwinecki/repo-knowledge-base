@@ -31,6 +31,7 @@ import { registerForgetTool } from '../../src/mcp/tools/forget.js';
 import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
+import { registerImpactTool } from '../../src/mcp/tools/impact.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
 
@@ -77,6 +78,17 @@ function insertRepo(name: string, repoPath: string, lastCommit: string | null): 
   return Number(result.lastInsertRowid);
 }
 
+/** Insert a direct edge between repos */
+function insertDirectEdge(
+  sourceRepoId: number,
+  targetRepoId: number,
+  relType: string,
+): void {
+  db.prepare(
+    'INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, source_file) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run('repo', sourceRepoId, 'repo', targetRepoId, relType, 'src/client.ex');
+}
+
 /** Insert a module for FTS/entity testing */
 function insertModule(repoId: number, name: string, summary: string | null, subType?: string): number {
   const result = db.prepare(
@@ -98,7 +110,7 @@ beforeEach(() => {
   db = openDatabase(dbPath);
   server = new McpServer({ name: 'kb-contract-test', version: '1.0.0' });
 
-  // Register all 8 tools
+  // Register all tools
   registerSearchTool(server, db);
   registerEntityTool(server, db);
   registerDepsTool(server, db);
@@ -107,6 +119,7 @@ beforeEach(() => {
   registerStatusTool(server, db);
   registerCleanupTool(server, db);
   registerListTypesTool(server, db);
+  registerImpactTool(server, db);
 
   // Expose internal tool registry
   tools = (server as unknown as { _registeredTools: ToolShape })._registeredTools;
@@ -200,6 +213,16 @@ describe('input schema contracts', () => {
   it('kb_list_types: no params (empty shape)', () => {
     const params = getParamNames('kb_list_types');
     expect(params).toHaveLength(0);
+  });
+
+  it('kb_impact: name (required), mechanism (optional), depth (optional)', () => {
+    const params = getParamNames('kb_impact');
+    expect(params).toEqual(['name', 'mechanism', 'depth']);
+    expect(params).toHaveLength(3);
+
+    expect(getParamType('kb_impact', 'name')).toBe('string');
+    expect(getParamType('kb_impact', 'mechanism')).toBe('optional');
+    expect(getParamType('kb_impact', 'depth')).toBe('optional');
   });
 });
 
@@ -376,5 +399,49 @@ describe('output shape contracts', () => {
         expect(typeof entry.count).toBe('number');
       }
     }
+  });
+
+  it('kb_impact: { summary, stats, direct, indirect, transitive } (compact format)', async () => {
+    // Need repos with an edge so we get a non-trivial response
+    const targetId = insertRepo('impact-contract-target', tmpDir, 'current-commit');
+    const callerId = insertRepo('impact-contract-caller', tmpDir, 'current-commit');
+    insertDirectEdge(callerId, targetId, 'calls_grpc');
+
+    const result = await callTool('kb_impact', { name: 'impact-contract-target' });
+    const r = result as { content: Array<{ type: string; text: string }>; isError?: boolean };
+    expect(r.isError).toBeUndefined();
+
+    const parsed = JSON.parse(r.content[0].text);
+
+    // Compact format keys
+    expect(parsed).toHaveProperty('summary');
+    expect(parsed).toHaveProperty('stats');
+    expect(parsed).toHaveProperty('direct');
+    expect(parsed).toHaveProperty('indirect');
+    expect(parsed).toHaveProperty('transitive');
+
+    expect(typeof parsed.summary).toBe('string');
+    expect(typeof parsed.stats).toBe('object');
+    expect(typeof parsed.direct).toBe('object');
+    expect(typeof parsed.indirect).toBe('object');
+    expect(typeof parsed.transitive).toBe('object');
+
+    // Stats shape
+    const stats = parsed.stats;
+    expect(stats).toHaveProperty('total');
+    expect(stats).toHaveProperty('blastRadiusScore');
+    expect(stats).toHaveProperty('mechanisms');
+    expect(typeof stats.total).toBe('number');
+    expect(typeof stats.blastRadiusScore).toBe('number');
+    expect(typeof stats.mechanisms).toBe('object');
+  });
+
+  it('kb_impact error response: { isError: true, content with Error message }', async () => {
+    const result = await callTool('kb_impact', { name: 'nonexistent-contract-service' });
+    const r = result as { content: Array<{ type: string; text: string }>; isError?: boolean };
+
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('Error');
+    expect(r.content[0].text).toContain('nonexistent-contract-service');
   });
 });
