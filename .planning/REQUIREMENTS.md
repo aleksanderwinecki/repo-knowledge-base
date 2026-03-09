@@ -13,7 +13,7 @@ Requirements for Graph Intelligence milestone. Each maps to roadmap phases.
 - [ ] **GRAPH-02**: BFS downstream traversal returns all reachable nodes with depth tracking
 - [ ] **GRAPH-03**: Shortest path returns ordered hop list between any two services
 - [ ] **GRAPH-04**: Event/Kafka intermediate nodes are resolved transparently (two-hop repo->event->repo collapsed to single logical edge)
-- [ ] **GRAPH-05**: Shared edge utilities (confidence extraction, mechanism formatting, metadata parsing) extracted from dependencies.ts into reusable module
+- [x] **GRAPH-05**: Shared edge utilities (confidence extraction, mechanism formatting, metadata parsing) extracted from dependencies.ts into reusable module
 
 ### Impact Analysis
 
@@ -76,7 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRAPH-02 | Phase 23 | Pending |
 | GRAPH-03 | Phase 23 | Pending |
 | GRAPH-04 | Phase 23 | Pending |
-| GRAPH-05 | Phase 23 | Pending |
+| GRAPH-05 | Phase 23 | Complete |
 | IMPACT-01 | Phase 24 | Pending |
 | IMPACT-02 | Phase 24 | Pending |
 | IMPACT-03 | Phase 24 | Pending |
