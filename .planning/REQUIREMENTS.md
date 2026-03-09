@@ -3,9 +3,29 @@
 **Defined:** 2026-03-08
 **Core Value:** Eliminate the repeated cost of AI agents re-learning the same codebase architecture every session
 
-## v2.0 Requirements
+## v2.1 Requirements
 
-Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
+Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
+
+### Cleanup
+
+- [ ] **CLEAN-01**: Remove `src/embeddings/` directory (pipeline.ts, generate.ts, text.ts)
+- [ ] **CLEAN-02**: Remove sqlite-vec extension loading (src/db/vec.ts) and vec0 migration (V8)
+- [ ] **CLEAN-03**: Remove `@huggingface/transformers` and `sqlite-vec` npm dependencies
+- [ ] **CLEAN-04**: Remove `searchSemantic`, `searchHybrid` from search layer — default search uses FTS5 only
+- [ ] **CLEAN-05**: Remove `--semantic` CLI flag, `--embed` CLI flag, and `kb_semantic` MCP tool
+- [ ] **CLEAN-06**: Remove all embedding-related tests and update test counts in docs
+
+### Fix
+
+- [ ] **FIX-01**: `kb index --repo <name>` implies force (skip staleness check) — explicit `--force` not required
+- [ ] **FIX-02**: Scanner follows symlinks when discovering repos under root directory
+
+### Meta
+
+- [ ] **META-01**: PROJECT.md constraints, context, and stats reflect current reality (400 repos, correct tool/test counts)
+
+## v2.0 Requirements (Complete)
 
 ### Service Topology
 
@@ -64,8 +84,7 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | Cloud deployment | Local-only tool, no external infrastructure |
 | UI dashboard | CLI + MCP only |
 | PR creation or code generation | Knowledge layer, not action layer |
-| Hybrid search with re-ranking models | Over-engineering; RRF scoring is sufficient |
-| Streaming embeddings during index | Decoupled embedding pass avoids blocking extraction pipeline |
+| Embedding/semantic search | Impractical — 1hr generation time, OOM on targeted runs, FTS5 covers 95% of queries |
 
 ## Traceability
 
@@ -85,17 +104,26 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | SEM-05 | Phase 19 | Complete |
 | SEM-06 | Phase 19 | Complete |
 | SEM-07 | Phase 19 | Complete |
-| RIDX-01 | Phase 20 | Planned |
-| RIDX-02 | Phase 20 | Planned |
-| RIDX-03 | Phase 20 | Planned |
-| RIDX-04 | Phase 20 | Planned |
-| RIDX-05 | Phase 20 | Planned |
+| RIDX-01 | Phase 20 | Complete |
+| RIDX-02 | Phase 20 | Complete |
+| RIDX-03 | Phase 20 | Complete |
+| RIDX-04 | Phase 20 | Complete |
+| RIDX-05 | Phase 20 | Complete |
+| CLEAN-01 | TBD | Pending |
+| CLEAN-02 | TBD | Pending |
+| CLEAN-03 | TBD | Pending |
+| CLEAN-04 | TBD | Pending |
+| CLEAN-05 | TBD | Pending |
+| CLEAN-06 | TBD | Pending |
+| FIX-01 | TBD | Pending |
+| FIX-02 | TBD | Pending |
+| META-01 | TBD | Pending |
 
 **Coverage:**
-- v2.0 requirements: 14 total (complete)
-- Phase 20 requirements: 5 total (planned)
-- Unmapped: 0
+- v2.0 requirements: 19 total (complete)
+- v2.1 requirements: 9 total (pending)
+- Unmapped: 9 (v2.1 — awaiting roadmap)
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-09 after Phase 20 planning*
+*Last updated: 2026-03-09 after v2.1 milestone start*
