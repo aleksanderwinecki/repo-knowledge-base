@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: Cleanup & Tightening
-status: completed
-stopped_at: Milestone v2.1 complete
-last_updated: "2026-03-09T11:00:00.000Z"
-last_activity: 2026-03-09 — Completed v2.1 milestone
+milestone: v3.0
+milestone_name: Graph Intelligence
+status: active
+stopped_at: Defining requirements
+last_updated: "2026-03-09T12:00:00.000Z"
+last_activity: 2026-03-09 — Milestone v3.0 started
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,28 +21,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Planning next milestone
+**Current focus:** v3.0 Graph Intelligence — defining requirements
 
 ## Current Position
 
-Milestone: v2.1 Cleanup & Tightening — SHIPPED
-Status: Complete
-Last activity: 2026-03-09 — Milestone v2.1 archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-09 — Milestone v3.0 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 47 (across v1.0-v2.1)
-- v2.1 plans completed: 4 (of 4)
-- Average duration: ~3 min/plan (v2.1)
 
 ## Accumulated Context
 
 ### Decisions
 
 See PROJECT.md Key Decisions table for full log.
+
+Recent decisions affecting current work:
+- SQLite recursive CTEs for graph traversal (no Neo4j) — graph is ~12K edges, SQLite handles this in <50ms
+- Three new MCP tools: kb_impact, kb_trace, kb_explain
+- Agent-first design — optimized for MCP consumption, not human reading
 
 ### Pending Todos
 
@@ -55,5 +59,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-09
-Stopped at: Milestone v2.1 complete
+Stopped at: Defining requirements
 Resume file: None

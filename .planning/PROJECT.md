@@ -7,7 +7,16 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 ## Current State
 
 **Latest shipped:** v2.1 Cleanup & Tightening (2026-03-09)
-**Next milestone:** TBD — use `/gsd:new-milestone` to start
+**Current milestone:** v3.0 Graph Intelligence
+
+## Current Milestone: v3.0 Graph Intelligence
+
+**Goal:** Three new MCP tools that give AI agents instant answers to the questions they waste the most time researching: blast radius, request flows, and service overviews.
+
+**Target features:**
+- Impact analysis — "what breaks if I change service X?" via downstream graph traversal
+- Flow tracing — "trace a request from gateway to consumer" via shortest path queries
+- Service explanation — "what does this service do and what talks to it?" via aggregated cards
 
 ## Core Value
 
@@ -33,7 +42,9 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-(None — start next milestone with `/gsd:new-milestone`)
+- [ ] Impact analysis over topology graph (NOM-01)
+- [ ] Flow tracing across service topology (NOM-02)
+- [ ] Service explanation cards for agent onboarding
 
 ### Deferred
 
@@ -113,4 +124,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-09 after v2.1 milestone completion*
+*Last updated: 2026-03-09 after v3.0 milestone start*
