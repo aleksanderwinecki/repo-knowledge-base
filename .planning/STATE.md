@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Cleanup & Tightening
 status: completed
-stopped_at: Completed 22-02-PLAN.md
+stopped_at: Completed 22-01-PLAN.md (v2.1 milestone complete)
 last_updated: "2026-03-09T10:38:00Z"
 last_activity: 2026-03-09 — Completed Plan 22-01 (implicit force + symlink support)
 progress:

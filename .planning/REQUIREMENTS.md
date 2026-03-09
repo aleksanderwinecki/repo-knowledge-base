@@ -115,13 +115,13 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 | CLEAN-04 | Phase 21 | Complete |
 | CLEAN-05 | Phase 21 | Complete |
 | CLEAN-06 | Phase 21 | Complete |
-| FIX-01 | Phase 22 | Pending |
-| FIX-02 | Phase 22 | Pending |
+| FIX-01 | Phase 22 | Complete |
+| FIX-02 | Phase 22 | Complete |
 | META-01 | Phase 22 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 19 total (complete)
-- v2.1 requirements: 9 total, 9 mapped (0 complete)
+- v2.1 requirements: 9 total, 9 mapped (9 complete)
 - Unmapped: 0
 
 ---
