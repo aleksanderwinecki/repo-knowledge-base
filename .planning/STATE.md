@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
 status: completed
-stopped_at: Completed 24-03-PLAN.md
-last_updated: "2026-03-09T14:42:54.927Z"
+stopped_at: Phase 25 context gathered
+last_updated: "2026-03-09T15:16:58.937Z"
 last_activity: 2026-03-09 — Completed Plan 03 (MCP & CLI wiring)
 progress:
   total_phases: 4
@@ -70,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T14:39:08.874Z
-Stopped at: Completed 24-03-PLAN.md
-Resume file: None
+Last session: 2026-03-09T15:16:58.936Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-flow-tracing/25-CONTEXT.md
