@@ -4,7 +4,7 @@ import pLimit from 'p-limit';
 import { discoverRepos } from './scanner.js';
 import { extractMetadata } from './metadata.js';
 import type { RepoMetadata } from './metadata.js';
-import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable, listBranchFiles } from './git.js';
+import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable, listBranchFiles, gitRefresh } from './git.js';
 import { extractElixirModules } from './elixir.js';
 import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
@@ -25,6 +25,8 @@ export interface IndexOptions {
   force: boolean;
   rootDir: string;
   embed?: boolean;
+  repos?: string[];
+  refresh?: boolean;
 }
 
 /** Stats for a single repo index operation */
@@ -318,9 +320,36 @@ export async function indexAllRepos(
   db: Database.Database,
   options: IndexOptions,
 ): Promise<IndexResult[]> {
-  const repos = discoverRepos(options.rootDir);
+  let repos = discoverRepos(options.rootDir);
   const results: IndexResult[] = [];
   const workItems: WorkItem[] = [];
+
+  // Filter to targeted repos if specified
+  if (options.repos && options.repos.length > 0) {
+    const targetSet = new Set(options.repos);
+    repos = repos.filter(r => targetSet.has(path.basename(r)));
+
+    // Warn about repos not found on filesystem
+    const foundNames = new Set(repos.map(r => path.basename(r)));
+    for (const name of options.repos) {
+      if (!foundNames.has(name)) {
+        console.warn(`Repo not found: ${name}`);
+      }
+    }
+  }
+
+  // Git refresh step (before indexing, so pipeline sees updated branch tips)
+  if (options.refresh) {
+    for (const repoPath of repos) {
+      const branch = resolveDefaultBranch(repoPath);
+      if (branch) {
+        const result = gitRefresh(repoPath, branch);
+        if (!result.refreshed) {
+          console.warn(`Git refresh failed for ${path.basename(repoPath)}: ${result.error}`);
+        }
+      }
+    }
+  }
 
   // === Phase 1: Sequential preparation (all DB reads) ===
   for (const repoPath of repos) {
