@@ -59,7 +59,7 @@
 **Milestone Goal:** Remove dead embedding infrastructure, fix --repo targeting UX, and update project metadata to reflect current reality.
 
 - [x] **Phase 21: Embedding Removal** - Rip out sqlite-vec, transformers.js, vec0, semantic search, and all related code/tests (completed 2026-03-09)
-- [ ] **Phase 22: Fixes & Metadata** - Implicit force for --repo, symlink support in scanner, project metadata update
+- [x] **Phase 22: Fixes & Metadata** - Implicit force for --repo, symlink support in scanner, project metadata update (completed 2026-03-09)
 
 ## Phase Details
 
@@ -174,8 +174,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 22-01-PLAN.md -- Implicit force for --repo, symlink support in scanner
-- [ ] 22-02-PLAN.md -- Update PROJECT.md and CLAUDE.md metadata
+- [x] 22-01-PLAN.md -- Implicit force for --repo, symlink support in scanner
+- [x] 22-02-PLAN.md -- Update PROJECT.md and CLAUDE.md metadata
 
 ## Progress
 
@@ -189,4 +189,4 @@ Phases execute in numeric order: 21 -> 22
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21. Embedding Removal | v2.1 | 2/2 | Complete | 2026-03-09 |
-| 22. Fixes & Metadata | v2.1 | 0/2 | Not started | - |
+| 22. Fixes & Metadata | v2.1 | 2/2 | Complete | 2026-03-09 |

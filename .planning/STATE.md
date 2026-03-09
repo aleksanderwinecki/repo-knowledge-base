@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Cleanup & Tightening
 status: completed
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-09T10:26:36.976Z"
-last_activity: 2026-03-09 — Completed Plan 21-02 (test & doc cleanup)
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-09T10:38:00Z"
+last_activity: 2026-03-09 — Completed Plan 22-01 (implicit force + symlink support)
 progress:
   total_phases: 7
-  completed_phases: 6
-  total_plans: 13
-  completed_plans: 13
+  completed_phases: 7
+  total_plans: 15
+  completed_plans: 15
   percent: 100
 ---
 
@@ -21,27 +21,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v2.1 Cleanup & Tightening — Phase 21 Embedding Removal
+**Current focus:** v2.1 Cleanup & Tightening — Phase 22 Fixes & Metadata
 
 ## Current Position
 
-Phase: 21 of 22 (Embedding Removal)
+Phase: 22 of 22 (Fixes & Metadata)
 Plan: 2 of 2
-Status: Phase Complete
-Last activity: 2026-03-09 — Completed Plan 21-02 (test & doc cleanup)
+Status: Phase Complete (v2.1 milestone complete)
+Last activity: 2026-03-09 — Completed Plan 22-02 (metadata update)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 42 (across v1.0-v2.0)
-- v2.0 plans completed: 10
-- Average duration: ~4.5 min/plan (v2.0)
+- Total plans completed: 45 (across v1.0-v2.1)
+- v2.1 plans completed: 4 (of 4)
+- Average duration: ~3 min/plan (v2.1)
 
-**Recent Trend (v2.0):**
-- Last 5 plans: 5min, 5min, 5min, 4min, 3min
-- Trend: Improving
+**Recent Trend (v2.1):**
+- Last 4 plans: 4min, 3min, 2min, 4min
+- Trend: Stable
 
 ## Accumulated Context
 
@@ -57,6 +57,9 @@ Recent decisions affecting current work:
 - CLI search action changed from async to sync (all search paths are FTS5-only)
 - [Phase 21]: SCHEMA_VERSION decremented from 8 to 7 (V8 vec0 migration removed)
 - [Phase 21]: embedded_schema refs in Elixir indexer are Ecto domain terms, not embedding infrastructure
+- [Phase 22]: Condensed CLEAN-01..06 reference in requirements to avoid stale keyword matches
+- [Phase 22]: options.repos?.length bypasses staleness check (implicit force for targeted reindex)
+- [Phase 22]: isSymbolicLink() + statSync resolution for symlink-aware repo discovery
 
 ### Pending Todos
 
@@ -68,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T10:21:55Z
-Stopped at: Completed 21-02-PLAN.md
+Last session: 2026-03-09T10:35:35Z
+Stopped at: Completed 22-02-PLAN.md
 Resume file: None

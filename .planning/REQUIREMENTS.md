@@ -18,12 +18,12 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 
 ### Fix
 
-- [ ] **FIX-01**: `kb index --repo <name>` implies force (skip staleness check) — explicit `--force` not required
-- [ ] **FIX-02**: Scanner follows symlinks when discovering repos under root directory
+- [x] **FIX-01**: `kb index --repo <name>` implies force (skip staleness check) — explicit `--force` not required
+- [x] **FIX-02**: Scanner follows symlinks when discovering repos under root directory
 
 ### Meta
 
-- [ ] **META-01**: PROJECT.md constraints, context, and stats reflect current reality (400 repos, correct tool/test counts)
+- [x] **META-01**: PROJECT.md constraints, context, and stats reflect current reality (400 repos, correct tool/test counts)
 
 ## v2.0 Requirements (Complete)
 
@@ -117,7 +117,7 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 | CLEAN-06 | Phase 21 | Complete |
 | FIX-01 | Phase 22 | Pending |
 | FIX-02 | Phase 22 | Pending |
-| META-01 | Phase 22 | Pending |
+| META-01 | Phase 22 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 19 total (complete)
