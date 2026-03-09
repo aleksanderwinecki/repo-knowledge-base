@@ -34,7 +34,6 @@ Refine results with:
 - `--repo <name>` — filter by repo
 - `--type <type>` — filter by type: coarse (`repo`, `module`, `event`, `service`) or sub-type (`schema`, `context`, `graphql_query`, `grpc`, etc.)
 - `--entity` — structured entity card with relationships
-- `--semantic` — pure vector similarity search (requires embeddings)
 - `--list-types` — discover available entity types with counts
 - `--limit <n>` — max results (default 20)
 

@@ -22,8 +22,7 @@ Add this to the project's CLAUDE.md or your global `~/.claude/CLAUDE.md`:
 The `kb` CLI indexes all repos under ~/Documents/Repos/ into a searchable knowledge base.
 
 Available commands (all output JSON):
-- `kb search "query"` — Hybrid FTS5 + semantic search (auto-degrades to FTS-only without embeddings)
-- `kb search --semantic "natural language query"` — Pure vector similarity search
+- `kb search "query"` — Full-text search across indexed repos
 - `kb search "Name" --entity` — Structured entity card with relationships
 - `kb search --list-types` — List available entity types with counts
 - `kb deps <repo-name>` — Service dependency graph (direct neighbors)
@@ -35,7 +34,6 @@ Available commands (all output JSON):
 - `kb index --force` — Re-index all repos
 - `kb index --repo app-foo app-bar` — Re-index specific repos only
 - `kb index --repo app-foo --refresh` — Git fetch + reset to latest before indexing
-- `kb index --embed` — Re-index with vector embedding generation (slower, enables semantic search)
 
 Use `kb search` when you need to find which service handles something, what modules exist for a domain, or how services are connected.
 ```
@@ -57,6 +55,6 @@ Override: `KB_DB_PATH=/path/to/db.sqlite`
 
 ## Development
 
-- `npm test` — 561 tests
+- `npm test` — 503 tests
 - `npm run build` — compile TypeScript
 - Source: `src/` (db, indexer, search, knowledge, cli)
