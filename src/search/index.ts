@@ -15,6 +15,7 @@ export {
 } from './edge-utils.js';
 export { buildGraph, bfsDownstream, bfsUpstream, shortestPath } from './graph.js';
 export { analyzeImpact, formatImpactCompact, formatImpactVerbose } from './impact.js';
+export { traceRoute } from './trace.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
@@ -32,3 +33,4 @@ export type {
   ImpactNode,
 } from './types.js';
 export type { ImpactResult, ImpactServiceEntry, ImpactStats } from './impact.js';
+export type { TraceResult, TraceHop } from './trace.js';

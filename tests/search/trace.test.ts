@@ -326,7 +326,7 @@ describe('traceRoute', () => {
       } catch (e: any) {
         expect(e.message).toContain('missing-from');
         expect(e.message).toContain('missing-to');
-        expect(e.message).toStartWith('Services not found:');
+        expect(e.message).toMatch(/^Services not found:/);
       }
     });
 
