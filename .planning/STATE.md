@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Cleanup & Tightening
-status: in-progress
-stopped_at: Roadmap created, ready to plan Phase 21
-last_updated: "2026-03-09"
-last_activity: 2026-03-09 — Roadmap created for v2.1 (2 phases, 9 requirements)
+status: executing
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-09T10:16:33.445Z"
+last_activity: 2026-03-09 — Completed Plan 21-01 (embedding removal)
 progress:
-  total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 7
+  completed_phases: 5
+  total_plans: 13
+  completed_plans: 12
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 21 of 22 (Embedding Removal)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-09 — Roadmap created for v2.1
+Plan: 1 of 2
+Status: Executing
+Last activity: 2026-03-09 — Completed Plan 21-01 (embedding removal)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - Embedding infrastructure deemed impractical (~1hr generation, OOM on targeted runs) — removing entirely
 - FTS5 covers 95%+ of query needs; semantic search adds complexity without proportional value
 - --repo should imply force (explicit --force for targeted reindex is redundant UX)
+- SCHEMA_VERSION decremented from 8 to 7 (V8 vec0 migration removed)
+- CLI search action changed from async to sync (all search paths are FTS5-only)
+- [Phase 21]: SCHEMA_VERSION decremented from 8 to 7 (V8 vec0 migration removed)
 
 ### Pending Todos
 
@@ -64,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09
-Stopped at: Roadmap created for v2.1 milestone
-Resume file: None — next step is `/gsd:plan-phase 21`
+Last session: 2026-03-09T10:16:33.443Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: None

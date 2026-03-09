@@ -188,5 +188,5 @@ Phases execute in numeric order: 21 -> 22
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
-| 21. Embedding Removal | v2.1 | 0/2 | Not started | - |
+| 21. Embedding Removal | 1/2 | In Progress|  | - |
 | 22. Fixes & Metadata | v2.1 | 0/TBD | Not started | - |

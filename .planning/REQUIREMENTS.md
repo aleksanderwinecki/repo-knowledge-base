@@ -9,11 +9,11 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 
 ### Cleanup
 
-- [ ] **CLEAN-01**: Remove `src/embeddings/` directory (pipeline.ts, generate.ts, text.ts)
-- [ ] **CLEAN-02**: Remove sqlite-vec extension loading (src/db/vec.ts) and vec0 migration (V8)
-- [ ] **CLEAN-03**: Remove `@huggingface/transformers` and `sqlite-vec` npm dependencies
-- [ ] **CLEAN-04**: Remove `searchSemantic`, `searchHybrid` from search layer — default search uses FTS5 only
-- [ ] **CLEAN-05**: Remove `--semantic` CLI flag, `--embed` CLI flag, and `kb_semantic` MCP tool
+- [x] **CLEAN-01**: Remove `src/embeddings/` directory (pipeline.ts, generate.ts, text.ts)
+- [x] **CLEAN-02**: Remove sqlite-vec extension loading (src/db/vec.ts) and vec0 migration (V8)
+- [x] **CLEAN-03**: Remove `@huggingface/transformers` and `sqlite-vec` npm dependencies
+- [x] **CLEAN-04**: Remove `searchSemantic`, `searchHybrid` from search layer — default search uses FTS5 only
+- [x] **CLEAN-05**: Remove `--semantic` CLI flag, `--embed` CLI flag, and `kb_semantic` MCP tool
 - [ ] **CLEAN-06**: Remove all embedding-related tests and update test counts in docs
 
 ### Fix
@@ -109,11 +109,11 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 | RIDX-03 | Phase 20 | Complete |
 | RIDX-04 | Phase 20 | Complete |
 | RIDX-05 | Phase 20 | Complete |
-| CLEAN-01 | Phase 21 | Pending |
-| CLEAN-02 | Phase 21 | Pending |
-| CLEAN-03 | Phase 21 | Pending |
-| CLEAN-04 | Phase 21 | Pending |
-| CLEAN-05 | Phase 21 | Pending |
+| CLEAN-01 | Phase 21 | Complete |
+| CLEAN-02 | Phase 21 | Complete |
+| CLEAN-03 | Phase 21 | Complete |
+| CLEAN-04 | Phase 21 | Complete |
+| CLEAN-05 | Phase 21 | Complete |
 | CLEAN-06 | Phase 21 | Pending |
 | FIX-01 | Phase 22 | Pending |
 | FIX-02 | Phase 22 | Pending |
