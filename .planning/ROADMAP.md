@@ -154,13 +154,14 @@ Plans:
   1. `src/embeddings/` directory does not exist and no source file imports from it
   2. `npm ls sqlite-vec` and `npm ls @huggingface/transformers` both report "not installed"
   3. `kb search "query"` uses FTS5 only -- no hybrid/vector code path exists, no degradation logic needed
-  4. `kb search --semantic` and `kb_semantic` MCP tool are gone -- running them produces "unknown option" / tool-not-found errors
-  5. All tests pass with no embedding-related test files remaining
-**Plans**: TBD
+  4. `kb search "payments"` (default search) returns FTS5 results only, no hybrid/RRF scoring
+  5. `kb search --semantic` and `kb_semantic` MCP tool are gone -- running them produces "unknown option" / tool-not-found errors
+  6. All tests pass with no embedding-related test files remaining
+**Plans**: 2 plans
 
 Plans:
-- [ ] 21-01: TBD
-- [ ] 21-02: TBD
+- [ ] 21-01-PLAN.md -- Remove embeddings dir, vec module, V8 migration, uninstall npm packages
+- [ ] 21-02-PLAN.md -- Remove semantic/hybrid search, CLI flags, MCP tool, tests, update docs
 
 ### Phase 22: Fixes & Metadata
 **Goal**: Remaining UX papercuts are fixed and all project documentation accurately reflects the post-cleanup state of the codebase
@@ -187,5 +188,5 @@ Phases execute in numeric order: 21 -> 22
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
-| 21. Embedding Removal | v2.1 | 0/TBD | Not started | - |
+| 21. Embedding Removal | v2.1 | 0/2 | Not started | - |
 | 22. Fixes & Metadata | v2.1 | 0/TBD | Not started | - |
