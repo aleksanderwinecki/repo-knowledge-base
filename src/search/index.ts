@@ -13,6 +13,7 @@ export {
   buildInClause,
   getAllowedTypes,
 } from './edge-utils.js';
+export { buildGraph, bfsDownstream, shortestPath } from './graph.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
@@ -23,4 +24,8 @@ export type {
   DependencyResult,
   DependencyNode,
   DependencyOptions,
+  GraphEdge,
+  ServiceGraph,
+  BfsNode,
+  GraphHop,
 } from './types.js';
