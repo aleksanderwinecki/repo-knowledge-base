@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { RepoMetadata } from './metadata.js';
 import { indexEntity, removeEntity } from '../db/fts.js';
-import { isVecAvailable } from '../db/vec.js';
 import type { EntityType } from '../types/entities.js';
 import type { TopologyEdge } from './topology/types.js';
 
@@ -96,31 +95,6 @@ function clearEntityFts(
 }
 
 /**
- * Clear all embeddings for entities belonging to a repo.
- * Removes embeddings for modules, events, services, and the repo itself.
- * No-op when sqlite-vec is unavailable.
- */
-export function clearRepoEmbeddings(db: Database.Database, repoId: number): void {
-  if (!isVecAvailable()) return;
-
-  const deleteEmb = db.prepare(
-    'DELETE FROM entity_embeddings WHERE entity_type = ? AND entity_id = ?'
-  );
-
-  for (const entityType of ['module', 'event', 'service', 'repo'] as const) {
-    if (entityType === 'repo') {
-      deleteEmb.run('repo', String(repoId));
-    } else {
-      const table = `${entityType}s`;
-      const ids = db.prepare(`SELECT id FROM ${table} WHERE repo_id = ?`).all(repoId) as { id: number }[];
-      for (const { id } of ids) {
-        deleteEmb.run(entityType, String(id));
-      }
-    }
-  }
-}
-
-/**
  * Clear all entities associated with a repo.
  * Removes FTS entries before deleting records.
  */
@@ -135,9 +109,6 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const deleteEvents = db.prepare('DELETE FROM events WHERE repo_id = ?');
   const deleteFiles = db.prepare('DELETE FROM files WHERE repo_id = ?');
   const deleteServices = db.prepare('DELETE FROM services WHERE repo_id = ?');
-
-  // Remove embeddings before deleting entities (embeddings reference entity IDs)
-  clearRepoEmbeddings(db, repoId);
 
   // Remove FTS entries for all entity types
   clearEntityFts(selectModules, deleteFts, 'module:%', repoId);

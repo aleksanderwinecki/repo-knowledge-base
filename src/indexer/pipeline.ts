@@ -17,14 +17,10 @@ import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
 import { extractTopologyEdges } from './topology/index.js';
 import type { TopologyEdge } from './topology/index.js';
 import { enrichFromEventCatalog } from './catalog.js';
-import { isVecAvailable } from '../db/vec.js';
-import { generateAllEmbeddings } from '../embeddings/generate.js';
-
 /** Options for the indexing pipeline */
 export interface IndexOptions {
   force: boolean;
   rootDir: string;
-  embed?: boolean;
   repos?: string[];
   refresh?: boolean;
 }
@@ -37,7 +33,6 @@ export interface IndexStats {
   services: number;
   graphqlTypes: number;
   topologyEdges: number;
-  embeddings: number;
 }
 
 /** Result of indexing a single repo */
@@ -271,7 +266,6 @@ function persistExtractedData(
       services: extracted.services.length,
       graphqlTypes: graphqlTypeCount,
       topologyEdges: extracted.topologyEdges.length,
-      embeddings: 0,
       mode: 'surgical' as const,
     };
   }
@@ -299,7 +293,6 @@ function persistExtractedData(
     services: extracted.services.length,
     graphqlTypes: graphqlTypeCount,
     topologyEdges: extracted.topologyEdges.length,
-    embeddings: 0,
     mode: 'full' as const,
   };
 }
@@ -444,21 +437,6 @@ export async function indexAllRepos(
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.warn(`Event Catalog enrichment failed: ${errorMsg}`);
     }
-  }
-
-  // === Phase 4: Embedding generation (async, after all persistence) ===
-  if (success > 0 && options.embed && isVecAvailable()) {
-    try {
-      const startMs = Date.now();
-      const embeddingCount = await generateAllEmbeddings(db, options.force);
-      const elapsed = Date.now() - startMs;
-      console.log(`Generated ${embeddingCount} embeddings (${elapsed}ms)`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`Embedding generation failed: ${msg}`);
-    }
-  } else if (success > 0 && !isVecAvailable()) {
-    console.log('sqlite-vec not available, skipping embeddings');
   }
 
   // Post-index optimization: compact FTS and reclaim WAL space
