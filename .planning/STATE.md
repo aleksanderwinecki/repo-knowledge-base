@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Design-Time Intelligence
-status: completed
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-03-09T09:20:18.090Z"
-last_activity: 2026-03-09 — Completed 20-02 MCP reindex tool (phase 20 complete)
+milestone: v2.1
+milestone_name: Cleanup & Tightening
+status: in-progress
+stopped_at: Defining requirements
+last_updated: "2026-03-09"
+last_activity: 2026-03-09 — Milestone v2.1 started
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-08)
+See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v2.0 milestone complete
+**Current focus:** v2.1 Cleanup & Tightening — remove embeddings, fix UX, update metadata
 
 ## Current Position
 
-Phase: 20 of 20 (Targeted Repo Reindex with Git Refresh)
-Plan: 20-02 of 20-02
-Status: Phase 20 Complete - v2.0 Milestone Complete
-Last activity: 2026-03-09 — Completed 20-02 MCP reindex tool (phase 20 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-09 — Milestone v2.1 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 

@@ -6,17 +6,17 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 
 ## Current State
 
-**Latest shipped:** v1.2 Hardening & Quick Wins (2026-03-07)
-**Current milestone:** v2.0 Design-Time Intelligence
+**Latest shipped:** v2.0 Design-Time Intelligence (2026-03-09)
+**Current milestone:** v2.1 Cleanup & Tightening
 
-## Current Milestone: v2.0 Design-Time Intelligence
+## Current Milestone: v2.1 Cleanup & Tightening
 
-**Goal:** Enable design-time architectural queries — who talks to whom, who owns what, and natural language search across the entire microservice ecosystem.
+**Goal:** Remove dead embedding infrastructure, fix scoping/UX issues in existing features, and update all project metadata to reflect current reality.
 
 **Target features:**
-- Service topology extraction (gRPC clients, HTTP clients, gateway routing, Kafka wiring) with structured dependency edges
-- CODEOWNERS parsing and team-based ownership queries
-- Embedding-based semantic search for natural language queries (e.g., "which services handle payments")
+- Remove embedding infrastructure (sqlite-vec, @huggingface/transformers, vec0 table, semantic search, kb_semantic MCP tool)
+- Fix --repo targeting UX (implicit force, symlink support in scanner)
+- Update all project metadata (PROJECT.md stats, constraints, context to reflect 400 repos, 10 MCP tools, 561 tests)
 
 ## Core Value
 
@@ -36,13 +36,9 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [ ] Service topology: gRPC client/server call extraction across all repos (TOPO-01)
-- [ ] Service topology: HTTP client module extraction (TOPO-02)
-- [ ] Service topology: Gateway routing config extraction (TOPO-03)
-- [ ] Service topology: Kafka producer/consumer wiring (TOPO-04)
-- [ ] CODEOWNERS parsing and ownership queries (OWN-01..03)
-- [ ] Embedding-based semantic search for natural language queries (SEM-01)
-- [ ] Code-aware embeddings for CamelCase/snake_case (SEM-02)
+- [ ] Remove embedding infrastructure — sqlite-vec, transformers.js, vec0, semantic search (CLEAN-01)
+- [ ] Fix --repo implicit force and symlink support in scanner (FIX-01)
+- [ ] Update project metadata to reflect current state (META-01)
 
 ### Deferred
 
@@ -64,18 +60,19 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v1.2 with 14,249 LOC TypeScript (5,582 src + 8,667 tests), 435 tests passing across 28 test files.
-Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0, v1.1, and v1.2 milestones.
+Shipped v2.0 with 561 tests passing across 38 test files.
+Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, sqlite-vec, @huggingface/transformers, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
+Built across v1.0, v1.1, v1.2, and v2.0 milestones.
 
-8 MCP tools: kb_search, kb_entity, kb_deps, kb_learn, kb_forget, kb_status, kb_cleanup, kb_list_types.
-CLI: kb index (--force, --timing), kb search (--type, --list-types, --entity), kb deps (--direction), kb status, kb learn, kb learned, kb forget, kb docs.
+10 MCP tools: kb_search, kb_semantic, kb_entity, kb_deps, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
+CLI: kb index (--force, --repo, --refresh, --embed, --timing), kb search (--type, --list-types, --entity, --semantic), kb deps (--direction, --mechanism), kb status, kb learn, kb learned, kb forget, kb docs.
+
+400 repos indexed: 125k modules, 8.4k events, 127 services, 11.7k topology edges.
 
 Known limitations:
-- FTS5 keyword search only (no semantic/embedding search) — handles ~80% of queries well; v2.0 adds embeddings
-- sqlite-vec platform compatibility on macOS ARM64 untested — needed for v2.0 embeddings
+- Embedding infrastructure exists but is impractical (~1 hour for full generation, killed by OOM on targeted runs) — v2.1 removes it
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
-- Dependency graph is package-level (mix.exs), not service-communication-level — v2.0 adds topology
+- Topology extraction catches most patterns but unusual client wrappers may be missed
 
 ## Key Decisions
 
@@ -111,9 +108,9 @@ Known limitations:
 - **Runtime**: Local only, no external infrastructure
 - **Storage**: SQLite — zero dependencies
 - **Language**: Node.js/TypeScript
-- **Indexing speed**: Full index completes in under 10 minutes for ~50 repos
+- **Indexing speed**: Full index completes in under 10 minutes for 400 repos
 - **Query speed**: Search returns in under 2 seconds
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-08 after v2.0 milestone start*
+*Last updated: 2026-03-09 after v2.1 milestone start*
