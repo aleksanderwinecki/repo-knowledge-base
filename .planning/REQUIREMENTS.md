@@ -34,7 +34,7 @@ Requirements for Graph Intelligence milestone. Each maps to roadmap phases.
 
 ### Service Explanation
 
-- [ ] **EXPLAIN-01**: Agent can get a structured service card via MCP tool `kb_explain` or CLI `kb explain`
+- [x] **EXPLAIN-01**: Agent can get a structured service card via MCP tool `kb_explain` or CLI `kb explain`
 - [x] **EXPLAIN-02**: Card includes service identity, description, inbound/outbound connections grouped by mechanism
 - [x] **EXPLAIN-03**: Card includes events produced/consumed, entity counts by type, and repo metadata
 - [x] **EXPLAIN-04**: Card includes "talks to" / "called by" summaries and top modules by type
@@ -88,7 +88,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACE-02 | Phase 25 | Complete |
 | TRACE-03 | Phase 25 | Complete |
 | TRACE-04 | Phase 25 | Complete |
-| EXPLAIN-01 | Phase 26 | Pending |
+| EXPLAIN-01 | Phase 26 | Complete |
 | EXPLAIN-02 | Phase 26 | Complete |
 | EXPLAIN-03 | Phase 26 | Complete |
 | EXPLAIN-04 | Phase 26 | Complete |
