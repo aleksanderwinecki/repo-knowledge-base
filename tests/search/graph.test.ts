@@ -4,7 +4,8 @@ import path from 'path';
 import os from 'os';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
-import { buildGraph, bfsDownstream, shortestPath } from '../../src/search/graph.js';
+import { buildGraph, bfsDownstream, shortestPath, bfsUpstream } from '../../src/search/graph.js';
+import type { ImpactNode } from '../../src/search/types.js';
 
 let db: Database.Database;
 let dbPath: string;
@@ -443,5 +444,294 @@ describe('shortestPath', () => {
     // The actual edge is A -> B, so hop should reflect that regardless of traversal direction
     expect(result![0].fromRepoId).toBe(a);
     expect(result![0].toRepoId).toBe(b);
+  });
+});
+
+// =========================================================================
+// bfsUpstream
+// =========================================================================
+
+describe('bfsUpstream', () => {
+  // --- Core traversal ---
+
+  it('returns all upstream dependents with correct depth', () => {
+    // C -> B -> A (forward). Upstream of A = {B at 1, C at 2}
+    const a = insertRepo(db, 'up-target');
+    const b = insertRepo(db, 'up-mid');
+    const c = insertRepo(db, 'up-root');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.length).toBe(2);
+    const bNode = result.find((n: ImpactNode) => n.repoId === b);
+    const cNode = result.find((n: ImpactNode) => n.repoId === c);
+    expect(bNode).toBeDefined();
+    expect(bNode!.depth).toBe(1);
+    expect(cNode).toBeDefined();
+    expect(cNode!.depth).toBe(2);
+  });
+
+  it('does not include the starting node in results', () => {
+    const a = insertRepo(db, 'up-start');
+    const b = insertRepo(db, 'up-caller');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.every((n: ImpactNode) => n.repoId !== a)).toBe(true);
+  });
+
+  it('traverses graph.reverse (not graph.forward)', () => {
+    // B -> A (forward). Upstream of A should find B.
+    // Downstream of A should NOT find B.
+    const a = insertRepo(db, 'up-check-a');
+    const b = insertRepo(db, 'up-check-b');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const upstream = bfsUpstream(graph, a);
+    const downstream = bfsDownstream(graph, a);
+
+    expect(upstream.length).toBe(1);
+    expect(upstream[0].repoId).toBe(b);
+    expect(downstream.length).toBe(0);
+  });
+
+  it('does not traverse from unresolved nodes (repoId=0)', () => {
+    const a = insertRepo(db, 'up-unres');
+    insertUnresolvedEdge(db, a, 'calls_grpc', 'UnknownUpstream');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.every((n: ImpactNode) => n.repoId !== 0)).toBe(true);
+  });
+
+  it('handles cycles without infinite loops', () => {
+    const a = insertRepo(db, 'up-cyc-a');
+    const b = insertRepo(db, 'up-cyc-b');
+    const c = insertRepo(db, 'up-cyc-c');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+    insertDirectEdge(db, a, c, 'calls_grpc'); // cycle
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.length).toBe(2);
+    const ids = result.map((n: ImpactNode) => n.repoId).sort();
+    expect(ids).toEqual([b, c].sort());
+  });
+
+  // --- Mechanism filtering ---
+
+  it('mechanism filter only follows matching edges during traversal', () => {
+    // C -grpc-> B -grpc-> A, D -event-> A
+    // Upstream of A filtered by "grpc" should return B and C, NOT D
+    const a = insertRepo(db, 'mech-target');
+    const b = insertRepo(db, 'mech-grpc-1');
+    const c = insertRepo(db, 'mech-grpc-2');
+    const d = insertRepo(db, 'mech-event');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+    insertDirectEdge(db, d, a, 'calls_http');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a, 3, 'grpc');
+
+    expect(result.length).toBe(2);
+    const ids = result.map((n: ImpactNode) => n.repoId).sort();
+    expect(ids).toEqual([b, c].sort());
+  });
+
+  it('mechanism filter stops traversal at non-matching edges', () => {
+    // C -event-> B -grpc-> A.
+    // Upstream of A filtered by "grpc" returns only B (depth 1), NOT C
+    const a = insertRepo(db, 'mech-stop-a');
+    const b = insertRepo(db, 'mech-stop-b');
+    const c = insertRepo(db, 'mech-stop-c');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_http');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a, 3, 'grpc');
+
+    expect(result.length).toBe(1);
+    expect(result[0].repoId).toBe(b);
+  });
+
+  it('without mechanism filter returns all upstream dependents', () => {
+    // C -event-> B -grpc-> A
+    const a = insertRepo(db, 'no-mech-a');
+    const b = insertRepo(db, 'no-mech-b');
+    const c = insertRepo(db, 'no-mech-c');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_http');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.length).toBe(2);
+  });
+
+  // --- Depth limiting ---
+
+  it('defaults to maxDepth=3', () => {
+    // Build chain: E -> D -> C -> B -> A. Default depth=3 should return B, C, D but not E.
+    const a = insertRepo(db, 'depth-def-a');
+    const b = insertRepo(db, 'depth-def-b');
+    const c = insertRepo(db, 'depth-def-c');
+    const d = insertRepo(db, 'depth-def-d');
+    const e = insertRepo(db, 'depth-def-e');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+    insertDirectEdge(db, d, c, 'calls_grpc');
+    insertDirectEdge(db, e, d, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a); // default maxDepth=3
+
+    expect(result.length).toBe(3);
+    const ids = result.map((n: ImpactNode) => n.repoId).sort();
+    expect(ids).toEqual([b, c, d].sort());
+  });
+
+  it('maxDepth=1 returns only direct callers', () => {
+    const a = insertRepo(db, 'depth1-a');
+    const b = insertRepo(db, 'depth1-b');
+    const c = insertRepo(db, 'depth1-c');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a, 1);
+
+    expect(result.length).toBe(1);
+    expect(result[0].repoId).toBe(b);
+    expect(result[0].depth).toBe(1);
+  });
+
+  it('maxDepth=2 returns direct and indirect callers', () => {
+    const a = insertRepo(db, 'depth2-a');
+    const b = insertRepo(db, 'depth2-b');
+    const c = insertRepo(db, 'depth2-c');
+    const d = insertRepo(db, 'depth2-d');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_grpc');
+    insertDirectEdge(db, d, c, 'calls_grpc');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a, 2);
+
+    expect(result.length).toBe(2);
+    const ids = result.map((n: ImpactNode) => n.repoId).sort();
+    expect(ids).toEqual([b, c].sort());
+  });
+
+  // --- Multi-edge collection ---
+
+  it('collects ALL edges from affected node to nodes in the BFS subgraph', () => {
+    // B depends on A via BOTH grpc and http. Upstream of A should find B with 2 edges.
+    const a = insertRepo(db, 'multi-edge-a');
+    const b = insertRepo(db, 'multi-edge-b');
+    insertDirectEdge(db, b, a, 'calls_grpc', JSON.stringify({ confidence: 'high' }));
+    insertDirectEdge(db, b, a, 'calls_http', JSON.stringify({ confidence: 'low' }));
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.length).toBe(1);
+    expect(result[0].repoId).toBe(b);
+    expect(result[0].edges.length).toBe(2);
+    const mechanisms = result[0].edges.map((e: { mechanism: string }) => e.mechanism).sort();
+    expect(mechanisms).toEqual(['grpc', 'http']);
+  });
+
+  it('edge collection uses graph.forward to find outgoing edges into the subgraph', () => {
+    // C -> B -> A. Upstream of A = {B, C}.
+    // B's forward edges pointing into subgraph: B -> A
+    // C's forward edges pointing into subgraph: C -> B
+    const a = insertRepo(db, 'fwd-coll-a');
+    const b = insertRepo(db, 'fwd-coll-b');
+    const c = insertRepo(db, 'fwd-coll-c');
+    insertDirectEdge(db, b, a, 'calls_grpc');
+    insertDirectEdge(db, c, b, 'calls_http');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    const bNode = result.find((n: ImpactNode) => n.repoId === b);
+    const cNode = result.find((n: ImpactNode) => n.repoId === c);
+    expect(bNode).toBeDefined();
+    expect(bNode!.edges.length).toBe(1);
+    expect(bNode!.edges[0].mechanism).toBe('grpc');
+    expect(cNode).toBeDefined();
+    expect(cNode!.edges.length).toBe(1);
+    expect(cNode!.edges[0].mechanism).toBe('http');
+  });
+
+  it('mechanism filter also filters collected edges', () => {
+    // B depends on A via grpc and http. Filter for grpc should only collect grpc edge.
+    const a = insertRepo(db, 'mech-edge-a');
+    const b = insertRepo(db, 'mech-edge-b');
+    insertDirectEdge(db, b, a, 'calls_grpc', JSON.stringify({ confidence: 'high' }));
+    insertDirectEdge(db, b, a, 'calls_http', JSON.stringify({ confidence: 'low' }));
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a, 3, 'grpc');
+
+    expect(result.length).toBe(1);
+    expect(result[0].edges.length).toBe(1);
+    expect(result[0].edges[0].mechanism).toBe('grpc');
+    expect(result[0].edges[0].confidence).toBe('high');
+  });
+
+  // --- Edge cases ---
+
+  it('returns empty array for unknown repoId', () => {
+    insertRepo(db, 'up-unknown');
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, 99999);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array when no upstream dependents exist', () => {
+    const a = insertRepo(db, 'up-isolated');
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array when graph has only unresolved edges', () => {
+    const a = insertRepo(db, 'up-unres-only');
+    insertUnresolvedEdge(db, a, 'calls_grpc', 'GhostService');
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result).toEqual([]);
+  });
+
+  it('each ImpactNode has repoId, repoName, depth, and edges array', () => {
+    const a = insertRepo(db, 'impact-shape-a');
+    const b = insertRepo(db, 'impact-shape-b');
+    insertDirectEdge(db, b, a, 'calls_grpc', JSON.stringify({ confidence: 'high' }));
+
+    const graph = buildGraph(db);
+    const result = bfsUpstream(graph, a);
+
+    expect(result.length).toBe(1);
+    const node = result[0];
+    expect(node).toHaveProperty('repoId', b);
+    expect(node).toHaveProperty('repoName', 'impact-shape-b');
+    expect(node).toHaveProperty('depth', 1);
+    expect(node).toHaveProperty('edges');
+    expect(Array.isArray(node.edges)).toBe(true);
+    expect(node.edges[0]).toHaveProperty('mechanism');
+    expect(node.edges[0]).toHaveProperty('confidence');
   });
 });
