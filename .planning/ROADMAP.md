@@ -113,10 +113,11 @@ Plans:
   2. Response includes ordered hop list with mechanism per hop and a human-readable path_summary string
   3. "Service not found" and "no path exists" produce distinct, clear error responses
   4. Each hop is annotated with confidence level and the response includes min-path confidence (weakest link)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 25-01: TBD
+- [ ] 25-01-PLAN.md -- Core trace module with traceRoute function, formatting, and validation (TDD)
+- [ ] 25-02-PLAN.md -- MCP tool and CLI command wiring with integration and contract tests
 
 ### Phase 26: Service Explanation
 **Goal**: Agents can get a structured overview card for any service, replacing manual exploration
@@ -143,5 +144,5 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23. Graph Infrastructure | 2/2 | Complete    | 2026-03-09 | - |
 | 24. Blast Radius | 3/3 | Complete    | 2026-03-09 | - |
-| 25. Flow Tracing | v3.0 | 0/? | Not started | - |
+| 25. Flow Tracing | v3.0 | 0/2 | Not started | - |
 | 26. Service Explanation | v3.0 | 0/? | Not started | - |
