@@ -1515,3 +1515,96 @@ end
     expect(results[0].repo).toBeDefined();
   });
 });
+
+describe('targeted repo indexing', () => {
+  function ensureMainBranch(repoDir: string): void {
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+  }
+
+  it('indexes only targeted repos when repos option provided', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+
+    const repoA = createGitRepo('repo-alpha', {
+      'mix.exs': 'defmodule RepoAlpha.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule RepoAlpha.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoA);
+
+    const repoB = createGitRepo('repo-beta', {
+      'mix.exs': 'defmodule RepoBeta.MixProject do\nend',
+      'lib/mod.ex': `
+defmodule RepoBeta.Mod do
+  def run, do: :ok
+end
+`,
+    });
+    ensureMainBranch(repoB);
+
+    // Only index repo-alpha
+    const results = await indexAllRepos(db, { force: true, rootDir, repos: ['repo-alpha'] });
+
+    // Only repo-alpha should be indexed
+    const successes = results.filter(r => r.status === 'success');
+    expect(successes).toHaveLength(1);
+    expect(successes[0].repo).toBe('repo-alpha');
+
+    // Verify only repo-alpha in DB
+    const repos = db.prepare('SELECT name FROM repos ORDER BY name').all() as { name: string }[];
+    expect(repos).toHaveLength(1);
+    expect(repos[0].name).toBe('repo-alpha');
+  });
+
+  it('warns for repos not found on filesystem', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    fs.mkdirSync(rootDir, { recursive: true });
+
+    const results = await indexAllRepos(db, { force: true, rootDir, repos: ['nonexistent'] });
+
+    // Should get 0 successes (no crash)
+    const successes = results.filter(r => r.status === 'success');
+    expect(successes).toHaveLength(0);
+  });
+
+  it('succeeds with refresh=true on a repo with remote', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    fs.mkdirSync(rootDir, { recursive: true });
+
+    // Create a bare repo and clone into the repos directory
+    const bare = path.join(tmpDir, 'bare-refresh.git');
+    execSync(`git init --bare --initial-branch=main "${bare}"`, { stdio: 'pipe' });
+
+    const repoDir = path.join(rootDir, 'refresh-repo');
+    execSync(`git clone "${bare}" "${repoDir}"`, { stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Create initial content and push
+    fs.mkdirSync(path.join(repoDir, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(repoDir, 'mix.exs'), 'defmodule RefreshRepo.MixProject do\nend');
+    fs.writeFileSync(path.join(repoDir, 'lib', 'mod.ex'), `
+defmodule RefreshRepo.Mod do
+  def run, do: :ok
+end
+`);
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git branch -M main', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git push -u origin main', { cwd: repoDir, stdio: 'pipe' });
+
+    // Index with refresh=true -- should succeed without error
+    const results = await indexAllRepos(db, {
+      force: true,
+      rootDir,
+      repos: ['refresh-repo'],
+      refresh: true,
+    });
+
+    const successes = results.filter(r => r.status === 'success');
+    expect(successes).toHaveLength(1);
+    expect(successes[0].repo).toBe('refresh-repo');
+  });
+});
