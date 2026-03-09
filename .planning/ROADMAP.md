@@ -115,10 +115,26 @@ Plans:
 - [ ] 19-01-PLAN.md -- Core search functions: generateQueryEmbedding, searchSemantic (KNN), searchHybrid (RRF), withAutoSyncAsync
 - [ ] 19-02-PLAN.md -- CLI --semantic flag, hybrid default search, kb_semantic MCP tool
 
+### Phase 20: Targeted Repo Reindex with Git Refresh
+**Goal**: Users can reindex specific repos (instead of all ~400) with an automatic git refresh step that fetches latest code from remote before indexing
+**Depends on**: Phase 19
+**Requirements**: RIDX-01, RIDX-02, RIDX-03, RIDX-04, RIDX-05
+**Success Criteria** (what must be TRUE):
+  1. `kb index --repo foo` indexes only the targeted repo, not all repos
+  2. `gitRefresh()` fetches from origin and resets the local default branch to match remote
+  3. `kb index --repo foo --refresh` does git fetch+reset before indexing
+  4. Git refresh handles errors gracefully (no remote, dirty working tree, fetch timeout)
+  5. `kb_reindex` MCP tool accepts repo names and triggers targeted reindex with refresh
+**Plans**: 2 plans
+
+Plans:
+- [ ] 20-01-PLAN.md -- gitRefresh(), targeted repo filtering in pipeline, CLI --repo/--refresh flags
+- [ ] 20-02-PLAN.md -- kb_reindex MCP tool
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 16 -> 17 -> 18 -> 19
+Phases execute in numeric order: 16 -> 17 -> 18 -> 19 -> 20
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
@@ -129,3 +145,4 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19
 | 17. Topology Query Layer | 2/2 | Complete    | 2026-03-08 | - |
 | 18. Embedding Infrastructure | 2/2 | Complete    | 2026-03-08 | - |
 | 19. Semantic Search | 2/2 | Complete    | 2026-03-08 | - |
+| 20. Targeted Repo Reindex | 2 | Planned | - | - |

@@ -27,6 +27,14 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 - [x] **SEM-06**: Graceful degradation — falls back to FTS5-only when sqlite-vec unavailable or embeddings not generated
 - [x] **SEM-07**: `kb_semantic` MCP tool for natural language queries from AI agents
 
+### Targeted Reindexing
+
+- [ ] **RIDX-01**: `kb index --repo <name>` indexes only targeted repo(s), filtering discoverRepos output by basename
+- [ ] **RIDX-02**: `gitRefresh()` fetches from origin and resets local default branch to match remote (fetch + reset --hard)
+- [ ] **RIDX-03**: `--refresh` CLI flag triggers git refresh before indexing (works with or without `--repo`)
+- [ ] **RIDX-04**: Git refresh handles errors gracefully — no remote, dirty working tree, fetch timeout all return error instead of crashing
+- [ ] **RIDX-05**: `kb_reindex` MCP tool accepts repo names and triggers targeted reindex with optional git refresh
+
 ## Future Requirements
 
 ### Ownership
@@ -77,12 +85,17 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 | SEM-05 | Phase 19 | Complete |
 | SEM-06 | Phase 19 | Complete |
 | SEM-07 | Phase 19 | Complete |
+| RIDX-01 | Phase 20 | Planned |
+| RIDX-02 | Phase 20 | Planned |
+| RIDX-03 | Phase 20 | Planned |
+| RIDX-04 | Phase 20 | Planned |
+| RIDX-05 | Phase 20 | Planned |
 
 **Coverage:**
-- v2.0 requirements: 14 total
-- Mapped to phases: 14
+- v2.0 requirements: 14 total (complete)
+- Phase 20 requirements: 5 total (planned)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after roadmap creation*
+*Last updated: 2026-03-09 after Phase 20 planning*
