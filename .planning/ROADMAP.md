@@ -128,10 +128,11 @@ Plans:
   2. Card includes identity, description, inbound/outbound connections grouped by mechanism, events produced/consumed, and entity counts
   3. Card includes "talks to" / "called by" summaries and top modules by type
   4. Card includes actionable next-step hints for agents (e.g., "Run kb_impact app-payments to see blast radius")
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 26-01: TBD
+- [ ] 26-01-PLAN.md -- Core explain module with explainService function and SQL aggregation (TDD)
+- [ ] 26-02-PLAN.md -- MCP tool and CLI command wiring with integration tests
 
 ## Progress
 
@@ -145,4 +146,4 @@ Plans:
 | 23. Graph Infrastructure | 2/2 | Complete    | 2026-03-09 | - |
 | 24. Blast Radius | 3/3 | Complete    | 2026-03-09 | - |
 | 25. Flow Tracing | 2/2 | Complete    | 2026-03-09 | - |
-| 26. Service Explanation | v3.0 | 0/? | Not started | - |
+| 26. Service Explanation | v3.0 | 0/2 | Not started | - |
