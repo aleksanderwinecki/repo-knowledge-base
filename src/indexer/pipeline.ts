@@ -358,7 +358,8 @@ export async function indexAllRepos(
       }
 
       // Check if we can skip (incremental indexing)
-      if (!options.force) {
+      // Targeted reindex (--repo) implies force — skip the staleness check
+      if (!options.force && !options.repos?.length) {
         const skipResult = checkSkip(db, repoPath, repoName, branch);
         if (skipResult) {
           results.push(skipResult);

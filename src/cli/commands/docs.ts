@@ -17,6 +17,7 @@ Index all repos under root directory.
 kb index                          # Index ~/Documents/Repos/
 kb index --root /path/to/repos    # Custom root
 kb index --force                  # Force re-index all
+kb index --repo app-foo app-bar   # Reindex specific repos (always re-indexes)
 \`\`\`
 
 ### kb search <query>

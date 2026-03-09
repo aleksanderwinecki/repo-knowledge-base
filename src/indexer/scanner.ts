@@ -26,11 +26,20 @@ export function discoverRepos(rootDir: string): string[] {
   const repos: string[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || SKIP_DIRS.includes(entry.name)) {
-      continue;
-    }
+    if (SKIP_DIRS.includes(entry.name)) continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
     const dirPath = path.join(rootDir, entry.name);
+
+    // For symlinks, verify target exists and is a directory
+    if (entry.isSymbolicLink()) {
+      try {
+        const targetStat = fs.statSync(dirPath);
+        if (!targetStat.isDirectory()) continue;
+      } catch {
+        continue; // Broken symlink — skip silently
+      }
+    }
 
     // Check for .git (directory or file for submodules)
     const hasGit = fs.existsSync(path.join(dirPath, '.git'));
