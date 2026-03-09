@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: completed
-stopped_at: Completed 19-02-PLAN.md
-last_updated: "2026-03-08T19:29:40.608Z"
-last_activity: 2026-03-08 — Completed 19-02 CLI/MCP semantic search wiring
+status: in-progress
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-09T09:10:48Z"
+last_activity: 2026-03-09 — Completed 20-01 targeted repo reindex with git refresh
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_plans: 11
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 19 - Semantic Search (COMPLETE)
+**Current focus:** Phase 20 - Targeted Repo Reindex with Git Refresh
 
 ## Current Position
 
-Phase: 19 of 19 (Semantic Search)
-Plan: 19-02 of 19-02
-Status: Phase 19 Complete
-Last activity: 2026-03-08 — Completed 19-02 CLI/MCP semantic search wiring
+Phase: 20 of 20 (Targeted Repo Reindex with Git Refresh)
+Plan: 20-01 of 20-02
+Status: Plan 20-01 Complete
+Last activity: 2026-03-09 — Completed 20-01 targeted repo reindex with git refresh
 
-Progress: [██████████] 100%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [██████████] 100%
 - 18-02: 6min (2 tasks TDD, 6 files)
 - 19-01: 5min (2 tasks TDD, 7 files)
 - 19-02: 5min (2 tasks TDD, 6 files)
+- 20-01: 4min (2 tasks TDD, 5 files)
 
 ## Accumulated Context
 
@@ -53,6 +54,9 @@ Progress: [██████████] 100%
 See PROJECT.md Key Decisions table for full log.
 
 Recent decisions affecting current work:
+- gitRefresh uses fetch+reset (not pull) to avoid merge conflicts
+- Refresh step runs before Phase 1 pipeline loop so commit comparison sees updated branch tips
+- --repo and --refresh are independent composable CLI flags
 - nomic-embed-text-v1.5 over all-MiniLM-L6-v2 (research recommendation)
 - 256d Matryoshka truncation from 768d for storage efficiency
 - V7 migration for topology (edges.metadata), V8 for embeddings (vec0, conditional on sqlite-vec)
@@ -85,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08T19:25:05Z
-Stopped at: Completed 19-02-PLAN.md
-Resume file: v2.0 milestone complete
+Last session: 2026-03-09T09:07:09Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: Continue with 20-02-PLAN.md

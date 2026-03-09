@@ -29,10 +29,10 @@ Requirements for v2.0 Design-Time Intelligence. Each maps to roadmap phases.
 
 ### Targeted Reindexing
 
-- [ ] **RIDX-01**: `kb index --repo <name>` indexes only targeted repo(s), filtering discoverRepos output by basename
-- [ ] **RIDX-02**: `gitRefresh()` fetches from origin and resets local default branch to match remote (fetch + reset --hard)
-- [ ] **RIDX-03**: `--refresh` CLI flag triggers git refresh before indexing (works with or without `--repo`)
-- [ ] **RIDX-04**: Git refresh handles errors gracefully — no remote, dirty working tree, fetch timeout all return error instead of crashing
+- [x] **RIDX-01**: `kb index --repo <name>` indexes only targeted repo(s), filtering discoverRepos output by basename
+- [x] **RIDX-02**: `gitRefresh()` fetches from origin and resets local default branch to match remote (fetch + reset --hard)
+- [x] **RIDX-03**: `--refresh` CLI flag triggers git refresh before indexing (works with or without `--repo`)
+- [x] **RIDX-04**: Git refresh handles errors gracefully — no remote, dirty working tree, fetch timeout all return error instead of crashing
 - [ ] **RIDX-05**: `kb_reindex` MCP tool accepts repo names and triggers targeted reindex with optional git refresh
 
 ## Future Requirements
