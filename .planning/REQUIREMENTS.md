@@ -19,8 +19,8 @@ Requirements for Graph Intelligence milestone. Each maps to roadmap phases.
 
 - [ ] **IMPACT-01**: Agent can query blast radius for any service via MCP tool `kb_impact` or CLI `kb impact`
 - [ ] **IMPACT-02**: Results grouped by depth with mechanism labels and confidence per affected service
-- [ ] **IMPACT-03**: Optional `--mechanism` filter limits traversal to specific edge types (grpc, http, kafka, event, gateway)
-- [ ] **IMPACT-04**: Optional `--depth` limit caps traversal depth (default: 3)
+- [x] **IMPACT-03**: Optional `--mechanism` filter limits traversal to specific edge types (grpc, http, kafka, event, gateway)
+- [x] **IMPACT-04**: Optional `--depth` limit caps traversal depth (default: 3)
 - [ ] **IMPACT-05**: Severity tiers classify affected services as direct, indirect, or transitive
 - [ ] **IMPACT-06**: Response includes aggregated mechanism summary and blast radius score in stats block
 - [ ] **IMPACT-07**: Compact response formatter fits 300+ affected services within 4KB MCP cap
@@ -79,8 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRAPH-05 | Phase 23 | Complete |
 | IMPACT-01 | Phase 24 | Pending |
 | IMPACT-02 | Phase 24 | Pending |
-| IMPACT-03 | Phase 24 | Pending |
-| IMPACT-04 | Phase 24 | Pending |
+| IMPACT-03 | Phase 24 | Complete |
+| IMPACT-04 | Phase 24 | Complete |
 | IMPACT-05 | Phase 24 | Pending |
 | IMPACT-06 | Phase 24 | Pending |
 | IMPACT-07 | Phase 24 | Pending |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Graph Intelligence
-status: completed
-stopped_at: Phase 24 context gathered
-last_updated: "2026-03-09T14:10:33.285Z"
-last_activity: 2026-03-09 — Completed Plan 02 (graph module)
+status: in-progress
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-09T14:25:31Z"
+last_activity: 2026-03-09 — Completed Plan 01 (bfsUpstream)
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_plans: 3
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -21,21 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v3.0 Graph Intelligence — Phase 23: Graph Infrastructure
+**Current focus:** v3.0 Graph Intelligence — Phase 24: Blast Radius
 
 ## Current Position
 
-Phase: 23 of 26 (Graph Infrastructure) -- COMPLETE
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-03-09 — Completed Plan 02 (graph module)
+Phase: 24 of 26 (Blast Radius)
+Plan: 1 of 3 complete
+Status: In Progress
+Last activity: 2026-03-09 — Completed Plan 01 (bfsUpstream)
 
-Progress: [██████████] 100%
+Progress: [███-------] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 47 (across v1.0-v2.1)
+- Total plans completed: 48 (across v1.0-v2.1)
 
 ## Accumulated Context
 
@@ -52,6 +52,9 @@ Recent decisions affecting current work:
 - [Phase 23]: Re-export VALID_MECHANISMS from both edge-utils.ts and dependencies.ts for backward compatibility
 - [Phase 23]: bfsDownstream uses forward adjacency — downstream means repos reachable via outgoing call edges
 - [Phase 23]: Graph mechanism labels use normalized short forms (grpc, http, gateway, event, kafka)
+- [Phase 24]: bfsUpstream defaults to maxDepth=3 (bounded impact analysis, not Infinity)
+- [Phase 24]: Mechanism filter applied during BFS traversal, not post-filter, for correct scoped queries
+- [Phase 24]: Edge collection uses graph.forward to find outgoing edges into the BFS visited set
 
 ### Pending Todos
 
@@ -63,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T14:10:33.283Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-blast-radius/24-CONTEXT.md
+Last session: 2026-03-09T14:25:31Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: .planning/phases/24-blast-radius/24-02-PLAN.md
