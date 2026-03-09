@@ -4,7 +4,7 @@ milestone: v2.1
 milestone_name: Cleanup & Tightening
 status: completed
 stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-09T10:23:06.474Z"
+last_updated: "2026-03-09T10:26:36.976Z"
 last_activity: 2026-03-09 — Completed Plan 21-02 (test & doc cleanup)
 progress:
   total_phases: 7
