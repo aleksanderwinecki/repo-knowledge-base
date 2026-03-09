@@ -20,6 +20,7 @@ import { registerCleanupTool } from './tools/cleanup.js';
 import { registerListTypesTool } from './tools/list-types.js';
 import { registerReindexTool } from './tools/reindex.js';
 import { registerImpactTool } from './tools/impact.js';
+import { registerTraceTool } from './tools/trace.js';
 
 /**
  * Factory for creating a fully-wired MCP server.
@@ -37,6 +38,7 @@ export function createServer(db: Database.Database): McpServer {
   registerListTypesTool(server, db);
   registerReindexTool(server, db);
   registerImpactTool(server, db);
+  registerTraceTool(server, db);
   return server;
 }
 
