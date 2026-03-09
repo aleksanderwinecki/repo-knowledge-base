@@ -365,6 +365,29 @@ describe('indexAllRepos', () => {
     expect(stats.modules).toBe(1);
   });
 
+  it('--repo bypasses staleness check (implicit force)', async () => {
+    const rootDir = path.join(tmpDir, 'repos');
+    const repoDir = createGitRepo('implicit-force', {
+      'mix.exs': 'defmodule ImplicitForce.MixProject do\nend',
+      'lib/mod.ex': 'defmodule ImplicitForce.Mod do\nend',
+    });
+
+    // Ensure main branch
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+
+    // First index with force
+    await indexAllRepos(db, { force: true, rootDir });
+
+    // Second index with repos=['implicit-force'] and force=false should NOT skip
+    const results = await indexAllRepos(db, {
+      force: false,
+      rootDir,
+      repos: ['implicit-force'],
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('success');
+  });
+
   it('skip check compares against branch commit, not HEAD', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('skip-branch-check', {

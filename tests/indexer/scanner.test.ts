@@ -98,6 +98,33 @@ describe('discoverRepos', () => {
     );
   });
 
+  it('discovers symlinked repo directories', () => {
+    // Create a real repo in a separate directory
+    const externalDir = path.join(tmpDir, 'external');
+    fs.mkdirSync(externalDir, { recursive: true });
+    const realRepoDir = path.join(externalDir, 'linked-service');
+    fs.mkdirSync(realRepoDir);
+    fs.mkdirSync(path.join(realRepoDir, '.git'));
+    fs.writeFileSync(path.join(realRepoDir, 'mix.exs'), '');
+
+    // Symlink it into the scan root
+    const scanRoot = tmpDir;
+    fs.symlinkSync(realRepoDir, path.join(scanRoot, 'linked-service'));
+
+    const repos = discoverRepos(scanRoot);
+    expect(repos).toHaveLength(1);
+    expect(repos[0]).toContain('linked-service');
+  });
+
+  it('ignores broken symlinks (dangling)', () => {
+    // Create a symlink pointing to non-existent target
+    fs.symlinkSync('/tmp/does-not-exist-rkb-test-target', path.join(tmpDir, 'broken-link'));
+
+    // Should not crash and return 0 repos
+    const repos = discoverRepos(tmpDir);
+    expect(repos).toHaveLength(0);
+  });
+
   it('skips node_modules directory', () => {
     const nmDir = path.join(tmpDir, 'node_modules');
     fs.mkdirSync(nmDir);
