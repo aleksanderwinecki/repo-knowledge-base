@@ -83,3 +83,38 @@ export interface DependencyOptions {
   /** Filter by communication mechanism ('grpc' | 'http' | 'gateway' | 'kafka' | 'event') */
   mechanism?: string;
 }
+
+/** A single edge in the in-memory service graph */
+export interface GraphEdge {
+  targetRepoId: number;
+  mechanism: string;
+  confidence: string | null;
+  via: string | null;
+  relationshipType: string;
+}
+
+/** In-memory service graph with forward and reverse adjacency lists */
+export interface ServiceGraph {
+  forward: Map<number, GraphEdge[]>;
+  reverse: Map<number, GraphEdge[]>;
+  repoNames: Map<number, string>;
+  repoIds: Map<string, number>;
+}
+
+/** A node discovered during BFS traversal */
+export interface BfsNode {
+  repoId: number;
+  repoName: string;
+  depth: number;
+}
+
+/** A single hop in a shortest-path result */
+export interface GraphHop {
+  fromRepoId: number;
+  fromRepoName: string;
+  toRepoId: number;
+  toRepoName: string;
+  mechanism: string;
+  confidence: string | null;
+  via: string | null;
+}
