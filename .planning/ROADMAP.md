@@ -82,11 +82,11 @@
   3. Shortest path query returns ordered hop list between any two connected services
   4. Event/Kafka two-hop paths (repo->event->repo) are collapsed to single logical edges transparently
   5. Shared edge utilities (confidence, mechanism formatting, metadata parsing) are importable from a dedicated module without touching dependencies.ts
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 23-01: TBD
-- [ ] 23-02: TBD
+- [ ] 23-01-PLAN.md -- Extract shared edge utilities into edge-utils.ts
+- [ ] 23-02-PLAN.md -- In-memory graph module with BFS traversal primitives (TDD)
 
 ### Phase 24: Blast Radius
 **Goal**: Agents can instantly answer "what breaks if I change service X?" via MCP or CLI
@@ -140,7 +140,7 @@ Plans:
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
-| 23. Graph Infrastructure | v3.0 | 0/? | Not started | - |
+| 23. Graph Infrastructure | v3.0 | 0/2 | Not started | - |
 | 24. Blast Radius | v3.0 | 0/? | Not started | - |
 | 25. Flow Tracing | v3.0 | 0/? | Not started | - |
 | 26. Service Explanation | v3.0 | 0/? | Not started | - |
