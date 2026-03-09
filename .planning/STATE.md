@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Design-Time Intelligence
-status: in-progress
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-03-09T09:10:48Z"
-last_activity: 2026-03-09 — Completed 20-01 targeted repo reindex with git refresh
+status: complete
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-03-09T09:16:01Z"
+last_activity: 2026-03-09 — Completed 20-02 MCP reindex tool (phase 20 complete)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** Phase 20 - Targeted Repo Reindex with Git Refresh
+**Current focus:** v2.0 milestone complete
 
 ## Current Position
 
 Phase: 20 of 20 (Targeted Repo Reindex with Git Refresh)
-Plan: 20-01 of 20-02
-Status: Plan 20-01 Complete
-Last activity: 2026-03-09 — Completed 20-01 targeted repo reindex with git refresh
+Plan: 20-02 of 20-02
+Status: Phase 20 Complete - v2.0 Milestone Complete
+Last activity: 2026-03-09 — Completed 20-02 MCP reindex tool (phase 20 complete)
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 32 (across v1.0-v1.2)
-- v2.0 plans completed: 9
+- v2.0 plans completed: 10
 - 16-01: 5min (2 tasks, 10 files)
 - 16-03: 4min (2 tasks, 4 files)
 - 17-01: 5min (1 task TDD, 4 files)
@@ -46,6 +46,7 @@ Progress: [█████████░] 91%
 - 19-01: 5min (2 tasks TDD, 7 files)
 - 19-02: 5min (2 tasks TDD, 6 files)
 - 20-01: 4min (2 tasks TDD, 5 files)
+- 20-02: 3min (1 task TDD, 4 files)
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - searchSemantic over-fetches limit*2 for post-hydration filtering headroom
 - CLI --semantic uses searchSemantic directly (pure vector), default uses searchHybrid (RRF fusion)
 - kb_semantic MCP tool uses searchHybrid for best AI agent results (keyword+vector combined)
+- kb_reindex handler defaults refresh=true in body (not just zod) for direct-call compatibility
+- kb_reindex uses force=true always since explicit reindex implies skip staleness check
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T09:07:09Z
-Stopped at: Completed 20-01-PLAN.md
-Resume file: Continue with 20-02-PLAN.md
+Last session: 2026-03-09T09:16:01Z
+Stopped at: Completed 20-02-PLAN.md
+Resume file: v2.0 milestone complete. All 11 plans across 5 phases executed.
