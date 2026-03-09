@@ -12,6 +12,7 @@ vi.mock('../../src/indexer/git.js', () => ({
 }));
 vi.mock('../../src/indexer/pipeline.js', () => ({
   indexSingleRepo: vi.fn(() => ({ modules: 0, protos: 0, events: 0 })),
+  indexAllRepos: vi.fn(async () => []),
 }));
 vi.mock('../../src/search/hybrid.js', () => ({
   searchHybrid: vi.fn(async () => []),
@@ -29,11 +30,14 @@ import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
 import { registerSemanticTool } from '../../src/mcp/tools/semantic.js';
+import { registerReindexTool } from '../../src/mcp/tools/reindex.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
+import { indexAllRepos } from '../../src/indexer/pipeline.js';
 import { searchHybrid } from '../../src/search/hybrid.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
 
 const mockedSearchHybrid = vi.mocked(searchHybrid);
+const mockedIndexAllRepos = vi.mocked(indexAllRepos);
 
 const mockedGetCurrentCommit = vi.mocked(getCurrentCommit);
 
@@ -95,6 +99,7 @@ beforeEach(() => {
   registerCleanupTool(server, db);
   registerListTypesTool(server, db);
   registerSemanticTool(server, db);
+  registerReindexTool(server, db);
 
   vi.clearAllMocks();
   // Default: all repos have current commit (not stale)
@@ -422,6 +427,63 @@ describe('kb_semantic', () => {
 
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('Error');
+  });
+});
+
+describe('kb_reindex', () => {
+  it('returns error for empty repos array', async () => {
+    const result = await callTool('kb_reindex', { repos: [] });
+    const r = result as { content: Array<{ text: string }>; isError?: boolean };
+
+    // Zod .min(1) should cause a validation error
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('Error');
+  });
+
+  it('triggers reindex for specified repos', async () => {
+    mockedIndexAllRepos.mockResolvedValue([
+      { repo: 'test-repo', status: 'success', mode: 'full', stats: { modules: 5, protos: 2, events: 1, services: 0, graphqlTypes: 0, topologyEdges: 0, embeddings: 0 } },
+    ]);
+
+    const result = await callTool('kb_reindex', { repos: ['test-repo'] });
+    const parsed = parseResponse(result);
+
+    expect(parsed.summary).toContain('Reindexed 1 repo(s)');
+    expect(parsed.total).toBe(1);
+    expect(mockedIndexAllRepos).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        force: true,
+        repos: ['test-repo'],
+        refresh: true,
+      }),
+    );
+  });
+
+  it('passes refresh=false when specified', async () => {
+    mockedIndexAllRepos.mockResolvedValue([]);
+
+    await callTool('kb_reindex', { repos: ['test-repo'], refresh: false });
+
+    expect(mockedIndexAllRepos).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        refresh: false,
+      }),
+    );
+  });
+
+  it('includes error count in summary when repos fail', async () => {
+    mockedIndexAllRepos.mockResolvedValue([
+      { repo: 'good-repo', status: 'success', mode: 'full', stats: { modules: 1, protos: 0, events: 0, services: 0, graphqlTypes: 0, topologyEdges: 0, embeddings: 0 } },
+      { repo: 'bad-repo', status: 'error', error: 'git failed' },
+    ]);
+
+    const result = await callTool('kb_reindex', { repos: ['good-repo', 'bad-repo'] });
+    const parsed = parseResponse(result);
+
+    expect(parsed.summary).toContain('1 error(s)');
+    expect(parsed.total).toBe(2);
   });
 });
 
