@@ -163,6 +163,64 @@ export function readBranchFile(
 }
 
 /**
+ * Fetch from origin and reset the local default branch to match remote.
+ * Safe for repos on feature branches: checks for dirty working tree before checkout.
+ * Returns { refreshed: true } on success, { refreshed: false, error } on failure.
+ */
+export function gitRefresh(
+  repoPath: string,
+  branch: string,
+): { refreshed: boolean; error?: string } {
+  try {
+    // Fetch latest from remote
+    execSync('git fetch origin', {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000,
+    });
+
+    // Check current branch
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+
+    if (currentBranch !== branch) {
+      // Not on default branch -- check for dirty working tree
+      const status = execSync('git status --porcelain', {
+        cwd: repoPath,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+
+      if (status) {
+        return { refreshed: false, error: 'dirty working tree, skipping checkout' };
+      }
+
+      execSync(`git checkout ${branch}`, {
+        cwd: repoPath,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
+
+    // Fast-forward to remote
+    execSync(`git reset --hard origin/${branch}`, {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    return { refreshed: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { refreshed: false, error: msg };
+  }
+}
+
+/**
  * Get files changed between a commit and a branch tip.
  * Uses `git diff --name-status` to categorize changes by status.
  * Returns empty lists on failure.
