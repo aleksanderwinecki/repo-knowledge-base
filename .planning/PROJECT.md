@@ -6,17 +6,8 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 
 ## Current State
 
-**Latest shipped:** v2.1 Cleanup & Tightening — Phase 21 Embedding Removal (2026-03-09)
-**Current milestone:** v2.1 Cleanup & Tightening — Phase 22 Fixes & Metadata
-
-## Current Milestone: v2.1 Cleanup & Tightening
-
-**Goal:** Remove dead embedding infrastructure, fix scoping/UX issues in existing features, and update all project metadata to reflect current reality.
-
-**Target features:**
-- ~~Remove embedding infrastructure~~ (completed Phase 21)
-- Fix --repo targeting UX (implicit force, symlink support in scanner)
-- Update all project metadata (PROJECT.md stats, constraints, context to reflect current reality)
+**Latest shipped:** v2.1 Cleanup & Tightening (2026-03-09)
+**Next milestone:** TBD — use `/gsd:new-milestone` to start
 
 ## Core Value
 
@@ -26,6 +17,12 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v2.1 CLEAN-01..06: Embedding infrastructure removal (sqlite-vec, transformers.js, vec0, semantic/hybrid search) — Phase 21
+- v2.1 FIX-01, FIX-02: Implicit force for --repo, symlink support in scanner — Phase 22
+- v2.1 META-01: Project metadata updated to reflect post-cleanup reality — Phase 22
+- v2.0 TOPO-01..07: Service topology extraction and query layer (gRPC, HTTP, gateway, Kafka) — Phases 16-17
+- v2.0 SEM-01..07: Embedding infrastructure and semantic search (shipped then removed in v2.1) — Phases 18-19
+- v2.0 RIDX-01..05: Targeted repo reindex with git refresh — Phase 20
 - v1.2 SAFE-01..03: MCP contract tests, FTS golden tests, CLI snapshot tests — Phase 11
 - v1.2 PERF-01..07: SQLite pragmas, prepared statements, indexes, FTS5 optimize, WAL checkpoint, perf_hooks — Phase 12
 - v1.2 MCP-01..05: wrapToolHandler HOF, withAutoSync, McpResponse, DB path, EntityType union — Phase 13
@@ -36,9 +33,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [x] Remove embedding infrastructure (CLEAN-01..06) — completed Phase 21
-- [x] Fix --repo implicit force and symlink support in scanner (FIX-01, FIX-02) — completed Phase 22
-- [x] Update project metadata to reflect current state (META-01) — completed Phase 22
+(None — start next milestone with `/gsd:new-milestone`)
 
 ### Deferred
 
@@ -101,6 +96,12 @@ Known limitations:
 | extractRepoData + persistExtractedData as single pipeline | indexSingleRepo and indexAllRepos share identical extraction/persistence code | v1.2 Good |
 | noUncheckedIndexedAccess enabled | Catches undefined array/record access at compile time; 60 fixes were mechanical | v1.2 Good |
 | Document intentional silence over forced logging | 28 bare catches are all legitimate (git probes, file reads, FTS fallbacks) | v1.2 Good |
+| Regex for topology extraction (no AST) | Consistent with existing extractor pattern; gRPC/HTTP/Kafka patterns are well-structured | v2.0 Good |
+| Confidence levels on topology edges | High for gRPC/proto (exact match), medium for gateway, low for HTTP regex | v2.0 Good |
+| Generic edges table for all topology | Single table with mechanism column vs separate tables per type; simpler queries | v2.0 Good |
+| Remove embedding infrastructure entirely | 1hr generation time, OOM on targeted runs, FTS5 covers 95%+ of queries | v2.1 Good |
+| --repo implies force (skip staleness) | Targeted reindex always re-indexes; requiring --force was redundant UX | v2.1 Good |
+| SCHEMA_VERSION back to 7 (no vec0) | V8 was vec0 migration; removing it means DB auto-rebuilds cleanly | v2.1 Good |
 
 ## Constraints
 
@@ -112,4 +113,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-09 after Phase 21 completion (embedding removal)*
+*Last updated: 2026-03-09 after v2.1 milestone completion*

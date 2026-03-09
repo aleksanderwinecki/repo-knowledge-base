@@ -91,6 +91,47 @@
 
 ---
 
+## Milestone: v2.1 — Cleanup & Tightening
+
+**Shipped:** 2026-03-09
+**Phases:** 2 (21-22) | **Plans:** 4 | **Commits:** 11
+
+### What Was Built
+- Complete removal of embedding infrastructure: sqlite-vec, @huggingface/transformers, vec0 table, semantic/hybrid search, kb_semantic MCP tool
+- Simplified search layer to FTS5-only (sync, no degradation logic)
+- Implicit force for `kb index --repo` (skip staleness check)
+- Symlink-aware repo discovery in scanner
+- All project metadata (PROJECT.md, CLAUDE.md, README.md) updated to reflect current reality
+- 506 tests across 32 test files
+
+### What Worked
+- Auto-advance pipeline (plan → execute) ran Phase 22 end-to-end in a single session
+- Parallel execution of Wave 1 plans (22-01 code fixes + 22-02 docs update) with no conflicts
+- Verifier caught the test count drift (22-01 added 3 tests after 22-02 set count to 503) — quick inline fix
+- TDD for scanner symlink support caught edge cases (broken symlinks) that would have been missed
+
+### What Was Inefficient
+- Parallel plan execution caused metadata drift: 22-02 wrote test count before 22-01 added tests. Minor but required manual fixup.
+- README.md was missed by Phase 22 plans entirely — caught by manual review after execution
+- Summary one-liner extraction still broken (null for all summaries)
+
+### Patterns Established
+- Cleanup milestones are fast: 4 plans, ~15 min total execution
+- `options.repos?.length` as implicit force guard — simple, no new flags needed
+- `isSymbolicLink()` + `statSync()` fallback for safe symlink resolution
+
+### Key Lessons
+1. When removing a subsystem, check ALL documentation surfaces (README was missed despite CLAUDE.md and PROJECT.md being covered)
+2. Parallel plan execution with shared metadata (test counts) needs ordering awareness or a reconciliation step
+3. Cleanup milestones that reduce LOC and complexity are high-value — the codebase is more maintainable after v2.1 than before
+
+### Cost Observations
+- Model mix: quality profile (opus) for all agents
+- Sessions: 1 session, ~30 min total
+- Notable: Entire milestone (plan + execute + verify + archive) completed in a single context window
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -99,17 +140,25 @@
 |-----------|---------|--------|------------|
 | v1.0 | 49 | 5 | Initial build — established layered architecture |
 | v1.1 | 19 feat | 5 | Indexing infrastructure + extractors + search filtering |
+| v1.2 | 45 | 5 | Hardening — safety nets, perf tuning, dedup, strict TS |
+| v2.0 | ~30 | 5 | Topology extraction, semantic search, targeted reindex |
+| v2.1 | 11 | 2 | Cleanup — removed embeddings, fixed UX, updated docs |
 
 ### Cumulative Quality
 
-| Milestone | Tests | LOC | Files |
-|-----------|-------|-----|-------|
-| v1.0 | 236 | 8,193 | 116 |
-| v1.1 | 388 | 13,258 | ~140 |
+| Milestone | Tests | LOC | Net Change |
+|-----------|-------|-----|------------|
+| v1.0 | 236 | 8,193 | +8,193 |
+| v1.1 | 388 | 13,258 | +5,065 |
+| v1.2 | 435 | 14,249 | +991 (mostly dedup savings) |
+| v2.0 | ~560 | ~9,000 | +4,700 (topology + embeddings) |
+| v2.1 | 506 | 6,796 | -2,108 (cleanup milestone) |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. Regex extraction scales surprisingly well for well-structured source files (validated v1.0 Elixir/proto, v1.1 GraphQL/Ecto/Absinthe)
-2. FTS5 with application-level tokenization handles keyword search effectively without embeddings (confirmed v1.0, extended v1.1 with type filtering)
-3. Pure utility modules without framework dependencies make testing trivial (confirmed v1.0 MCP-free utils, v1.1 parallel extraction with dbSnapshot)
+1. Regex extraction scales surprisingly well for well-structured source files (validated v1.0 Elixir/proto, v1.1 GraphQL/Ecto/Absinthe, v2.0 gRPC/HTTP/Kafka)
+2. FTS5 with application-level tokenization handles keyword search effectively — embeddings proved impractical at scale (confirmed v1.0, extended v1.1, validated by v2.1 removal)
+3. Pure utility modules without framework dependencies make testing trivial (confirmed across all milestones)
 4. Keep ROADMAP.md state in sync during execution — cleanup is more expensive than maintenance
+5. Check ALL documentation surfaces after subsystem removal (README missed in v2.1 despite CLAUDE.md/PROJECT.md being covered)
+6. Cleanup milestones that reduce complexity are high-value — less code to maintain, faster onboarding for AI agents

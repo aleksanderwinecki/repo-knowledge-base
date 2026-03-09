@@ -1,5 +1,39 @@
 # Milestones
 
+## v2.1 Cleanup & Tightening (Shipped: 2026-03-09)
+
+**Phases completed:** 2 phases (21-22), 4 plans
+**Timeline:** 1 day (2026-03-09)
+**Stats:** 11 commits, 506 tests, 6,796 LOC TypeScript, -2,108 net lines (cleanup milestone)
+
+**Key accomplishments:**
+- Removed all embedding infrastructure: sqlite-vec, @huggingface/transformers, vec0 table, semantic/hybrid search, kb_semantic MCP tool — 3,150 lines deleted across 47 files
+- Simplified search to FTS5-only: removed async search paths, hybrid RRF scoring, graceful degradation logic
+- `kb index --repo foo` now implicitly skips staleness check (no `--force` needed for targeted reindex)
+- Scanner follows symlinks when discovering repos under root directory
+- All project metadata (PROJECT.md, CLAUDE.md, README.md) updated to reflect FTS5-only reality: 9 MCP tools, 506 tests, no embedding references
+
+**Delivered:** Codebase cleanup that removed an impractical embedding subsystem (1hr generation, OOM on targeted runs), fixed two UX papercuts, and ensured all documentation accurately reflects the current state.
+
+---
+
+## v2.0 Design-Time Intelligence (Shipped: 2026-03-09)
+
+**Phases completed:** 5 phases (16-20), 11 plans
+**Timeline:** 2 days (Mar 8-9, 2026)
+**Stats:** 506 tests (at peak before cleanup), ~6,800 LOC TypeScript
+
+**Key accomplishments:**
+- Service topology extraction: gRPC, HTTP, gateway routing, and Kafka producer/consumer edges detected during indexing — 11,700+ topology edges across 400 repos
+- Topology query layer: `kb deps` traverses all edge types with `--mechanism` filtering and confidence levels (high/medium/low)
+- Embedding infrastructure: sqlite-vec + nomic-embed-text-v1.5 for 256d vector embeddings (later removed in v2.1 — impractical at scale)
+- Semantic search: KNN vector similarity, hybrid FTS5+vector with RRF scoring, kb_semantic MCP tool (later removed in v2.1)
+- Targeted repo reindex: `kb index --repo foo --refresh` with git fetch+reset, `kb_reindex` MCP tool
+
+**Delivered:** Full service topology mapping across gRPC/HTTP/gateway/Kafka with queryable dependency graph, plus targeted repo reindexing with git refresh. Semantic search was shipped but later removed in v2.1 after proving impractical at scale.
+
+---
+
 ## v1.2 Hardening & Quick Wins (Shipped: 2026-03-07)
 
 **Phases completed:** 5 phases (11-15), 12 plans, 23 tasks
