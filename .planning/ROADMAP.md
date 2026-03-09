@@ -160,8 +160,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 21-01-PLAN.md -- Remove embeddings dir, vec module, V8 migration, uninstall npm packages
-- [ ] 21-02-PLAN.md -- Remove semantic/hybrid search, CLI flags, MCP tool, tests, update docs
+- [x] 21-01-PLAN.md -- Remove embeddings dir, vec module, V8 migration, uninstall npm packages
+- [x] 21-02-PLAN.md -- Remove semantic/hybrid search, CLI flags, MCP tool, tests, update docs
 
 ### Phase 22: Fixes & Metadata
 **Goal**: Remaining UX papercuts are fixed and all project documentation accurately reflects the post-cleanup state of the codebase
@@ -171,11 +171,11 @@ Plans:
   1. `kb index --repo foo` skips the staleness check and always reindexes (no separate `--force` needed)
   2. Scanner discovers repos that are symlinks under the root directory (not just real directories)
   3. PROJECT.md stats, constraints, tool counts, and tech stack reflect the post-cleanup reality (no sqlite-vec, no transformers.js, correct test count)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 22-01: TBD
-- [ ] 22-02: TBD
+- [ ] 22-01-PLAN.md -- Implicit force for --repo, symlink support in scanner
+- [ ] 22-02-PLAN.md -- Update PROJECT.md and CLAUDE.md metadata
 
 ## Progress
 
@@ -188,5 +188,5 @@ Phases execute in numeric order: 21 -> 22
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
-| 21. Embedding Removal | 2/2 | Complete    | 2026-03-09 | - |
-| 22. Fixes & Metadata | v2.1 | 0/TBD | Not started | - |
+| 21. Embedding Removal | v2.1 | 2/2 | Complete | 2026-03-09 |
+| 22. Fixes & Metadata | v2.1 | 0/2 | Not started | - |
