@@ -58,7 +58,7 @@
 
 **Milestone Goal:** Remove dead embedding infrastructure, fix --repo targeting UX, and update project metadata to reflect current reality.
 
-- [ ] **Phase 21: Embedding Removal** - Rip out sqlite-vec, transformers.js, vec0, semantic search, and all related code/tests
+- [x] **Phase 21: Embedding Removal** - Rip out sqlite-vec, transformers.js, vec0, semantic search, and all related code/tests (completed 2026-03-09)
 - [ ] **Phase 22: Fixes & Metadata** - Implicit force for --repo, symlink support in scanner, project metadata update
 
 ## Phase Details
@@ -188,5 +188,5 @@ Phases execute in numeric order: 21 -> 22
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
-| 21. Embedding Removal | 1/2 | In Progress|  | - |
+| 21. Embedding Removal | 2/2 | Complete   | 2026-03-09 | - |
 | 22. Fixes & Metadata | v2.1 | 0/TBD | Not started | - |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Cleanup & Tightening
-status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-03-09T10:16:33.445Z"
-last_activity: 2026-03-09 — Completed Plan 21-01 (embedding removal)
+status: completed
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-09T10:23:06.474Z"
+last_activity: 2026-03-09 — Completed Plan 21-02 (test & doc cleanup)
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 13
-  completed_plans: 12
-  percent: 95
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 21 of 22 (Embedding Removal)
-Plan: 1 of 2
-Status: Executing
-Last activity: 2026-03-09 — Completed Plan 21-01 (embedding removal)
+Plan: 2 of 2
+Status: Phase Complete
+Last activity: 2026-03-09 — Completed Plan 21-02 (test & doc cleanup)
 
-Progress: [█████████░] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Recent decisions affecting current work:
 - SCHEMA_VERSION decremented from 8 to 7 (V8 vec0 migration removed)
 - CLI search action changed from async to sync (all search paths are FTS5-only)
 - [Phase 21]: SCHEMA_VERSION decremented from 8 to 7 (V8 vec0 migration removed)
+- [Phase 21]: embedded_schema refs in Elixir indexer are Ecto domain terms, not embedding infrastructure
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T10:16:33.443Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-03-09T10:21:55Z
+Stopped at: Completed 21-02-PLAN.md
 Resume file: None
