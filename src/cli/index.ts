@@ -16,6 +16,7 @@ import { registerForget } from './commands/forget.js';
 import { registerDocs } from './commands/docs.js';
 import { registerImpact } from './commands/impact.js';
 import { registerTrace } from './commands/trace.js';
+import { registerExplain } from './commands/explain.js';
 
 const program = new Command();
 program
@@ -33,5 +34,6 @@ registerForget(program);
 registerDocs(program);
 registerImpact(program);
 registerTrace(program);
+registerExplain(program);
 
 program.parse();

@@ -37,7 +37,7 @@ describe('MCP server', () => {
     expect(server).toBeDefined();
   });
 
-  it('has all 11 tools registered', () => {
+  it('has all 12 tools registered', () => {
     const server = createServer(db);
     const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
 
@@ -53,13 +53,14 @@ describe('MCP server', () => {
       'kb_reindex',
       'kb_impact',
       'kb_trace',
+      'kb_explain',
     ];
 
     for (const name of expectedTools) {
       expect(tools[name], `Tool ${name} should be registered`).toBeDefined();
     }
 
-    expect(Object.keys(tools)).toHaveLength(11);
+    expect(Object.keys(tools)).toHaveLength(12);
   });
 
   it('server has name=kb and version=1.0.0', () => {
