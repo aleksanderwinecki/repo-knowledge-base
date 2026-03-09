@@ -1,6 +1,18 @@
 export { searchText } from './text.js';
 export { findEntity } from './entity.js';
 export { queryDependencies, VALID_MECHANISMS } from './dependencies.js';
+export {
+  MECHANISM_LABELS,
+  MECHANISM_FILTER_MAP,
+  DIRECT_EDGE_TYPES,
+  EVENT_EDGE_TYPES,
+  KAFKA_EDGE_TYPES,
+  extractConfidence,
+  extractMetadataField,
+  formatMechanism,
+  buildInClause,
+  getAllowedTypes,
+} from './edge-utils.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
