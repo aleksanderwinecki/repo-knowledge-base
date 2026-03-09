@@ -23,7 +23,6 @@ export function registerIndex(program: Command) {
     .option('--repo <names...>', 'specific repos to reindex (space-separated)')
     .option('--force', 'force re-index all repos', false)
     .option('--refresh', 'git fetch + reset to latest before indexing', false)
-    .option('--embed', 'generate vector embeddings after indexing', false)
     .option('--timing', 'report timing to stderr', false)
     .action(async (opts) => {
       const results = await withDbAsync(async (db) =>
@@ -31,7 +30,6 @@ export function registerIndex(program: Command) {
           indexAllRepos(db, {
             rootDir: opts.root,
             force: opts.force,
-            embed: opts.embed,
             repos: opts.repo,
             refresh: opts.refresh,
           }),

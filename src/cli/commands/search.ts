@@ -1,14 +1,14 @@
 /**
  * CLI command: kb search
- * Full-text search, semantic search, and entity queries across indexed knowledge.
+ * Full-text search and entity queries across indexed knowledge.
  */
 
 import type { Command } from '@commander-js/extra-typings';
-import { withDb, withDbAsync } from '../db.js';
-import { searchText, searchSemantic, searchHybrid, findEntity } from '../../search/index.js';
+import { withDb } from '../db.js';
+import { searchText, findEntity } from '../../search/index.js';
 import { listAvailableTypes } from '../../db/fts.js';
 import { output, outputError } from '../output.js';
-import { withTiming, withTimingAsync, reportTimings } from '../timing.js';
+import { withTiming, reportTimings } from '../timing.js';
 
 export function registerSearch(program: Command) {
   program
@@ -25,11 +25,10 @@ export function registerSearch(program: Command) {
       '--entity',
       'structured entity query mode (returns entity cards with relationships)',
     )
-    .option('--semantic', 'semantic vector similarity search')
     .option('--list-types', 'list available entity types with counts')
     .option('--timing', 'report timing to stderr', false)
-    .action(async (query, opts) => {
-      // Sync paths: --list-types and --entity
+    .action((query, opts) => {
+      // --list-types
       if (opts.listTypes) {
         withDb((db) => {
           const types = withTiming('list-types', () => listAvailableTypes(db));
@@ -58,25 +57,10 @@ export function registerSearch(program: Command) {
         return;
       }
 
-      // Async paths: --semantic and default (hybrid)
-      if (opts.semantic) {
-        await withDbAsync(async (db) => {
-          const results = await withTimingAsync('search-semantic', () =>
-            searchSemantic(db, query, {
-              limit: parseInt(opts.limit, 10),
-              repoFilter: opts.repo,
-            }),
-          );
-          output(results);
-          if (opts.timing) reportTimings();
-        });
-        return;
-      }
-
-      // Default: hybrid search (FTS5 + vector)
-      await withDbAsync(async (db) => {
-        const results = await withTimingAsync('search-hybrid', () =>
-          searchHybrid(db, query, {
+      // Default: FTS5 text search
+      withDb((db) => {
+        const results = withTiming('search', () =>
+          searchText(db, query, {
             limit: parseInt(opts.limit, 10),
             repoFilter: opts.repo,
             entityTypeFilter: opts.type,
