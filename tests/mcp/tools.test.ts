@@ -435,17 +435,17 @@ describe('kb_reindex', () => {
     const result = await callTool('kb_reindex', { repos: [] });
     const r = result as { content: Array<{ text: string }>; isError?: boolean };
 
-    // Zod .min(1) should cause a validation error
+    // Handler validates empty array and returns error
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('Error');
   });
 
-  it('triggers reindex for specified repos', async () => {
+  it('triggers reindex for specified repos with refresh=true', async () => {
     mockedIndexAllRepos.mockResolvedValue([
       { repo: 'test-repo', status: 'success', mode: 'full', stats: { modules: 5, protos: 2, events: 1, services: 0, graphqlTypes: 0, topologyEdges: 0, embeddings: 0 } },
     ]);
 
-    const result = await callTool('kb_reindex', { repos: ['test-repo'] });
+    const result = await callTool('kb_reindex', { repos: ['test-repo'], refresh: true });
     const parsed = parseResponse(result);
 
     expect(parsed.summary).toContain('Reindexed 1 repo(s)');
@@ -455,6 +455,19 @@ describe('kb_reindex', () => {
       expect.objectContaining({
         force: true,
         repos: ['test-repo'],
+        refresh: true,
+      }),
+    );
+  });
+
+  it('defaults refresh to true when not specified', async () => {
+    mockedIndexAllRepos.mockResolvedValue([]);
+
+    await callTool('kb_reindex', { repos: ['test-repo'] });
+
+    expect(mockedIndexAllRepos).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
         refresh: true,
       }),
     );
