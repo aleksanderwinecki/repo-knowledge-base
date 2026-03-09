@@ -74,6 +74,10 @@ Recent decisions affecting current work:
 
 None.
 
+### Roadmap Evolution
+
+- Phase 20 added: Targeted Repo Reindex with Git Refresh
+
 ### Blockers/Concerns
 
 - sqlite-vec macOS ARM64 compatibility CONFIRMED working (resolved in 18-01)
