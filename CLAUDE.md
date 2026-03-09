@@ -55,6 +55,6 @@ Override: `KB_DB_PATH=/path/to/db.sqlite`
 
 ## Development
 
-- `npm test` — 503 tests
+- `npm test` — 506 tests
 - `npm run build` — compile TypeScript
 - Source: `src/` (db, indexer, search, knowledge, cli)

@@ -37,8 +37,8 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 ### Active
 
 - [x] Remove embedding infrastructure (CLEAN-01..06) — completed Phase 21
-- [ ] Fix --repo implicit force and symlink support in scanner (FIX-01, FIX-02)
-- [ ] Update project metadata to reflect current state (META-01)
+- [x] Fix --repo implicit force and symlink support in scanner (FIX-01, FIX-02) — completed Phase 22
+- [x] Update project metadata to reflect current state (META-01) — completed Phase 22
 
 ### Deferred
 
@@ -60,7 +60,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v2.1 with 503 tests passing across 32 test files.
+Shipped v2.1 with 506 tests passing across 32 test files.
 Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
 Built across v1.0, v1.1, v1.2, v2.0, and v2.1 milestones.
 
