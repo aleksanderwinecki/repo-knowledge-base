@@ -5,7 +5,7 @@ Persistent knowledge base that indexes your entire microservice ecosystem so AI 
 ## What it does
 
 - **Indexes** all repos under a root directory, extracting Elixir modules, Ecto schemas, GraphQL types, proto definitions, gRPC services, and Kafka events
-- **Searches** across all indexed content with full-text search (FTS5), semantic vector search, and structured entity queries
+- **Searches** across all indexed content with full-text search (FTS5) and structured entity queries
 - **Maps dependencies** between services via gRPC calls, HTTP clients, gateway routing, Kafka topics, and shared events
 - **Learns** facts you teach it manually, persistently stored alongside indexed data
 - **Incremental** — only re-indexes repos with new commits since last scan
@@ -48,8 +48,8 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 
 | Command | Description |
 |---------|-------------|
-| `kb index` | Scan and index repos. `--root`, `--force`, `--repo <names...>`, `--refresh`, `--embed` |
-| `kb search <query>` | Hybrid FTS5 + semantic search. `--entity`, `--semantic`, `--repo`, `--type`, `--limit`, `--list-types` |
+| `kb index` | Scan and index repos. `--root`, `--force`, `--repo <names...>`, `--refresh` |
+| `kb search <query>` | Full-text search (FTS5). `--entity`, `--repo`, `--type`, `--limit`, `--list-types` |
 | `kb deps <name>` | Service dependency graph. `--direction`, `--mechanism <grpc\|http\|gateway\|kafka\|event>` |
 | `kb learn <text>` | Store a fact. `--repo` to associate with a service |
 | `kb learned` | List learned facts. `--repo` to filter |
@@ -71,19 +71,16 @@ All output is JSON. Designed for AI agent consumption, not human reading.
    - **Gateway**: routing config linking gateways to upstream services
    - **Kafka**: producer/consumer topic matching
 6. **Writer** persists everything to SQLite with FTS5 indexing
-7. **Embeddings** (optional) generates 256d vector embeddings via nomic-embed-text-v1.5 for semantic search
 
 ### Search
 
 - **Text search**: FTS5 with CamelCase/snake_case tokenizer — `"booking"` matches `BookingCreated`, `booking_service`
-- **Semantic search**: Vector similarity via nomic-embed-text-v1.5 embeddings (optional, enable with `--embed`)
-- **Hybrid search**: Default mode — combines FTS5 keyword + vector similarity via Reciprocal Rank Fusion (RRF)
 - **Entity search**: Structured cards with relationships — find a module/event and see what connects to it
 - **Dependency query**: Topology graph traversal over gRPC, HTTP, gateway, Kafka, and event edges with mechanism filtering
 
 ### Storage
 
-Single SQLite file at `~/.kb/knowledge.db` (override with `KB_DB_PATH` env var). Uses WAL mode, FTS5 virtual tables, sqlite-vec for vector storage, and a generic edges table for the topology graph.
+Single SQLite file at `~/.kb/knowledge.db` (override with `KB_DB_PATH` env var). Uses WAL mode, FTS5 virtual tables, and a generic edges table for the topology graph.
 
 ## MCP Server
 
@@ -110,7 +107,7 @@ Add this to your `~/.claude/settings.json` (or the project-level `.claude/settin
 }
 ```
 
-That's it. Restart Claude Code and the 10 tools below become available in every conversation.
+That's it. Restart Claude Code and the 9 tools below become available in every conversation.
 
 ### Custom database path
 
@@ -134,7 +131,6 @@ By default the server uses `~/.kb/knowledge.db`. To use a different path:
 | Tool | Description |
 |------|-------------|
 | `kb_search` | Full-text search across all indexed repos, modules, events, and learned facts |
-| `kb_semantic` | Hybrid FTS5 + semantic search for natural language queries |
 | `kb_entity` | Structured entity card with relationships by name |
 | `kb_deps` | Service dependency graph with mechanism filtering (gRPC, HTTP, Kafka, etc.) |
 | `kb_list_types` | List available entity types with counts for filtering |
@@ -144,7 +140,7 @@ By default the server uses `~/.kb/knowledge.db`. To use a different path:
 | `kb_status` | Database statistics: entity counts, repo staleness, learned facts |
 | `kb_cleanup` | Detect deleted repos and stale facts (dry run by default) |
 
-Read tools (`kb_search`, `kb_semantic`, `kb_entity`, `kb_deps`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
+Read tools (`kb_search`, `kb_entity`, `kb_deps`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
 
 ## Using with Claude Code (CLI)
 
@@ -154,19 +150,18 @@ You can also use the `kb` CLI directly. See [CLAUDE.md](CLAUDE.md) for setup ins
 
 ```
 src/
-  db/          # SQLite database, schema, migrations, FTS5, tokenizer, sqlite-vec
+  db/          # SQLite database, schema, migrations, FTS5, tokenizer
   indexer/     # Scanner, metadata, elixir, proto, topology extractors, pipeline
-  embeddings/  # nomic-embed-text-v1.5 pipeline, batch generation, text composition
-  search/      # Text search, semantic search, hybrid RRF, entity queries, dependency traversal
+  search/      # Text search, entity queries, dependency traversal
   knowledge/   # Learned facts store
   cli/         # Commander.js CLI with all subcommands
-  mcp/         # MCP server, 10 tool handlers, auto-sync, formatting, hygiene
+  mcp/         # MCP server, 9 tool handlers, auto-sync, formatting, hygiene
 ```
 
 ## Development
 
 ```bash
-npm test          # Run 561 tests
+npm test          # Run 506 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```
@@ -174,4 +169,3 @@ npm test -- --watch  # Watch mode
 ## Limitations
 
 - Topology extraction uses regex patterns, not AST parsing. Most gRPC/HTTP/Kafka patterns are caught, but unusual client wrappers may be missed.
-- Embedding generation is slow (~1 hour for 125k entities on M4 Pro). Use `--embed` only when you need semantic search.
