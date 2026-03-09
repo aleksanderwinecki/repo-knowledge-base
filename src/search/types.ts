@@ -108,6 +108,14 @@ export interface BfsNode {
   depth: number;
 }
 
+/** A node in an upstream impact analysis result */
+export interface ImpactNode {
+  repoId: number;
+  repoName: string;
+  depth: number;
+  edges: Array<{ mechanism: string; confidence: string | null }>;
+}
+
 /** A single hop in a shortest-path result */
 export interface GraphHop {
   fromRepoId: number;

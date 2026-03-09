@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { GraphEdge, ServiceGraph, BfsNode, GraphHop } from './types.js';
+import type { GraphEdge, ServiceGraph, BfsNode, GraphHop, ImpactNode } from './types.js';
 import { extractConfidence, extractMetadataField } from './edge-utils.js';
 
 /**
@@ -267,6 +267,90 @@ export function bfsDownstream(
         }
       }
     }
+  }
+
+  return results;
+}
+
+/**
+ * BFS upstream traversal: find all services that depend on startRepoId.
+ *
+ * Uses the reverse adjacency list to traverse incoming call edges ("who calls me").
+ * Does not include the starting node. Does not traverse from unresolved (id=0) nodes.
+ *
+ * Returns ImpactNode[] with multi-edge collection: each node's edges array contains
+ * ALL forward edges from that node pointing into the BFS subgraph (the start node + visited set).
+ *
+ * @param mechanismFilter - If provided, only follow edges with this mechanism during BFS
+ *   and only collect matching edges. This gives semantically correct "what breaks if my gRPC changes" answers.
+ */
+export function bfsUpstream(
+  graph: ServiceGraph,
+  startRepoId: number,
+  maxDepth: number = 3,
+  mechanismFilter?: string,
+): ImpactNode[] {
+  const visited = new Set<number>();
+  visited.add(startRepoId);
+
+  // BFS to discover affected nodes
+  // Queue: [repoId, depth]
+  const queue: Array<[number, number]> = [];
+  const nodeDepths = new Map<number, number>();
+
+  // Seed with reverse neighbors of startRepoId
+  const reverseNeighbors = graph.reverse.get(startRepoId);
+  if (reverseNeighbors) {
+    for (const edge of reverseNeighbors) {
+      if (edge.targetRepoId === 0) continue;
+      if (mechanismFilter && edge.mechanism !== mechanismFilter) continue;
+      if (!visited.has(edge.targetRepoId)) {
+        queue.push([edge.targetRepoId, 1]);
+      }
+    }
+  }
+
+  while (queue.length > 0) {
+    const [repoId, depth] = queue.shift()!;
+
+    if (repoId === 0) continue;
+    if (visited.has(repoId)) continue;
+    visited.add(repoId);
+    nodeDepths.set(repoId, depth);
+
+    if (depth < maxDepth) {
+      const neighbors = graph.reverse.get(repoId);
+      if (neighbors) {
+        for (const edge of neighbors) {
+          if (edge.targetRepoId !== 0 && !visited.has(edge.targetRepoId)) {
+            if (mechanismFilter && edge.mechanism !== mechanismFilter) continue;
+            queue.push([edge.targetRepoId, depth + 1]);
+          }
+        }
+      }
+    }
+  }
+
+  // Build result with multi-edge collection
+  // For each affected node, collect its forward edges that point into the visited set
+  // (the subgraph includes the start node)
+  const results: ImpactNode[] = [];
+
+  for (const [repoId, depth] of nodeDepths) {
+    const repoName = graph.repoNames.get(repoId) ?? `unknown-${repoId}`;
+    const edges: Array<{ mechanism: string; confidence: string | null }> = [];
+
+    const forwardEdges = graph.forward.get(repoId);
+    if (forwardEdges) {
+      for (const edge of forwardEdges) {
+        if (visited.has(edge.targetRepoId)) {
+          if (mechanismFilter && edge.mechanism !== mechanismFilter) continue;
+          edges.push({ mechanism: edge.mechanism, confidence: edge.confidence });
+        }
+      }
+    }
+
+    results.push({ repoId, repoName, depth, edges });
   }
 
   return results;

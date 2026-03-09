@@ -13,7 +13,7 @@ export {
   buildInClause,
   getAllowedTypes,
 } from './edge-utils.js';
-export { buildGraph, bfsDownstream, shortestPath } from './graph.js';
+export { buildGraph, bfsDownstream, bfsUpstream, shortestPath } from './graph.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
@@ -28,4 +28,5 @@ export type {
   ServiceGraph,
   BfsNode,
   GraphHop,
+  ImpactNode,
 } from './types.js';
