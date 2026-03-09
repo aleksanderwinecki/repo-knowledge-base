@@ -16,6 +16,7 @@ export {
 export { buildGraph, bfsDownstream, bfsUpstream, shortestPath } from './graph.js';
 export { analyzeImpact, formatImpactCompact, formatImpactVerbose } from './impact.js';
 export { traceRoute } from './trace.js';
+export { explainService } from './explain.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
@@ -34,3 +35,4 @@ export type {
 } from './types.js';
 export type { ImpactResult, ImpactServiceEntry, ImpactStats } from './impact.js';
 export type { TraceResult, TraceHop } from './trace.js';
+export type { ExplainResult } from './explain.js';
