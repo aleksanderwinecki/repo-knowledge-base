@@ -6,17 +6,17 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ r
 
 ## Current State
 
-**Latest shipped:** v2.0 Design-Time Intelligence (2026-03-09)
-**Current milestone:** v2.1 Cleanup & Tightening
+**Latest shipped:** v2.1 Cleanup & Tightening — Phase 21 Embedding Removal (2026-03-09)
+**Current milestone:** v2.1 Cleanup & Tightening — Phase 22 Fixes & Metadata
 
 ## Current Milestone: v2.1 Cleanup & Tightening
 
 **Goal:** Remove dead embedding infrastructure, fix scoping/UX issues in existing features, and update all project metadata to reflect current reality.
 
 **Target features:**
-- Remove embedding infrastructure (sqlite-vec, @huggingface/transformers, vec0 table, semantic search, kb_semantic MCP tool)
+- ~~Remove embedding infrastructure~~ (completed Phase 21)
 - Fix --repo targeting UX (implicit force, symlink support in scanner)
-- Update all project metadata (PROJECT.md stats, constraints, context to reflect 400 repos, 10 MCP tools, 561 tests)
+- Update all project metadata (PROJECT.md stats, constraints, context to reflect current reality)
 
 ## Core Value
 
@@ -36,8 +36,8 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [ ] Remove embedding infrastructure — sqlite-vec, transformers.js, vec0, semantic search (CLEAN-01)
-- [ ] Fix --repo implicit force and symlink support in scanner (FIX-01)
+- [x] Remove embedding infrastructure (CLEAN-01..06) — completed Phase 21
+- [ ] Fix --repo implicit force and symlink support in scanner (FIX-01, FIX-02)
 - [ ] Update project metadata to reflect current state (META-01)
 
 ### Deferred
@@ -60,17 +60,16 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v2.0 with 561 tests passing across 38 test files.
-Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, sqlite-vec, @huggingface/transformers, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0, v1.1, v1.2, and v2.0 milestones.
+Shipped v2.1 with 503 tests passing across 32 test files.
+Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
+Built across v1.0, v1.1, v1.2, v2.0, and v2.1 milestones.
 
-10 MCP tools: kb_search, kb_semantic, kb_entity, kb_deps, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
-CLI: kb index (--force, --repo, --refresh, --embed, --timing), kb search (--type, --list-types, --entity, --semantic), kb deps (--direction, --mechanism), kb status, kb learn, kb learned, kb forget, kb docs.
+9 MCP tools: kb_search, kb_entity, kb_deps, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
+CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb status, kb learn, kb learned, kb forget, kb docs.
 
 400 repos indexed: 125k modules, 8.4k events, 127 services, 11.7k topology edges.
 
 Known limitations:
-- Embedding infrastructure exists but is impractical (~1 hour for full generation, killed by OOM on targeted runs) — v2.1 removes it
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 - Topology extraction catches most patterns but unusual client wrappers may be missed
 
@@ -113,4 +112,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-09 after v2.1 milestone start*
+*Last updated: 2026-03-09 after Phase 21 completion (embedding removal)*
