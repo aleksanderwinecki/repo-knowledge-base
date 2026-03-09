@@ -142,6 +142,6 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23. Graph Infrastructure | 2/2 | Complete    | 2026-03-09 | - |
-| 24. Blast Radius | 3/3 | Complete   | 2026-03-09 | - |
+| 24. Blast Radius | 3/3 | Complete    | 2026-03-09 | - |
 | 25. Flow Tracing | v3.0 | 0/? | Not started | - |
 | 26. Service Explanation | v3.0 | 0/? | Not started | - |
