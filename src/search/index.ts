@@ -14,6 +14,7 @@ export {
   getAllowedTypes,
 } from './edge-utils.js';
 export { buildGraph, bfsDownstream, bfsUpstream, shortestPath } from './graph.js';
+export { analyzeImpact, formatImpactCompact, formatImpactVerbose } from './impact.js';
 export { listAvailableTypes } from '../db/fts.js';
 export type {
   TextSearchResult,
@@ -30,3 +31,4 @@ export type {
   GraphHop,
   ImpactNode,
 } from './types.js';
+export type { ImpactResult, ImpactServiceEntry, ImpactStats } from './impact.js';

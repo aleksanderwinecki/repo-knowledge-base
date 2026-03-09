@@ -14,6 +14,7 @@ import { registerLearn } from './commands/learn.js';
 import { registerLearned } from './commands/learned.js';
 import { registerForget } from './commands/forget.js';
 import { registerDocs } from './commands/docs.js';
+import { registerImpact } from './commands/impact.js';
 
 const program = new Command();
 program
@@ -29,5 +30,6 @@ registerLearn(program);
 registerLearned(program);
 registerForget(program);
 registerDocs(program);
+registerImpact(program);
 
 program.parse();
