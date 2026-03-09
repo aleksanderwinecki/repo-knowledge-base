@@ -32,6 +32,7 @@ import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
 import { registerImpactTool } from '../../src/mcp/tools/impact.js';
+import { registerTraceTool } from '../../src/mcp/tools/trace.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
 
@@ -120,6 +121,7 @@ beforeEach(() => {
   registerCleanupTool(server, db);
   registerListTypesTool(server, db);
   registerImpactTool(server, db);
+  registerTraceTool(server, db);
 
   // Expose internal tool registry
   tools = (server as unknown as { _registeredTools: ToolShape })._registeredTools;
@@ -223,6 +225,15 @@ describe('input schema contracts', () => {
     expect(getParamType('kb_impact', 'name')).toBe('string');
     expect(getParamType('kb_impact', 'mechanism')).toBe('optional');
     expect(getParamType('kb_impact', 'depth')).toBe('optional');
+  });
+
+  it('kb_trace: from (required), to (required)', () => {
+    const params = getParamNames('kb_trace');
+    expect(params).toEqual(['from', 'to']);
+    expect(params).toHaveLength(2);
+
+    expect(getParamType('kb_trace', 'from')).toBe('string');
+    expect(getParamType('kb_trace', 'to')).toBe('string');
   });
 });
 
@@ -443,5 +454,41 @@ describe('output shape contracts', () => {
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('Error');
     expect(r.content[0].text).toContain('nonexistent-contract-service');
+  });
+
+  it('kb_trace: { from, to, path_summary, hop_count, hops }', async () => {
+    // Need two repos with an edge for a traceable path
+    const idA = insertRepo('trace-contract-a', tmpDir, 'current-commit');
+    const idB = insertRepo('trace-contract-b', tmpDir, 'current-commit');
+    insertDirectEdge(idA, idB, 'calls_grpc');
+
+    const result = await callTool('kb_trace', { from: 'trace-contract-a', to: 'trace-contract-b' });
+    const r = result as { content: Array<{ type: string; text: string }>; isError?: boolean };
+    expect(r.isError).toBeUndefined();
+
+    const parsed = JSON.parse(r.content[0].text);
+
+    expect(Object.keys(parsed).sort()).toEqual(['from', 'hop_count', 'hops', 'path_summary', 'to']);
+
+    expect(typeof parsed.from).toBe('string');
+    expect(typeof parsed.to).toBe('string');
+    expect(typeof parsed.path_summary).toBe('string');
+    expect(typeof parsed.hop_count).toBe('number');
+    expect(Array.isArray(parsed.hops)).toBe(true);
+
+    // Verify hop shape
+    expect(parsed.hops).toHaveLength(1);
+    const hop = parsed.hops[0];
+    expect(hop).toHaveProperty('from');
+    expect(hop).toHaveProperty('to');
+    expect(hop).toHaveProperty('mechanism');
+  });
+
+  it('kb_trace error response: { isError: true, content with Error message }', async () => {
+    const result = await callTool('kb_trace', { from: 'nonexistent-a', to: 'nonexistent-b' });
+    const r = result as { content: Array<{ type: string; text: string }>; isError?: boolean };
+
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('Error');
   });
 });
