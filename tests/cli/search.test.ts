@@ -1,5 +1,5 @@
 /**
- * CLI search command tests: --semantic flag routing and hybrid default.
+ * CLI search command tests: FTS5 default path and entity/list-types routing.
  * Tests argument routing logic, not search functions themselves (those are in search/*.test.ts).
  */
 
@@ -11,12 +11,6 @@ import fs from 'fs';
 // Mock search modules before importing anything that uses them
 vi.mock('../../src/search/text.js', () => ({
   searchText: vi.fn(() => []),
-}));
-vi.mock('../../src/search/semantic.js', () => ({
-  searchSemantic: vi.fn(async () => []),
-}));
-vi.mock('../../src/search/hybrid.js', () => ({
-  searchHybrid: vi.fn(async () => []),
 }));
 vi.mock('../../src/search/entity.js', () => ({
   findEntity: vi.fn(() => []),
@@ -32,15 +26,11 @@ vi.mock('../../src/db/fts.js', async (importOriginal) => {
 import { Command } from '@commander-js/extra-typings';
 import { registerSearch } from '../../src/cli/commands/search.js';
 import { searchText } from '../../src/search/text.js';
-import { searchSemantic } from '../../src/search/semantic.js';
-import { searchHybrid } from '../../src/search/hybrid.js';
 import { findEntity } from '../../src/search/entity.js';
 import { listAvailableTypes } from '../../src/db/fts.js';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 
 const mockedSearchText = vi.mocked(searchText);
-const mockedSearchSemantic = vi.mocked(searchSemantic);
-const mockedSearchHybrid = vi.mocked(searchHybrid);
 const mockedFindEntity = vi.mocked(findEntity);
 const mockedListAvailableTypes = vi.mocked(listAvailableTypes);
 
@@ -94,79 +84,26 @@ async function runSearch(...args: string[]): Promise<string> {
   return written;
 }
 
-describe('CLI search --semantic', () => {
-  it('calls searchSemantic when --semantic flag is provided', async () => {
-    mockedSearchSemantic.mockResolvedValue([]);
-
-    await runSearch('--semantic', 'payment services');
-
-    expect(mockedSearchSemantic).toHaveBeenCalledOnce();
-    expect(mockedSearchSemantic).toHaveBeenCalledWith(
-      expect.anything(), // db
-      'payment services',
-      expect.objectContaining({ limit: 20 }),
-    );
-    // Should NOT call searchHybrid or searchText
-    expect(mockedSearchHybrid).not.toHaveBeenCalled();
-    expect(mockedSearchText).not.toHaveBeenCalled();
-  });
-
-  it('passes --repo filter to searchSemantic', async () => {
-    mockedSearchSemantic.mockResolvedValue([]);
-
-    await runSearch('--semantic', '--repo', 'my-service', 'query');
-
-    expect(mockedSearchSemantic).toHaveBeenCalledWith(
-      expect.anything(),
-      'query',
-      expect.objectContaining({ repoFilter: 'my-service' }),
-    );
-  });
-
-  it('passes --limit to searchSemantic', async () => {
-    mockedSearchSemantic.mockResolvedValue([]);
-
-    await runSearch('--semantic', '--limit', '5', 'query');
-
-    expect(mockedSearchSemantic).toHaveBeenCalledWith(
-      expect.anything(),
-      'query',
-      expect.objectContaining({ limit: 5 }),
-    );
-  });
-
-  it('outputs empty array when searchSemantic returns []', async () => {
-    mockedSearchSemantic.mockResolvedValue([]);
-
-    const written = await runSearch('--semantic', 'nothing');
-
-    const parsed = JSON.parse(written);
-    expect(parsed).toEqual([]);
-  });
-});
-
-describe('CLI search default (hybrid)', () => {
-  it('calls searchHybrid when no --semantic or --entity flag', async () => {
-    mockedSearchHybrid.mockResolvedValue([]);
+describe('CLI search default (FTS5)', () => {
+  it('calls searchText when no --entity flag', async () => {
+    mockedSearchText.mockReturnValue([]);
 
     await runSearch('some query');
 
-    expect(mockedSearchHybrid).toHaveBeenCalledOnce();
-    expect(mockedSearchHybrid).toHaveBeenCalledWith(
+    expect(mockedSearchText).toHaveBeenCalledOnce();
+    expect(mockedSearchText).toHaveBeenCalledWith(
       expect.anything(),
       'some query',
       expect.objectContaining({ limit: 20 }),
     );
-    expect(mockedSearchSemantic).not.toHaveBeenCalled();
-    expect(mockedSearchText).not.toHaveBeenCalled();
   });
 
-  it('passes --repo and --type to searchHybrid', async () => {
-    mockedSearchHybrid.mockResolvedValue([]);
+  it('passes --repo and --type to searchText', async () => {
+    mockedSearchText.mockReturnValue([]);
 
     await runSearch('--repo', 'foo', '--type', 'module', 'query');
 
-    expect(mockedSearchHybrid).toHaveBeenCalledWith(
+    expect(mockedSearchText).toHaveBeenCalledWith(
       expect.anything(),
       'query',
       expect.objectContaining({
@@ -174,6 +111,27 @@ describe('CLI search default (hybrid)', () => {
         entityTypeFilter: 'module',
       }),
     );
+  });
+
+  it('passes --limit to searchText', async () => {
+    mockedSearchText.mockReturnValue([]);
+
+    await runSearch('--limit', '5', 'query');
+
+    expect(mockedSearchText).toHaveBeenCalledWith(
+      expect.anything(),
+      'query',
+      expect.objectContaining({ limit: 5 }),
+    );
+  });
+
+  it('outputs empty array when searchText returns []', async () => {
+    mockedSearchText.mockReturnValue([]);
+
+    const written = await runSearch('nothing');
+
+    const parsed = JSON.parse(written);
+    expect(parsed).toEqual([]);
   });
 });
 
@@ -189,9 +147,8 @@ describe('CLI search --entity (regression)', () => {
       'UserService',
       expect.objectContaining({}),
     );
-    // Should NOT call search functions
-    expect(mockedSearchHybrid).not.toHaveBeenCalled();
-    expect(mockedSearchSemantic).not.toHaveBeenCalled();
+    // Should NOT call searchText
+    expect(mockedSearchText).not.toHaveBeenCalled();
   });
 });
 

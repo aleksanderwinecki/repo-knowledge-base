@@ -14,12 +14,6 @@ vi.mock('../../src/indexer/pipeline.js', () => ({
   indexSingleRepo: vi.fn(() => ({ modules: 0, protos: 0, events: 0 })),
   indexAllRepos: vi.fn(async () => []),
 }));
-vi.mock('../../src/search/hybrid.js', () => ({
-  searchHybrid: vi.fn(async () => []),
-}));
-vi.mock('../../src/search/semantic.js', () => ({
-  searchSemantic: vi.fn(async () => []),
-}));
 
 import { registerSearchTool } from '../../src/mcp/tools/search.js';
 import { registerEntityTool } from '../../src/mcp/tools/entity.js';
@@ -29,14 +23,11 @@ import { registerForgetTool } from '../../src/mcp/tools/forget.js';
 import { registerStatusTool } from '../../src/mcp/tools/status.js';
 import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
-import { registerSemanticTool } from '../../src/mcp/tools/semantic.js';
 import { registerReindexTool } from '../../src/mcp/tools/reindex.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { indexAllRepos } from '../../src/indexer/pipeline.js';
-import { searchHybrid } from '../../src/search/hybrid.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
 
-const mockedSearchHybrid = vi.mocked(searchHybrid);
 const mockedIndexAllRepos = vi.mocked(indexAllRepos);
 
 const mockedGetCurrentCommit = vi.mocked(getCurrentCommit);
@@ -98,7 +89,6 @@ beforeEach(() => {
   registerStatusTool(server, db);
   registerCleanupTool(server, db);
   registerListTypesTool(server, db);
-  registerSemanticTool(server, db);
   registerReindexTool(server, db);
 
   vi.clearAllMocks();
@@ -357,79 +347,6 @@ describe('kb_list_types', () => {
   });
 });
 
-describe('kb_semantic', () => {
-  it('returns formatted JSON with summary, data, total, truncated fields', async () => {
-    mockedSearchHybrid.mockResolvedValue([
-      {
-        entityType: 'module' as const,
-        subType: 'module',
-        entityId: 1,
-        name: 'PaymentModule',
-        snippet: 'Handles payment processing',
-        repoName: 'payment-service',
-        repoPath: tmpDir,
-        filePath: null,
-        relevance: 0.95,
-      },
-    ]);
-
-    const result = await callTool('kb_semantic', { query: 'payment processing' });
-    const parsed = parseResponse(result);
-
-    expect(parsed).toHaveProperty('summary');
-    expect(parsed).toHaveProperty('data');
-    expect(parsed).toHaveProperty('total');
-    expect(parsed).toHaveProperty('truncated');
-    expect(Array.isArray(parsed.data)).toBe(true);
-    expect(parsed.total).toBe(1);
-    expect((parsed.summary as string)).toContain('payment processing');
-  });
-
-  it('passes repo filter to searchHybrid', async () => {
-    mockedSearchHybrid.mockResolvedValue([]);
-
-    await callTool('kb_semantic', { query: 'auth', repo: 'my-service' });
-
-    expect(mockedSearchHybrid).toHaveBeenCalledWith(
-      expect.anything(),
-      'auth',
-      expect.objectContaining({ repoFilter: 'my-service' }),
-    );
-  });
-
-  it('passes limit to searchHybrid', async () => {
-    mockedSearchHybrid.mockResolvedValue([]);
-
-    await callTool('kb_semantic', { query: 'auth', limit: 5 });
-
-    expect(mockedSearchHybrid).toHaveBeenCalledWith(
-      expect.anything(),
-      'auth',
-      expect.objectContaining({ limit: 5 }),
-    );
-  });
-
-  it('returns empty data for no results', async () => {
-    mockedSearchHybrid.mockResolvedValue([]);
-
-    const result = await callTool('kb_semantic', { query: 'nonexistent' });
-    const parsed = parseResponse(result);
-
-    expect(parsed.total).toBe(0);
-    expect(parsed.data).toEqual([]);
-  });
-
-  it('error on closed DB returns isError=true', async () => {
-    closeDatabase(db);
-
-    const result = await callTool('kb_semantic', { query: 'anything' });
-    const r = result as { content: Array<{ text: string }>; isError?: boolean };
-
-    expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain('Error');
-  });
-});
-
 describe('kb_reindex', () => {
   it('returns error for empty repos array', async () => {
     const result = await callTool('kb_reindex', { repos: [] });
@@ -442,7 +359,7 @@ describe('kb_reindex', () => {
 
   it('triggers reindex for specified repos with refresh=true', async () => {
     mockedIndexAllRepos.mockResolvedValue([
-      { repo: 'test-repo', status: 'success', mode: 'full', stats: { modules: 5, protos: 2, events: 1, services: 0, graphqlTypes: 0, topologyEdges: 0, embeddings: 0 } },
+      { repo: 'test-repo', status: 'success', mode: 'full', stats: { modules: 5, protos: 2, events: 1, services: 0, graphqlTypes: 0, topologyEdges: 0 } },
     ]);
 
     const result = await callTool('kb_reindex', { repos: ['test-repo'], refresh: true });
@@ -488,7 +405,7 @@ describe('kb_reindex', () => {
 
   it('includes error count in summary when repos fail', async () => {
     mockedIndexAllRepos.mockResolvedValue([
-      { repo: 'good-repo', status: 'success', mode: 'full', stats: { modules: 1, protos: 0, events: 0, services: 0, graphqlTypes: 0, topologyEdges: 0, embeddings: 0 } },
+      { repo: 'good-repo', status: 'success', mode: 'full', stats: { modules: 1, protos: 0, events: 0, services: 0, graphqlTypes: 0, topologyEdges: 0 } },
       { repo: 'bad-repo', status: 'error', error: 'git failed' },
     ]);
 
@@ -514,7 +431,6 @@ describe('all tools', () => {
       { name: 'kb_status', args: {} },
       { name: 'kb_cleanup', args: {} },
       { name: 'kb_list_types', args: {} },
-      { name: 'kb_semantic', args: { query: 'TestModule' } },
     ];
 
     for (const { name, args } of tools) {

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { SCHEMA_VERSION } from '../../src/db/schema.js';
 import { getCurrentVersion, setVersion, runMigrations } from '../../src/db/migrations.js';
-import { loadVecExtension } from '../../src/db/vec.js';
 import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import os from 'os';
@@ -373,8 +372,8 @@ describe('v4 migration', () => {
     expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
   });
 
-  it('SCHEMA_VERSION is 8', () => {
-    expect(SCHEMA_VERSION).toBe(8);
+  it('SCHEMA_VERSION is 7', () => {
+    expect(SCHEMA_VERSION).toBe(7);
   });
 
   it('fresh database has file_id column on events', () => {
@@ -637,88 +636,3 @@ describe('v7 migration', () => {
   });
 });
 
-describe('v8 migration', () => {
-  let db: Database.Database;
-  let dbPath: string;
-
-  /**
-   * Create a raw v7 database by running v1-v7 migrations manually,
-   * then setting user_version to 7. Loads sqlite-vec before migrations
-   * since V8 needs it.
-   */
-  function createV7Database(filePath: string): Database.Database {
-    const rawDb = new BetterSqlite3(filePath);
-    rawDb.pragma('journal_mode = WAL');
-    rawDb.pragma('foreign_keys = ON');
-    loadVecExtension(rawDb);
-    runMigrations(rawDb, 0, 7);
-    setVersion(rawDb, 7);
-    return rawDb;
-  }
-
-  afterEach(() => {
-    if (db?.open) closeDatabase(db);
-    try {
-      fs.unlinkSync(dbPath);
-    } catch {
-      // ignore
-    }
-  });
-
-  it('v8 migration creates entity_embeddings vec0 table', () => {
-    dbPath = path.join(os.tmpdir(), `rkb-v8-vec0-${Date.now()}.db`);
-    db = createV7Database(dbPath);
-
-    // entity_embeddings should NOT exist at v7
-    const tablesBefore = (db.pragma('table_list') as Array<{ name: string }>).map(t => t.name);
-    expect(tablesBefore).not.toContain('entity_embeddings');
-
-    closeDatabase(db);
-    db = openDatabase(dbPath);
-
-    // entity_embeddings should exist after v8
-    const tablesAfter = (db.pragma('table_list') as Array<{ name: string }>).map(t => t.name);
-    expect(tablesAfter).toContain('entity_embeddings');
-  });
-
-  it('schema version reaches 8 after migration from v7', () => {
-    dbPath = path.join(os.tmpdir(), `rkb-v8-version-${Date.now()}.db`);
-    db = createV7Database(dbPath);
-    expect(getCurrentVersion(db)).toBe(7);
-
-    closeDatabase(db);
-    db = openDatabase(dbPath);
-
-    expect(getCurrentVersion(db)).toBe(8);
-  });
-
-  it('existing data preserved after v7 to v8 migration', () => {
-    dbPath = path.join(os.tmpdir(), `rkb-v8-preserve-${Date.now()}.db`);
-    db = createV7Database(dbPath);
-
-    db.prepare("INSERT INTO repos (name, path) VALUES ('v8-test', '/tmp/v8')").run();
-    const repo = db.prepare("SELECT id FROM repos WHERE name = 'v8-test'").get() as { id: number };
-    db.prepare("INSERT INTO modules (repo_id, name, type) VALUES (?, 'TestModule', 'context')").run(repo.id);
-    db.prepare("INSERT INTO events (repo_id, name) VALUES (?, 'TestEvent')").run(repo.id);
-
-    closeDatabase(db);
-    db = openDatabase(dbPath);
-
-    const repoRow = db.prepare("SELECT name FROM repos WHERE name = 'v8-test'").get() as { name: string };
-    expect(repoRow.name).toBe('v8-test');
-
-    const modRow = db.prepare("SELECT name FROM modules WHERE name = 'TestModule'").get() as { name: string };
-    expect(modRow.name).toBe('TestModule');
-
-    const evtRow = db.prepare("SELECT name FROM events WHERE name = 'TestEvent'").get() as { name: string };
-    expect(evtRow.name).toBe('TestEvent');
-  });
-
-  it('fresh database has entity_embeddings table', () => {
-    dbPath = path.join(os.tmpdir(), `rkb-v8-fresh-${Date.now()}.db`);
-    db = openDatabase(dbPath);
-
-    const tables = (db.pragma('table_list') as Array<{ name: string }>).map(t => t.name);
-    expect(tables).toContain('entity_embeddings');
-  });
-});
