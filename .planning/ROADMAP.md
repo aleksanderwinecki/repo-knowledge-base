@@ -5,7 +5,8 @@
 - v1.0 MVP -- Phases 1-5 (shipped 2026-03-06)
 - v1.1 Improved Reindexing -- Phases 6-10 (shipped 2026-03-07)
 - v1.2 Hardening & Quick Wins -- Phases 11-15 (shipped 2026-03-07)
-- v2.0 Design-Time Intelligence -- Phases 16-19 (in progress)
+- v2.0 Design-Time Intelligence -- Phases 16-20 (shipped 2026-03-09)
+- v2.1 Cleanup & Tightening -- Phases 21-22 (in progress)
 
 ## Phases
 
@@ -42,16 +43,28 @@
 
 </details>
 
-### v2.0 Design-Time Intelligence (In Progress)
+<details>
+<summary>v2.0 Design-Time Intelligence (Phases 16-20) -- SHIPPED 2026-03-09</summary>
 
-**Milestone Goal:** Enable design-time architectural queries -- who talks to whom via what protocol -- and natural language semantic search across the entire microservice ecosystem.
+- [x] Phase 16: Topology Extraction (3/3 plans) -- completed 2026-03-08
+- [x] Phase 17: Topology Query Layer (2/2 plans) -- completed 2026-03-08
+- [x] Phase 18: Embedding Infrastructure (2/2 plans) -- completed 2026-03-08
+- [x] Phase 19: Semantic Search (2/2 plans) -- completed 2026-03-08
+- [x] Phase 20: Targeted Repo Reindex (2/2 plans) -- completed 2026-03-09
 
-- [x] **Phase 16: Topology Extraction** - Extract gRPC, HTTP, gateway, and Kafka communication edges from all repos (completed 2026-03-08)
-- [x] **Phase 17: Topology Query Layer** - Generalize dependency queries to traverse all edge types with mechanism filtering (completed 2026-03-08)
-- [x] **Phase 18: Embedding Infrastructure** - Validate sqlite-vec, build embedding generation pipeline with nomic-embed-text-v1.5 (completed 2026-03-08)
-- [x] **Phase 19: Semantic Search** - KNN vector search, hybrid FTS+vector ranking, MCP tool, graceful degradation (completed 2026-03-08)
+</details>
+
+### v2.1 Cleanup & Tightening (In Progress)
+
+**Milestone Goal:** Remove dead embedding infrastructure, fix --repo targeting UX, and update project metadata to reflect current reality.
+
+- [ ] **Phase 21: Embedding Removal** - Rip out sqlite-vec, transformers.js, vec0, semantic search, and all related code/tests
+- [ ] **Phase 22: Fixes & Metadata** - Implicit force for --repo, symlink support in scanner, project metadata update
 
 ## Phase Details
+
+<details>
+<summary>Phase 16-20 Details (v2.0 -- complete)</summary>
 
 ### Phase 16: Topology Extraction
 **Goal**: The knowledge base captures service-to-service communication edges (gRPC, HTTP, gateway routing, Kafka) during indexing
@@ -66,9 +79,9 @@
 **Plans**: 3 plans
 
 Plans:
-- [ ] 16-01-PLAN.md -- Types, V7 migration, gRPC/HTTP/Kafka extractors
-- [ ] 16-02-PLAN.md -- Gateway routing extractor
-- [ ] 16-03-PLAN.md -- Pipeline integration and persistence wiring
+- [x] 16-01-PLAN.md -- Types, V7 migration, gRPC/HTTP/Kafka extractors
+- [x] 16-02-PLAN.md -- Gateway routing extractor
+- [x] 16-03-PLAN.md -- Pipeline integration and persistence wiring
 
 ### Phase 17: Topology Query Layer
 **Goal**: Users can query the full service communication graph -- filtering by mechanism, seeing confidence levels, traversing all edge types
@@ -82,8 +95,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 17-01-PLAN.md -- Types, query engine rewrite, tests (all edge types, mechanism filter, confidence)
-- [ ] 17-02-PLAN.md -- CLI --mechanism flag and MCP tool mechanism param
+- [x] 17-01-PLAN.md -- Types, query engine rewrite, tests (all edge types, mechanism filter, confidence)
+- [x] 17-02-PLAN.md -- CLI --mechanism flag and MCP tool mechanism param
 
 ### Phase 18: Embedding Infrastructure
 **Goal**: The system can generate and store vector embeddings for all indexed entities using local inference
@@ -97,8 +110,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 18-01-PLAN.md -- sqlite-vec loading, V8 migration, vec0 table, embedding text composition
-- [ ] 18-02-PLAN.md -- Transformers.js pipeline, batch embedding generation, indexer integration
+- [x] 18-01-PLAN.md -- sqlite-vec loading, V8 migration, vec0 table, embedding text composition
+- [x] 18-02-PLAN.md -- Transformers.js pipeline, batch embedding generation, indexer integration
 
 ### Phase 19: Semantic Search
 **Goal**: Users can search the knowledge base with natural language queries and get semantically relevant results
@@ -112,8 +125,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 19-01-PLAN.md -- Core search functions: generateQueryEmbedding, searchSemantic (KNN), searchHybrid (RRF), withAutoSyncAsync
-- [ ] 19-02-PLAN.md -- CLI --semantic flag, hybrid default search, kb_semantic MCP tool
+- [x] 19-01-PLAN.md -- Core search functions: generateQueryEmbedding, searchSemantic (KNN), searchHybrid (RRF), withAutoSyncAsync
+- [x] 19-02-PLAN.md -- CLI --semantic flag, hybrid default search, kb_semantic MCP tool
 
 ### Phase 20: Targeted Repo Reindex with Git Refresh
 **Goal**: Users can reindex specific repos (instead of all ~400) with an automatic git refresh step that fetches latest code from remote before indexing
@@ -128,21 +141,51 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 20-01-PLAN.md -- gitRefresh(), targeted repo filtering in pipeline, CLI --repo/--refresh flags
-- [ ] 20-02-PLAN.md -- kb_reindex MCP tool
+- [x] 20-01-PLAN.md -- gitRefresh(), targeted repo filtering in pipeline, CLI --repo/--refresh flags
+- [x] 20-02-PLAN.md -- kb_reindex MCP tool
+
+</details>
+
+### Phase 21: Embedding Removal
+**Goal**: All embedding infrastructure is gone -- the codebase has no sqlite-vec, no transformers.js, no vec0 table, no semantic search paths, and all tests pass
+**Depends on**: Phase 20 (v2.0 complete)
+**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, CLEAN-05, CLEAN-06
+**Success Criteria** (what must be TRUE):
+  1. `src/embeddings/` directory does not exist and no source file imports from it
+  2. `npm ls sqlite-vec` and `npm ls @huggingface/transformers` both report "not installed"
+  3. `kb search "query"` uses FTS5 only -- no hybrid/vector code path exists, no degradation logic needed
+  4. `kb search --semantic` and `kb_semantic` MCP tool are gone -- running them produces "unknown option" / tool-not-found errors
+  5. All tests pass with no embedding-related test files remaining
+**Plans**: TBD
+
+Plans:
+- [ ] 21-01: TBD
+- [ ] 21-02: TBD
+
+### Phase 22: Fixes & Metadata
+**Goal**: Remaining UX papercuts are fixed and all project documentation accurately reflects the post-cleanup state of the codebase
+**Depends on**: Phase 21
+**Requirements**: FIX-01, FIX-02, META-01
+**Success Criteria** (what must be TRUE):
+  1. `kb index --repo foo` skips the staleness check and always reindexes (no separate `--force` needed)
+  2. Scanner discovers repos that are symlinks under the root directory (not just real directories)
+  3. PROJECT.md stats, constraints, tool counts, and tech stack reflect the post-cleanup reality (no sqlite-vec, no transformers.js, correct test count)
+**Plans**: TBD
+
+Plans:
+- [ ] 22-01: TBD
+- [ ] 22-02: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 16 -> 17 -> 18 -> 19 -> 20
+Phases execute in numeric order: 21 -> 22
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
 | 1-5 | v1.0 | 9/9 | Complete | 2026-03-06 |
 | 6-10 | v1.1 | 11/11 | Complete | 2026-03-07 |
 | 11-15 | v1.2 | 12/12 | Complete | 2026-03-07 |
-| 16. Topology Extraction | 3/3 | Complete    | 2026-03-08 | - |
-| 17. Topology Query Layer | 2/2 | Complete    | 2026-03-08 | - |
-| 18. Embedding Infrastructure | 2/2 | Complete    | 2026-03-08 | - |
-| 19. Semantic Search | 2/2 | Complete    | 2026-03-08 | - |
-| 20. Targeted Repo Reindex | 2/2 | Complete    | 2026-03-09 | - |
+| 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
+| 21. Embedding Removal | v2.1 | 0/TBD | Not started | - |
+| 22. Fixes & Metadata | v2.1 | 0/TBD | Not started | - |

@@ -109,21 +109,21 @@ Requirements for v2.1 Cleanup & Tightening. Each maps to roadmap phases.
 | RIDX-03 | Phase 20 | Complete |
 | RIDX-04 | Phase 20 | Complete |
 | RIDX-05 | Phase 20 | Complete |
-| CLEAN-01 | TBD | Pending |
-| CLEAN-02 | TBD | Pending |
-| CLEAN-03 | TBD | Pending |
-| CLEAN-04 | TBD | Pending |
-| CLEAN-05 | TBD | Pending |
-| CLEAN-06 | TBD | Pending |
-| FIX-01 | TBD | Pending |
-| FIX-02 | TBD | Pending |
-| META-01 | TBD | Pending |
+| CLEAN-01 | Phase 21 | Pending |
+| CLEAN-02 | Phase 21 | Pending |
+| CLEAN-03 | Phase 21 | Pending |
+| CLEAN-04 | Phase 21 | Pending |
+| CLEAN-05 | Phase 21 | Pending |
+| CLEAN-06 | Phase 21 | Pending |
+| FIX-01 | Phase 22 | Pending |
+| FIX-02 | Phase 22 | Pending |
+| META-01 | Phase 22 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 19 total (complete)
-- v2.1 requirements: 9 total (pending)
-- Unmapped: 9 (v2.1 — awaiting roadmap)
+- v2.1 requirements: 9 total, 9 mapped (0 complete)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-09 after v2.1 milestone start*
+*Last updated: 2026-03-09 after v2.1 roadmap creation*
