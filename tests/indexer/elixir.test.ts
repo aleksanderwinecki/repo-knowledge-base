@@ -416,7 +416,7 @@ end
   });
 });
 
-describe('extractElixirModules (branch-aware)', () => {
+describe('extractElixirModules (working tree)', () => {
   function setupGitElixirRepo(files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, 'git-elixir-repo');
     fs.mkdirSync(repoDir, { recursive: true });
@@ -438,36 +438,36 @@ describe('extractElixirModules (branch-aware)', () => {
     return repoDir;
   }
 
-  it('finds modules from git branch in lib/ directory', () => {
+  it('finds modules from working tree in lib/ directory', () => {
     const repoDir = setupGitElixirRepo({
       'lib/booking.ex': `defmodule MyApp.Booking do\n  def create(x), do: x\nend`,
     });
 
-    const modules = extractElixirModules(repoDir, 'main');
+    const modules = extractElixirModules(repoDir);
     expect(modules).toHaveLength(1);
     expect(modules[0].name).toBe('MyApp.Booking');
   });
 
-  it('finds modules from git branch in apps/ umbrella structure', () => {
+  it('finds modules from working tree in apps/ umbrella structure', () => {
     const repoDir = setupGitElixirRepo({
       'apps/booking/lib/booking.ex': `defmodule Booking do\nend`,
       'apps/payments/lib/payments.ex': `defmodule Payments do\nend`,
     });
 
-    const modules = extractElixirModules(repoDir, 'main');
+    const modules = extractElixirModules(repoDir);
     expect(modules).toHaveLength(2);
   });
 
-  it('returns empty for branch with no lib/ files', () => {
+  it('returns empty for working tree with no lib/ files', () => {
     const repoDir = setupGitElixirRepo({
       'README.md': '# Hello',
     });
 
-    const modules = extractElixirModules(repoDir, 'main');
+    const modules = extractElixirModules(repoDir);
     expect(modules).toHaveLength(0);
   });
 
-  it('reads from main branch, ignoring feature branch files', () => {
+  it('reads from working tree (includes all files present on disk)', () => {
     const repoDir = setupGitElixirRepo({
       'lib/main_module.ex': `defmodule MainModule do\nend`,
     });
@@ -479,9 +479,10 @@ describe('extractElixirModules (branch-aware)', () => {
     fs.writeFileSync(featurePath, `defmodule FeatureModule do\nend`);
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
-    // Extracting from main should only see MainModule
-    const modules = extractElixirModules(repoDir, 'main');
-    expect(modules).toHaveLength(1);
-    expect(modules[0].name).toBe('MainModule');
+    // Working tree is on feature branch, both modules are visible
+    const modules = extractElixirModules(repoDir);
+    expect(modules).toHaveLength(2);
+    const names = modules.map(m => m.name).sort();
+    expect(names).toEqual(['FeatureModule', 'MainModule']);
   });
 });

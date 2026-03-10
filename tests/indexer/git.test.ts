@@ -8,8 +8,8 @@ import {
   isCommitReachable,
   resolveDefaultBranch,
   getBranchCommit,
-  listBranchFiles,
-  readBranchFile,
+  listWorkingTreeFiles,
+  readWorkingTreeFile,
   getChangedFilesSinceBranch,
   gitRefresh,
 } from '../../src/indexer/git.js';
@@ -167,15 +167,17 @@ describe('getBranchCommit', () => {
   });
 });
 
-describe('listBranchFiles', () => {
-  it('returns all committed files from branch tree', () => {
-    const dir = createRepoWithBranch('main', {
-      'src/app.ts': 'console.log("hi")',
-      'README.md': '# Hello',
-      'lib/utils.ts': 'export {}',
-    });
+describe('listWorkingTreeFiles', () => {
+  it('returns all files from working tree recursively', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-wt-test-'));
     try {
-      const files = listBranchFiles(dir, 'main');
+      fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'src/app.ts'), 'console.log("hi")');
+      fs.writeFileSync(path.join(dir, 'README.md'), '# Hello');
+      fs.writeFileSync(path.join(dir, 'lib/utils.ts'), 'export {}');
+
+      const files = listWorkingTreeFiles(dir);
       expect(files).toContain('src/app.ts');
       expect(files).toContain('README.md');
       expect(files).toContain('lib/utils.ts');
@@ -185,62 +187,56 @@ describe('listBranchFiles', () => {
     }
   });
 
-  it('does NOT include uncommitted working tree files', () => {
-    const dir = createRepoWithBranch('main', { 'committed.txt': 'yes' });
+  it('skips .git, node_modules, _build directories', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-wt-skip-'));
     try {
-      // Write an uncommitted file to the working tree
-      fs.writeFileSync(path.join(dir, 'uncommitted.txt'), 'nope');
+      fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'node_modules'), { recursive: true });
+      fs.mkdirSync(path.join(dir, '_build'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.git/config'), 'git stuff');
+      fs.writeFileSync(path.join(dir, 'node_modules/pkg.js'), 'module');
+      fs.writeFileSync(path.join(dir, '_build/output'), 'compiled');
+      fs.writeFileSync(path.join(dir, 'src.txt'), 'source');
 
-      const files = listBranchFiles(dir, 'main');
-      expect(files).toContain('committed.txt');
-      expect(files).not.toContain('uncommitted.txt');
+      const files = listWorkingTreeFiles(dir);
+      expect(files).toEqual(['src.txt']);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('returns empty array for non-existent branch', () => {
-    const dir = createRepoWithBranch('main', { 'a.txt': 'content' });
-    try {
-      expect(listBranchFiles(dir, 'nonexistent')).toEqual([]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+  it('returns empty array for non-existent path', () => {
+    expect(listWorkingTreeFiles('/tmp/nonexistent-rkb-path-xyz')).toEqual([]);
   });
 });
 
-describe('readBranchFile', () => {
-  it('returns file content from the named branch', () => {
-    const dir = createRepoWithBranch('main', { 'hello.txt': 'world' });
+describe('readWorkingTreeFile', () => {
+  it('reads file content from working tree', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-wt-read-'));
     try {
-      expect(readBranchFile(dir, 'main', 'hello.txt')).toBe('world');
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('returns content from main even when working tree differs on feature branch', () => {
-    const dir = createRepoWithBranch('main', { 'config.json': '{"v":1}' });
-    try {
-      // Create feature branch and modify file
-      execSync('git checkout -b feature', { cwd: dir, stdio: 'pipe' });
-      fs.writeFileSync(path.join(dir, 'config.json'), '{"v":2}');
-      execSync('git add config.json', { cwd: dir, stdio: 'pipe' });
-      execSync('git commit -m "update on feature"', { cwd: dir, stdio: 'pipe' });
-
-      // Reading from main should return original content
-      expect(readBranchFile(dir, 'main', 'config.json')).toBe('{"v":1}');
-      // Reading from feature should return updated content
-      expect(readBranchFile(dir, 'feature', 'config.json')).toBe('{"v":2}');
+      fs.writeFileSync(path.join(dir, 'hello.txt'), 'world');
+      expect(readWorkingTreeFile(dir, 'hello.txt')).toBe('world');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
   it('returns null for non-existent file', () => {
-    const dir = createRepoWithBranch('main', { 'exists.txt': 'yes' });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-wt-nofile-'));
     try {
-      expect(readBranchFile(dir, 'main', 'nope.txt')).toBeNull();
+      expect(readWorkingTreeFile(dir, 'nope.txt')).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null for files over 500KB', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rkb-wt-big-'));
+    try {
+      // Create a file just over 500KB
+      const bigContent = 'x'.repeat(501 * 1024);
+      fs.writeFileSync(path.join(dir, 'big.txt'), bigContent);
+      expect(readWorkingTreeFile(dir, 'big.txt')).toBeNull();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -163,8 +163,8 @@ describe('extractMetadata', () => {
   });
 });
 
-describe('extractMetadata (branch-aware)', () => {
-  function setupBranchRepo(name: string, files: Record<string, string>): string {
+describe('extractMetadata (working tree)', () => {
+  function setupRepoWithFiles(name: string, files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, name);
     fs.mkdirSync(repoDir, { recursive: true });
 
@@ -187,16 +187,16 @@ describe('extractMetadata (branch-aware)', () => {
     return repoDir;
   }
 
-  it('reads metadata from branch, populates defaultBranch field', () => {
-    const repoDir = setupBranchRepo('branch-meta', {
-      'README.md': '# BranchService\n\nA service for branch testing.\n\n## Setup\n',
+  it('reads metadata from working tree', () => {
+    const repoDir = setupRepoWithFiles('wt-meta', {
+      'README.md': '# WTService\n\nA service for working tree testing.\n\n## Setup\n',
       'mix.exs': `defp deps do\n  [{:phoenix, "~> 1.7"}]\nend`,
       'lib/app.ex': 'defmodule App do\nend',
     });
 
-    const meta = extractMetadata(repoDir, 'main');
-    expect(meta.defaultBranch).toBe('main');
-    expect(meta.description).toBe('A service for branch testing.');
+    const meta = extractMetadata(repoDir);
+    expect(meta.defaultBranch).toBeNull();
+    expect(meta.description).toBe('A service for working tree testing.');
     expect(meta.techStack).toContain('elixir');
     expect(meta.techStack).toContain('phoenix');
     expect(meta.keyFiles).toContain('README.md');
@@ -205,8 +205,8 @@ describe('extractMetadata (branch-aware)', () => {
     expect(meta.currentCommit).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it('reads from main branch even when on feature branch', () => {
-    const repoDir = setupBranchRepo('feature-isolation', {
+  it('reads from working tree (reflects current checkout)', () => {
+    const repoDir = setupRepoWithFiles('wt-checkout', {
       'README.md': '# MainService\n\nOriginal main description.\n',
     });
 
@@ -215,14 +215,13 @@ describe('extractMetadata (branch-aware)', () => {
     fs.writeFileSync(path.join(repoDir, 'README.md'), '# FeatureService\n\nModified on feature branch.\n');
     execSync('git add -A && git commit -m "feature changes"', { cwd: repoDir, stdio: 'pipe' });
 
-    // extractMetadata with 'main' should return the original content
-    const meta = extractMetadata(repoDir, 'main');
-    expect(meta.description).toBe('Original main description.');
-    expect(meta.defaultBranch).toBe('main');
+    // extractMetadata reads working tree, so sees feature branch content
+    const meta = extractMetadata(repoDir);
+    expect(meta.description).toBe('Modified on feature branch.');
   });
 
-  it('detects key files from branch tree via listBranchFiles', () => {
-    const repoDir = setupBranchRepo('keyfiles-branch', {
+  it('detects key files from filesystem', () => {
+    const repoDir = setupRepoWithFiles('keyfiles-wt', {
       'README.md': '# Svc\n\nDesc.\n',
       'mix.exs': '',
       'lib/app.ex': 'defmodule App do\nend',
@@ -230,7 +229,7 @@ describe('extractMetadata (branch-aware)', () => {
       'config/config.exs': 'config',
     });
 
-    const meta = extractMetadata(repoDir, 'main');
+    const meta = extractMetadata(repoDir);
     expect(meta.keyFiles).toContain('README.md');
     expect(meta.keyFiles).toContain('mix.exs');
     expect(meta.keyFiles).toContain('lib/');
@@ -238,29 +237,22 @@ describe('extractMetadata (branch-aware)', () => {
     expect(meta.keyFiles).toContain('config/');
   });
 
-  it('uses branch commit instead of HEAD for currentCommit', () => {
-    const repoDir = setupBranchRepo('commit-branch', {
+  it('uses HEAD for currentCommit', () => {
+    const repoDir = setupRepoWithFiles('commit-wt', {
       'README.md': '# Svc\n',
     });
 
     // Record main commit
-    const mainCommit = execSync('git rev-parse refs/heads/main', { cwd: repoDir, encoding: 'utf-8' }).trim();
+    const mainCommit = execSync('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf-8' }).trim();
 
     // Create feature branch with new commit (HEAD moves)
     execSync('git checkout -b feature/x', { cwd: repoDir, stdio: 'pipe' });
     fs.writeFileSync(path.join(repoDir, 'new.txt'), 'new');
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
-    const meta = extractMetadata(repoDir, 'main');
-    expect(meta.currentCommit).toBe(mainCommit);
-  });
-
-  it('falls back to fs-based behavior when branch is null', () => {
-    const repoDir = setupMockRepo('fallback-null');
-    fs.writeFileSync(path.join(repoDir, 'README.md'), '# Fallback\n\nFallback description.\n');
-
-    const meta = extractMetadata(repoDir, null);
-    expect(meta.description).toBe('Fallback description.');
-    expect(meta.defaultBranch).toBeNull();
+    const meta = extractMetadata(repoDir);
+    // Should be the feature branch HEAD, not the main branch commit
+    expect(meta.currentCommit).not.toBe(mainCommit);
+    expect(meta.currentCommit).toMatch(/^[0-9a-f]{40}$/);
   });
 });

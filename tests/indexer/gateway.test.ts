@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { TopologyEdge } from '../../src/indexer/topology/types.js';
 
 vi.mock('../../src/indexer/git.js', () => ({
-  listBranchFiles: vi.fn(),
-  readBranchFile: vi.fn(),
+  listWorkingTreeFiles: vi.fn(),
+  readWorkingTreeFile: vi.fn(),
 }));
 
-import { listBranchFiles, readBranchFile } from '../../src/indexer/git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from '../../src/indexer/git.js';
 import { extractGatewayEdges } from '../../src/indexer/topology/gateway.js';
 
-const mockListBranchFiles = vi.mocked(listBranchFiles);
-const mockReadBranchFile = vi.mocked(readBranchFile);
+const mockListFiles = vi.mocked(listWorkingTreeFiles);
+const mockReadFile = vi.mocked(readWorkingTreeFile);
 
 const SAMPLE_SERVICE_TS = `
 import { describe } from '@graphql-mesh/compose';
@@ -45,13 +45,13 @@ beforeEach(() => {
 
 describe('extractGatewayEdges', () => {
   it('detects describe() pattern and creates routes_to edge', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/appointments.ts',
       'package.json',
     ]);
-    mockReadBranchFile.mockReturnValue(SAMPLE_SERVICE_TS);
+    mockReadFile.mockReturnValue(SAMPLE_SERVICE_TS);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toHaveLength(1);
     expect(edges[0]).toEqual<TopologyEdge>({
@@ -64,16 +64,16 @@ describe('extractGatewayEdges', () => {
   });
 
   it('handles multiple service definitions in separate files', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/appointments.ts',
       'compose/services/catalog.ts',
       'package.json',
     ]);
-    mockReadBranchFile
+    mockReadFile
       .mockReturnValueOnce(SAMPLE_SERVICE_TS)
       .mockReturnValueOnce(SAMPLE_CATALOG_TS);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toHaveLength(2);
     expect(edges.map((e) => e.targetServiceName).sort()).toEqual([
@@ -85,36 +85,36 @@ describe('extractGatewayEdges', () => {
   });
 
   it('returns empty array for repos without compose/services/ directory', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'src/index.ts',
       'package.json',
       'lib/utils.ts',
     ]);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toEqual([]);
-    expect(mockReadBranchFile).not.toHaveBeenCalled();
+    expect(mockReadFile).not.toHaveBeenCalled();
   });
 
   it('returns empty array for repos with compose/services/*.ts but no describe() calls', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/config.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(NO_DESCRIBE_TS);
+    mockReadFile.mockReturnValue(NO_DESCRIBE_TS);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toEqual([]);
   });
 
   it('extracts service name in metadata', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/appointments.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(SAMPLE_SERVICE_TS);
+    mockReadFile.mockReturnValue(SAMPLE_SERVICE_TS);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges[0]!.metadata).toEqual({
       serviceName: 'Appointments',
@@ -123,21 +123,20 @@ describe('extractGatewayEdges', () => {
   });
 
   it('only processes .ts files under compose/services/ path', () => {
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/appointments.ts',
       'compose/other/thing.ts',
       'src/services/gateway.ts',
       'compose/services/nested/deep.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(SAMPLE_SERVICE_TS);
+    mockReadFile.mockReturnValue(SAMPLE_SERVICE_TS);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     // Should only read compose/services/appointments.ts (direct child, not nested)
-    expect(mockReadBranchFile).toHaveBeenCalledTimes(1);
-    expect(mockReadBranchFile).toHaveBeenCalledWith(
+    expect(mockReadFile).toHaveBeenCalledTimes(1);
+    expect(mockReadFile).toHaveBeenCalledWith(
       '/fake/repo',
-      'main',
       'compose/services/appointments.ts',
     );
     expect(edges).toHaveLength(1);
@@ -154,33 +153,33 @@ export default describe({
   }
 });
 `;
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/payments.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(multilineVariation);
+    mockReadFile.mockReturnValue(multilineVariation);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toHaveLength(1);
     expect(edges[0]!.targetServiceName).toBe('app-payments');
     expect(edges[0]!.metadata.serviceName).toBe('Payments');
   });
 
-  it('returns empty array when listBranchFiles returns empty', () => {
-    mockListBranchFiles.mockReturnValue([]);
+  it('returns empty array when listWorkingTreeFiles returns empty', () => {
+    mockListFiles.mockReturnValue([]);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toEqual([]);
   });
 
-  it('handles null content from readBranchFile gracefully', () => {
-    mockListBranchFiles.mockReturnValue([
+  it('handles null content from readWorkingTreeFile gracefully', () => {
+    mockListFiles.mockReturnValue([
       'compose/services/broken.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(null);
+    mockReadFile.mockReturnValue(null);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toEqual([]);
   });
@@ -203,12 +202,12 @@ export const svc2 = describe({
   }
 });
 `;
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'compose/services/multi.ts',
     ]);
-    mockReadBranchFile.mockReturnValue(multiDescribe);
+    mockReadFile.mockReturnValue(multiDescribe);
 
-    const edges = extractGatewayEdges('/fake/repo', 'main');
+    const edges = extractGatewayEdges('/fake/repo');
 
     expect(edges).toHaveLength(2);
     expect(edges.map((e) => e.targetServiceName).sort()).toEqual([

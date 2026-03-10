@@ -242,7 +242,7 @@ const SKIP_DIRS = new Set([
   '.elixir_ls',
 ]);
 
-/** Max file size for readWorkingTreeFile (500KB, matching readBranchFile) */
+/** Max file size for readWorkingTreeFile (500KB) */
 const MAX_READ_SIZE = 500 * 1024;
 
 /**

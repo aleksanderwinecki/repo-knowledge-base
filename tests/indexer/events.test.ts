@@ -61,7 +61,7 @@ describe('detectEventRelationships', () => {
       }),
     ];
 
-    const rels = detectEventRelationships(repoDir, 'main', protos, []);
+    const rels = detectEventRelationships(repoDir,protos, []);
     const producers = rels.filter((r) => r.type === 'produces_event');
     expect(producers).toHaveLength(2);
     expect(producers[0].eventName).toBe('BookingCreated');
@@ -83,7 +83,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(2);
     expect(consumers[0].eventName).toBe('BookingCreated');
@@ -102,7 +102,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(1);
     expect(consumers[0].eventName).toBe('BookingUpdated');
@@ -125,7 +125,7 @@ end
       }),
     ];
 
-    const rels = detectEventRelationships(repoDir, 'main', protos, []);
+    const rels = detectEventRelationships(repoDir,protos, []);
     const producers = rels.filter((r) => r.type === 'produces_event');
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(producers).toHaveLength(1);
@@ -143,7 +143,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     expect(rels).toHaveLength(0);
   });
 
@@ -152,7 +152,7 @@ end
       'README.md': '# Hello',
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     expect(rels).toHaveLength(0);
   });
 
@@ -174,7 +174,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers).toHaveLength(2);
     const eventNames = consumers.map((c) => c.eventName).sort();
@@ -190,7 +190,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     expect(rels[0].sourceFile).toContain('deep/nested/handler.ex');
   });
 
@@ -203,7 +203,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     expect(rels).toHaveLength(1);
     expect(rels[0].eventName).toBe('Booking.Events.BookingCreated');
   });
@@ -225,7 +225,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const eventNames = consumers.map((c) => c.eventName);
     expect(eventNames).toContain('Events.Booking.BookingEnvelope');
@@ -259,7 +259,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const eventNames = consumers.map((c) => c.eventName);
     expect(eventNames).toContain('partners.employee-events-v2');
@@ -284,7 +284,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     expect(consumers.length).toBeGreaterThan(0);
     const eventNames = consumers.map((c) => c.eventName);
@@ -305,7 +305,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     expect(rels).toHaveLength(0);
   });
 
@@ -325,7 +325,7 @@ end
 `,
     });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    const rels = detectEventRelationships(repoDir,[], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
     const schemaCount = consumers.filter((c) => c.eventName === 'Events.V1.Payload').length;
     // schema: reference and handle_decoded_message struct share the same name
@@ -334,7 +334,7 @@ end
     expect(schemaCount).toBeLessThanOrEqual(2);
   });
 
-  it('reads from main branch, ignoring feature branch consumers', () => {
+  it('reads from working tree (includes all files present on disk)', () => {
     const repoDir = setupGitRepo({
       'lib/main_handler.ex': `
 defmodule MyApp.MainHandler do
@@ -350,9 +350,11 @@ end
     );
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
-    const rels = detectEventRelationships(repoDir, 'main', [], []);
+    // Working tree is on feature branch, so both handlers are visible
+    const rels = detectEventRelationships(repoDir, [], []);
     const consumers = rels.filter((r) => r.type === 'consumes_event');
-    expect(consumers).toHaveLength(1);
-    expect(consumers[0].eventName).toBe('MainEvent');
+    expect(consumers).toHaveLength(2);
+    const eventNames = consumers.map((c) => c.eventName).sort();
+    expect(eventNames).toEqual(['FeatureEvent', 'MainEvent']);
   });
 });

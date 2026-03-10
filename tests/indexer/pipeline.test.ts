@@ -304,7 +304,7 @@ describe('indexAllRepos', () => {
     expect(results[0].skipReason).toContain('no main or master branch');
   });
 
-  it('indexes from main branch content, not feature branch', async () => {
+  it('indexes from working tree content (includes all files on disk)', async () => {
     const rootDir = path.join(tmpDir, 'repos');
     const repoDir = createGitRepo('branch-test', {
       'mix.exs': 'defmodule BranchTest.MixProject do\nend',
@@ -319,20 +319,21 @@ describe('indexAllRepos', () => {
     fs.writeFileSync(path.join(repoDir, 'lib', 'feature_mod.ex'), 'defmodule FeatureMod do\nend');
     execSync('git add -A && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
 
-    // Index while on feature branch
+    // Index while on feature branch -- reads working tree
     const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir });
 
-    // Should only have the main-branch module
-    expect(stats.modules).toBe(1);
+    // Working tree has both modules (feature branch is checked out)
+    expect(stats.modules).toBe(2);
 
     const modules = db
       .prepare('SELECT name FROM modules WHERE repo_id = (SELECT id FROM repos WHERE name = ?)')
       .all('branch-test') as { name: string }[];
-    expect(modules).toHaveLength(1);
-    expect(modules[0].name).toBe('MainMod');
+    expect(modules).toHaveLength(2);
+    const names = modules.map(m => m.name).sort();
+    expect(names).toEqual(['FeatureMod', 'MainMod']);
   });
 
-  it('populates default_branch in repos table', async () => {
+  it('stores null for default_branch (working tree mode)', async () => {
     const repoDir = createGitRepo('branch-col-test', {
       'mix.exs': 'defmodule BranchCol.MixProject do\nend',
     });
@@ -345,7 +346,8 @@ describe('indexAllRepos', () => {
     const row = db.prepare('SELECT default_branch FROM repos WHERE name = ?').get('branch-col-test') as {
       default_branch: string | null;
     };
-    expect(row.default_branch).toBe('main');
+    // extractMetadata no longer resolves branch — always returns null
+    expect(row.default_branch).toBeNull();
   });
 
   it('handles detached HEAD state', async () => {

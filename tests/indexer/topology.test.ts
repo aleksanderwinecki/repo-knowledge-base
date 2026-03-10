@@ -3,17 +3,17 @@ import type { ElixirModule } from '../../src/indexer/elixir.js';
 
 // Mock git module before importing extractors
 vi.mock('../../src/indexer/git.js', () => ({
-  listBranchFiles: vi.fn(() => []),
-  readBranchFile: vi.fn(() => null),
+  listWorkingTreeFiles: vi.fn(() => []),
+  readWorkingTreeFile: vi.fn(() => null),
 }));
 
-import { listBranchFiles, readBranchFile } from '../../src/indexer/git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from '../../src/indexer/git.js';
 import { extractGrpcClientEdges } from '../../src/indexer/topology/grpc-clients.js';
 import { extractHttpClientEdges } from '../../src/indexer/topology/http-clients.js';
 import { extractKafkaEdges } from '../../src/indexer/topology/kafka.js';
 
-const mockListBranchFiles = vi.mocked(listBranchFiles);
-const mockReadBranchFile = vi.mocked(readBranchFile);
+const mockListFiles = vi.mocked(listWorkingTreeFiles);
+const mockReadFile = vi.mocked(readWorkingTreeFile);
 
 function makeModule(overrides: Partial<ElixirModule> = {}): ElixirModule {
   return {
@@ -48,10 +48,10 @@ defmodule Checkout.GrpcClients.Appointments do
   end
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/checkout/grpc_clients/appointments.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/checkout/grpc_clients/appointments.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractGrpcClientEdges('/repo', 'main', []);
+    const edges = extractGrpcClientEdges('/repo',[]);
 
     expect(edges.length).toBeGreaterThanOrEqual(1);
     const edge = edges.find((e) => e.targetServiceName.includes('Appointments'));
@@ -67,10 +67,10 @@ defmodule Fresha.Catalog.Protobuf.Rpc.V1.CatalogRpcService.Client do
   use RpcClient.Client, service: Fresha.Catalog.Protobuf.Rpc.V1.CatalogRpcService, stub: Fresha.Catalog.Protobuf.Rpc.V1.CatalogRpcService.Stub
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/generated/catalog_service_client_impl.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/generated/catalog_service_client_impl.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractGrpcClientEdges('/repo', 'main', []);
+    const edges = extractGrpcClientEdges('/repo',[]);
 
     expect(edges.length).toBeGreaterThanOrEqual(1);
     const edge = edges.find((e) => e.targetServiceName.includes('Catalog'));
@@ -90,10 +90,10 @@ end`;
       }),
     ];
 
-    mockListBranchFiles.mockReturnValue([]);
-    mockReadBranchFile.mockReturnValue(null);
+    mockListFiles.mockReturnValue([]);
+    mockReadFile.mockReturnValue(null);
 
-    const edges = extractGrpcClientEdges('/repo', 'main', modules);
+    const edges = extractGrpcClientEdges('/repo',modules);
 
     expect(edges.length).toBeGreaterThanOrEqual(1);
     const edge = edges.find((e) => e.targetServiceName.includes('Partners'));
@@ -116,17 +116,17 @@ defmodule Fresha.Customers.Protobuf.Rpc.V1.CustomersRpcService.Client do
   use RpcClient.Client, service: Fresha.Customers.Protobuf.Rpc.V1.CustomersRpcService, stub: Fresha.Customers.Protobuf.Rpc.V1.CustomersRpcService.Stub
 end`;
 
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'lib/checkout/grpc_clients/customers.ex',
       'lib/generated/customers_client_impl.ex',
     ]);
-    mockReadBranchFile.mockImplementation((_repo, _branch, filePath) => {
+    mockReadFile.mockImplementation((_repo, filePath) => {
       if (filePath === 'lib/checkout/grpc_clients/customers.ex') return mockableContent;
       if (filePath === 'lib/generated/customers_client_impl.ex') return generatedContent;
       return null;
     });
 
-    const edges = extractGrpcClientEdges('/repo', 'main', []);
+    const edges = extractGrpcClientEdges('/repo',[]);
 
     // Should deduplicate to one edge for "Customers"
     const customerEdges = edges.filter((e) =>
@@ -142,13 +142,13 @@ defmodule Test.GrpcClients.Appointments do
     behaviour: Rpc.Appointments.V1.RPCService.ClientBehaviour
 end`;
 
-    mockListBranchFiles.mockReturnValue([
+    mockListFiles.mockReturnValue([
       'test/grpc_clients/appointments_test.exs',
       'lib/test/grpc_mock.ex',
     ]);
-    mockReadBranchFile.mockReturnValue(content);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractGrpcClientEdges('/repo', 'main', []);
+    const edges = extractGrpcClientEdges('/repo',[]);
 
     expect(edges.length).toBe(0);
   });
@@ -168,10 +168,10 @@ defmodule MyApp.InternalClient do
   plug Tesla.Middleware.JSON
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/internal_client.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/internal_client.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractHttpClientEdges('/repo', 'main');
+    const edges = extractHttpClientEdges('/repo');
 
     expect(edges.length).toBe(1);
     expect(edges[0]!.mechanism).toBe('http');
@@ -189,10 +189,10 @@ defmodule MyApp.ApiClient do
   end
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/api_client.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/api_client.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractHttpClientEdges('/repo', 'main');
+    const edges = extractHttpClientEdges('/repo');
 
     expect(edges.length).toBe(1);
     expect(edges[0]!.confidence).toBe('low');
@@ -215,10 +215,10 @@ defmodule MyApp.StripeClient do
   @base_url "https://api.stripe.com/v1"
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/clients.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/clients.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractHttpClientEdges('/repo', 'main');
+    const edges = extractHttpClientEdges('/repo');
 
     expect(edges.length).toBe(0);
   });
@@ -229,10 +229,10 @@ defmodule MyApp.PureLogic do
   def add(a, b), do: a + b
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/pure_logic.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/pure_logic.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractHttpClientEdges('/repo', 'main');
+    const edges = extractHttpClientEdges('/repo');
 
     expect(edges.length).toBe(0);
   });
@@ -253,10 +253,10 @@ defmodule Appointments.Events.AppointmentsHydration do
   end
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/appointments/events/hydration.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/appointments/events/hydration.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     const producers = edges.filter((e) => e.metadata.role === 'producer');
     expect(producers.length).toBe(1);
@@ -275,10 +275,10 @@ defmodule MyApp.EventPublisher do
   end
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/event_publisher.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/event_publisher.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     expect(edges.length).toBeGreaterThanOrEqual(1);
     const producer = edges.find((e) => e.metadata.role === 'producer');
@@ -297,10 +297,10 @@ defmodule MyApp.OrderEventsConsumer do
     }
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/consumers/order_events.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/consumers/order_events.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     const consumers = edges.filter((e) => e.metadata.role === 'consumer');
     expect(consumers.length).toBe(1);
@@ -321,10 +321,10 @@ defmodule MyApp.OrderCreator do
   end
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/order_creator.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/order_creator.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     const producers = edges.filter((e) => e.metadata.role === 'producer');
     expect(producers.length).toBe(1);
@@ -337,10 +337,10 @@ defmodule MyApp.MathHelper do
   def add(a, b), do: a + b
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/math_helper.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/math_helper.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     expect(edges.length).toBe(0);
   });
@@ -352,10 +352,10 @@ defmodule MyApp.ConsumerSup do
     topics: ["checkout.payments-v1"]
 end`;
 
-    mockListBranchFiles.mockReturnValue(['lib/my_app/consumer_sup.ex']);
-    mockReadBranchFile.mockReturnValue(content);
+    mockListFiles.mockReturnValue(['lib/my_app/consumer_sup.ex']);
+    mockReadFile.mockReturnValue(content);
 
-    const edges = extractKafkaEdges('/repo', 'main');
+    const edges = extractKafkaEdges('/repo');
 
     const consumers = edges.filter((e) => e.metadata.role === 'consumer');
     expect(consumers.length).toBe(1);

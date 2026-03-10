@@ -120,7 +120,7 @@ package empty;
   });
 });
 
-describe('extractProtoDefinitions (branch-aware)', () => {
+describe('extractProtoDefinitions (working tree)', () => {
   function setupGitProtoRepo(files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, 'git-proto-repo');
     fs.mkdirSync(repoDir, { recursive: true });
@@ -142,26 +142,26 @@ describe('extractProtoDefinitions (branch-aware)', () => {
     return repoDir;
   }
 
-  it('finds proto files from git branch recursively', () => {
+  it('finds proto files from working tree recursively', () => {
     const repoDir = setupGitProtoRepo({
       'proto/booking.proto': 'message BookingCreated { string id = 1; }',
       'proto/payment.proto': 'message PaymentProcessed { string id = 1; }',
     });
 
-    const defs = extractProtoDefinitions(repoDir, 'main');
+    const defs = extractProtoDefinitions(repoDir);
     expect(defs).toHaveLength(2);
   });
 
-  it('returns empty when branch has no proto files', () => {
+  it('returns empty when working tree has no proto files', () => {
     const repoDir = setupGitProtoRepo({
       'README.md': '# Hello',
     });
 
-    const defs = extractProtoDefinitions(repoDir, 'main');
+    const defs = extractProtoDefinitions(repoDir);
     expect(defs).toHaveLength(0);
   });
 
-  it('reads from main branch, ignoring feature branch proto files', () => {
+  it('reads from working tree (includes all files present on disk)', () => {
     const repoDir = setupGitProtoRepo({
       'proto/main.proto': 'message MainEvent { string id = 1; }',
     });
@@ -172,8 +172,10 @@ describe('extractProtoDefinitions (branch-aware)', () => {
     fs.writeFileSync(path.join(repoDir, 'proto', 'feature.proto'), 'message FeatureEvent { string id = 1; }');
     execSync('git add -A && git commit -m "feature proto"', { cwd: repoDir, stdio: 'pipe' });
 
-    const defs = extractProtoDefinitions(repoDir, 'main');
-    expect(defs).toHaveLength(1);
-    expect(defs[0].messages[0].name).toBe('MainEvent');
+    // Working tree is on feature branch, both proto files are visible
+    const defs = extractProtoDefinitions(repoDir);
+    expect(defs).toHaveLength(2);
+    const messageNames = defs.flatMap(d => d.messages.map(m => m.name)).sort();
+    expect(messageNames).toEqual(['FeatureEvent', 'MainEvent']);
   });
 });
