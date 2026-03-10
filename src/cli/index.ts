@@ -17,6 +17,7 @@ import { registerDocs } from './commands/docs.js';
 import { registerImpact } from './commands/impact.js';
 import { registerTrace } from './commands/trace.js';
 import { registerExplain } from './commands/explain.js';
+import { registerFieldImpact } from './commands/field-impact.js';
 
 const program = new Command();
 program
@@ -35,5 +36,6 @@ registerDocs(program);
 registerImpact(program);
 registerTrace(program);
 registerExplain(program);
+registerFieldImpact(program);
 
 program.parse();

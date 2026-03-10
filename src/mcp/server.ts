@@ -22,6 +22,7 @@ import { registerReindexTool } from './tools/reindex.js';
 import { registerImpactTool } from './tools/impact.js';
 import { registerTraceTool } from './tools/trace.js';
 import { registerExplainTool } from './tools/explain.js';
+import { registerFieldImpactTool } from './tools/field-impact.js';
 
 /**
  * Factory for creating a fully-wired MCP server.
@@ -44,6 +45,7 @@ export function createServer(db: Database.Database): McpServer {
         'kb_status: database statistics and staleness check.',
         'kb_list_types: discover available entity types with counts.',
         'kb_reindex: refresh specific repos with latest code from remote.',
+        'kb_field_impact: trace a field across service boundaries with nullability at each hop.',
         'kb_cleanup: detect deleted repos and stale facts.',
       ].join(' '),
     },
@@ -60,6 +62,7 @@ export function createServer(db: Database.Database): McpServer {
   registerImpactTool(server, db);
   registerTraceTool(server, db);
   registerExplainTool(server, db);
+  registerFieldImpactTool(server, db);
   return server;
 }
 

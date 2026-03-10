@@ -25,6 +25,7 @@ import { registerCleanupTool } from '../../src/mcp/tools/cleanup.js';
 import { registerListTypesTool } from '../../src/mcp/tools/list-types.js';
 import { registerReindexTool } from '../../src/mcp/tools/reindex.js';
 import { registerImpactTool } from '../../src/mcp/tools/impact.js';
+import { registerFieldImpactTool } from '../../src/mcp/tools/field-impact.js';
 import { getCurrentCommit } from '../../src/indexer/git.js';
 import { indexAllRepos } from '../../src/indexer/pipeline.js';
 import { tokenizeForFts } from '../../src/db/tokenizer.js';
@@ -103,6 +104,7 @@ beforeEach(() => {
   registerListTypesTool(server, db);
   registerReindexTool(server, db);
   registerImpactTool(server, db);
+  registerFieldImpactTool(server, db);
 
   vi.clearAllMocks();
   // Default: all repos have current commit (not stale)
@@ -503,6 +505,74 @@ describe('kb_impact', () => {
   });
 });
 
+describe('kb_field_impact', () => {
+  /** Insert a field row */
+  function insertField(
+    repoId: number,
+    fieldName: string,
+    parentType: string,
+    parentName: string,
+    fieldType: string,
+    nullable: number,
+  ): number {
+    const result = db.prepare(
+      'INSERT INTO fields (repo_id, field_name, parent_type, parent_name, field_type, nullable) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(repoId, fieldName, parentType, parentName, fieldType, nullable);
+    return Number(result.lastInsertRowid);
+  }
+
+  it('returns valid JSON with expected structure for a known field', async () => {
+    const repoId = insertRepo('field-origin-repo', tmpDir, 'current-commit');
+    insertField(repoId, 'employee_id', 'ecto_schema', 'Employee', 'integer', 0);
+
+    const result = await callTool('kb_field_impact', { name: 'employee_id' });
+    const parsed = parseResponse(result);
+
+    expect(parsed).toHaveProperty('field', 'employee_id');
+    expect(parsed).toHaveProperty('summary');
+    expect(parsed).toHaveProperty('origins');
+    expect(parsed).toHaveProperty('boundaries');
+    expect(parsed).toHaveProperty('consumers');
+    expect(Array.isArray(parsed.origins)).toBe(true);
+    expect(Array.isArray(parsed.boundaries)).toBe(true);
+    expect(Array.isArray(parsed.consumers)).toBe(true);
+
+    const origins = parsed.origins as Array<Record<string, unknown>>;
+    expect(origins).toHaveLength(1);
+    expect(origins[0].repo).toBe('field-origin-repo');
+    expect(origins[0].schema).toBe('Employee');
+    expect(origins[0].nullable).toBe(false);
+  });
+
+  it('returns empty arrays for unknown field', async () => {
+    const result = await callTool('kb_field_impact', { name: 'nonexistent_field' });
+    const parsed = parseResponse(result);
+
+    expect(parsed.field).toBe('nonexistent_field');
+    expect(parsed.origins).toEqual([]);
+    expect(parsed.boundaries).toEqual([]);
+    expect(parsed.consumers).toEqual([]);
+    expect((parsed.summary as string)).toContain('no occurrences');
+  });
+
+  it('classifies proto fields as boundaries', async () => {
+    const repoId = insertRepo('field-boundary-repo', tmpDir, 'current-commit');
+    insertField(repoId, 'status', 'ecto_schema', 'Order', 'string', 0);
+    insertField(repoId, 'status', 'proto_message', 'OrderMessage', 'string', 1);
+
+    const result = await callTool('kb_field_impact', { name: 'status' });
+    const parsed = parseResponse(result);
+
+    const origins = parsed.origins as Array<Record<string, unknown>>;
+    const boundaries = parsed.boundaries as Array<Record<string, unknown>>;
+
+    expect(origins.length).toBeGreaterThanOrEqual(1);
+    expect(boundaries).toHaveLength(1);
+    expect(boundaries[0].proto).toBe('OrderMessage');
+    expect(boundaries[0].nullable).toBe(true);
+  });
+});
+
 describe('all tools', () => {
   it('all tool responses are valid JSON under 4000 characters', async () => {
     const repoId = insertRepo('all-test-repo', tmpDir, 'current-commit');
@@ -518,6 +588,7 @@ describe('all tools', () => {
       { name: 'kb_cleanup', args: {} },
       { name: 'kb_list_types', args: {} },
       { name: 'kb_impact', args: { name: 'all-test-repo' } },
+      { name: 'kb_field_impact', args: { name: 'nonexistent' } },
     ];
 
     for (const { name, args } of tools) {
