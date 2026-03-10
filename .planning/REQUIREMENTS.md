@@ -32,14 +32,14 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 ### Field Impact
 
-- [ ] **FIMPACT-01**: `kb_field_impact "<field_name>"` traces a field from its origin schemas through proto/event boundaries to all consuming services
-- [ ] **FIMPACT-02**: Output shows: origin repo + parent schema, proto boundary with topic, consuming repos + their local field info, nullability at each hop
+- [x] **FIMPACT-01**: `kb_field_impact "<field_name>"` traces a field from its origin schemas through proto/event boundaries to all consuming services
+- [x] **FIMPACT-02**: Output shows: origin repo + parent schema, proto boundary with topic, consuming repos + their local field info, nullability at each hop
 - [ ] **FIMPACT-03**: Available as both MCP tool (`kb_field_impact`) and CLI command (`kb field-impact`)
 
 ### Field Edges
 
-- [ ] **FEDGE-01**: During indexing, when a field name in a proto message matches a field name in an Ecto schema within the same repo, a `maps_to` edge is created between them
-- [ ] **FEDGE-02**: Field-level edges are traversable by existing BFS machinery in graph.ts (bfsDownstream/bfsUpstream)
+- [x] **FEDGE-01**: During indexing, when a field name in a proto message matches a field name in an Ecto schema within the same repo, a `maps_to` edge is created between them
+- [x] **FEDGE-02**: Field-level edges are traversable by existing BFS machinery in graph.ts (bfsDownstream/bfsUpstream)
 
 ## Future Requirements
 
@@ -85,10 +85,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FSRCH-03 | Phase 30 | Complete |
 | SHARED-01 | Phase 30 | Complete |
 | SHARED-02 | Phase 30 | Complete |
-| FEDGE-01 | Phase 31 | Pending |
-| FEDGE-02 | Phase 31 | Pending |
-| FIMPACT-01 | Phase 31 | Pending |
-| FIMPACT-02 | Phase 31 | Pending |
+| FEDGE-01 | Phase 31 | Complete |
+| FEDGE-02 | Phase 31 | Complete |
+| FIMPACT-01 | Phase 31 | Complete |
+| FIMPACT-02 | Phase 31 | Complete |
 | FIMPACT-03 | Phase 31 | Pending |
 
 **Coverage:**

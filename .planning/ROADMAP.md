@@ -130,7 +130,7 @@ Plans:
   2. Field-level edges are traversable by the existing BFS machinery in graph.ts (bfsDownstream/bfsUpstream work with field edges)
   3. `kb_field_impact "employee_id"` shows: origin repos with parent schemas, proto boundaries with Kafka topics, consuming repos with their local field info, and nullability at each hop
   4. `kb_field_impact` is available as both MCP tool and CLI command (`kb field-impact "employee_id"`)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 31-01-PLAN.md -- Field edge creation in writer + analyzeFieldImpact core function (FEDGE-01/02, FIMPACT-01/02)
 - [ ] 31-02-PLAN.md -- MCP tool + CLI command wiring (FIMPACT-03)
@@ -148,4 +148,4 @@ Plans:
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29 | v4.0 | 2/2 | Complete | 2026-03-10 |
 | 30 | v4.0 | 2/2 | Complete | 2026-03-10 |
-| 31 | v4.0 | 0/2 | Not started | - |
+| 31 | 1/2 | In Progress|  | - |

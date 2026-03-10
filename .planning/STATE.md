@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Data Contract Intelligence
-status: completed
-stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-03-10T13:32:51.418Z"
-last_activity: 2026-03-10 — Phase 30 Plan 02 complete (field entity cards & shared concepts)
+status: executing
+stopped_at: Completed 31-01-PLAN.md
+last_updated: "2026-03-10T13:54:44.318Z"
+last_activity: 2026-03-10 — Phase 31 Plan 01 complete (field edges + field impact core)
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
   percent: 67
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.0 Data Contract Intelligence — Phase 30: Field Search & Shared Concepts
+**Current focus:** v4.0 Data Contract Intelligence — Phase 31: Field Edges & Field Impact
 
 ## Current Position
 
-Phase: 30 (Phase 2 of 3 in v4.0) — Field Search & Shared Concepts
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-03-10 — Phase 30 Plan 02 complete (field entity cards & shared concepts)
+Phase: 31 (Phase 3 of 3 in v4.0) — Field Edges & Field Impact
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-03-10 — Phase 31 Plan 01 complete (field edges + field impact core)
 
 Progress: [██████░░░░] 67%
 
@@ -44,6 +44,7 @@ Progress: [██████░░░░] 67%
 | 29 | 02 | 5min | 2 | 4 |
 | 30 | 01 | 3min | 2 | 6 |
 | 30 | 02 | 3min | 1 | 3 |
+| Phase 31 P01 | 6min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Phase 30 Plan 02 decisions:
 - Shared concept detection reuses already-fetched card data to count distinct repos (no extra DB query)
 - Field description format includes parentType for schema provenance
 - Shared concept prefix prepended to existing description string for backward compatibility with MCP/CLI
+- [Phase 31]: Field edges cleaned via both source_id and target_id subqueries for surgical re-index safety
+- [Phase 31]: Ecto fields in downstream consumer repos classified as consumers, not origins, based on graph topology
+- [Phase 31]: Kafka topics for boundaries extracted from in-memory service graph forward edges
 
 ### Pending Todos
 
@@ -87,7 +91,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:29:30Z
-Stopped at: Completed 30-02-PLAN.md
+Last session: 2026-03-10T13:54:44.316Z
+Stopped at: Completed 31-01-PLAN.md
 Resume file: None
 Next: Phase 31 (field edges & field impact)
