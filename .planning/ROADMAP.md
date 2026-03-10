@@ -86,7 +86,7 @@
 ### v4.0 Data Contract Intelligence (Phases 29-31)
 
 - [x] **Phase 29: Field Extraction & Schema** - Schema migration + extract fields from Ecto/proto/GraphQL with nullability metadata (completed 2026-03-10)
-- [ ] **Phase 30: Field Search & Shared Concepts** - FTS indexing of fields, type filtering, shared concept detection across repos
+- [x] **Phase 30: Field Search & Shared Concepts** - FTS indexing of fields, type filtering, shared concept detection across repos (completed 2026-03-10)
 - [ ] **Phase 31: Field Edges & Field Impact** - Cross-service field edges, BFS integration, kb_field_impact MCP tool and CLI command
 
 ## Phase Details
@@ -116,7 +116,7 @@ Plans:
   3. `kb_search --type field` (CLI) and `kb_search` with `type: "field"` (MCP) filters results to field entities only
   4. After indexing, field names appearing in 2+ repos are identified as shared concepts with cross-repo occurrence counts
   5. `kb_entity "employee_id" --type field` shows all repos, parent schemas/protos/types, field types, and nullability for that field name
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 30-01-PLAN.md -- FTS field indexing, type plumbing, hydrator, cleanup (FSRCH-01/02/03)
 - [ ] 30-02-PLAN.md -- Field entity cards with shared concept detection (SHARED-01/02)
@@ -144,5 +144,5 @@ Plans:
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29 | v4.0 | 2/2 | Complete | 2026-03-10 |
-| 30 | 1/2 | In Progress|  | - |
+| 30 | 2/2 | Complete   | 2026-03-10 | - |
 | 31 | v4.0 | 0/TBD | Not started | - |

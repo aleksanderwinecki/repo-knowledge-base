@@ -27,8 +27,8 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 ### Shared Concepts
 
-- [ ] **SHARED-01**: Post-indexing pass identifies field names appearing in 2+ repos and stores cross-repo occurrence count as shared concept metadata
-- [ ] **SHARED-02**: `kb_entity "<field_name>" --type field` shows all repos/schemas/protos containing that field with parent type and nullability
+- [x] **SHARED-01**: Post-indexing pass identifies field names appearing in 2+ repos and stores cross-repo occurrence count as shared concept metadata
+- [x] **SHARED-02**: `kb_entity "<field_name>" --type field` shows all repos/schemas/protos containing that field with parent type and nullability
 
 ### Field Impact
 
@@ -83,8 +83,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FSRCH-01 | Phase 30 | Complete |
 | FSRCH-02 | Phase 30 | Complete |
 | FSRCH-03 | Phase 30 | Complete |
-| SHARED-01 | Phase 30 | Pending |
-| SHARED-02 | Phase 30 | Pending |
+| SHARED-01 | Phase 30 | Complete |
+| SHARED-02 | Phase 30 | Complete |
 | FEDGE-01 | Phase 31 | Pending |
 | FEDGE-02 | Phase 31 | Pending |
 | FIMPACT-01 | Phase 31 | Pending |

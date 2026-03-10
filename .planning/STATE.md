@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Data Contract Intelligence
 status: in_progress
-stopped_at: Completed 30-01-PLAN.md
-last_updated: "2026-03-10T13:23:50Z"
-last_activity: 2026-03-10 — Phase 30 Plan 01 complete (field FTS search)
+stopped_at: Completed 30-02-PLAN.md
+last_updated: "2026-03-10T13:29:30Z"
+last_activity: 2026-03-10 — Phase 30 Plan 02 complete (field entity cards & shared concepts)
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 30 (Phase 2 of 3 in v4.0) — Field Search & Shared Concepts
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-03-10 — Phase 30 Plan 01 complete (field FTS search)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-03-10 — Phase 30 Plan 02 complete (field entity cards & shared concepts)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 63 (across v1.0-v4.0)
+- Total plans completed: 64 (across v1.0-v4.0)
 - 28 phases across 7 milestones shipped
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -43,6 +43,7 @@ Progress: [█████░░░░░] 50%
 | 29 | 01 | 7min | 3 | 9 |
 | 29 | 02 | 5min | 2 | 4 |
 | 30 | 01 | 3min | 2 | 6 |
+| 30 | 02 | 3min | 1 | 3 |
 
 ## Accumulated Context
 
@@ -71,6 +72,11 @@ Phase 30 Plan 01 decisions:
 - Field FTS description stores parentName + fieldType (tokenized) for searchability
 - Field FTS entity_type uses composite format field:{parentType} matching existing pattern
 
+Phase 30 Plan 02 decisions:
+- Shared concept detection reuses already-fetched card data to count distinct repos (no extra DB query)
+- Field description format includes parentType for schema provenance
+- Shared concept prefix prepended to existing description string for backward compatibility with MCP/CLI
+
 ### Pending Todos
 
 None.
@@ -81,7 +87,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:23:50Z
-Stopped at: Completed 30-01-PLAN.md
+Last session: 2026-03-10T13:29:30Z
+Stopped at: Completed 30-02-PLAN.md
 Resume file: None
-Next: Phase 30 Plan 02 (shared concepts)
+Next: Phase 31 (field edges & field impact)
