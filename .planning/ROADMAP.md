@@ -76,7 +76,7 @@
 
 ### v3.1 Indexing UX
 
-- [ ] **Phase 27: Progress Reporting & Error Grouping** - Live counters and grouped error collection during indexing pipeline
+- [x] **Phase 27: Progress Reporting & Error Grouping** - Live counters and grouped error collection during indexing pipeline (completed 2026-03-10)
 - [ ] **Phase 28: Output Control & Summary** - TTY/JSON output gating and compact final summary
 
 ## Phase Details
@@ -91,7 +91,7 @@
   3. When piped (non-TTY), progress lines are printed as plain newlines instead of `\r` overwrites
   4. Git refresh failures appear as a grouped summary at the end, categorized by failure type (worktree conflict, dirty tree, timeout, other), not interleaved with progress
   5. Repos with no main/master branch are reported as a single count with repo list, not individual "Skipping X" messages scattered through output
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 27-01-PLAN.md -- ProgressReporter and ErrorCollector classes with TDD
 - [ ] 27-02-PLAN.md -- Wire progress/error classes into pipeline and CLI
@@ -118,5 +118,5 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
-| 27. Progress & Errors | v3.1 | 1/2 | In Progress | - |
+| 27. Progress & Errors | 2/2 | Complete   | 2026-03-10 | - |
 | 28. Output & Summary | v3.1 | 0/TBD | Not started | - |

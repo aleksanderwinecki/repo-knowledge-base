@@ -17,7 +17,7 @@ Requirements for Indexing UX milestone. Each maps to roadmap phases.
 
 - [x] **ERR-01**: Git refresh failures are collected and printed as a grouped summary by failure category (worktree conflict, dirty working tree, timeout, other)
 - [x] **ERR-02**: "Skipping X: no main or master branch" messages are collected and shown as a single count with repo list
-- [ ] **ERR-03**: Indexing errors are listed individually at the end, not interleaved with progress
+- [x] **ERR-03**: Indexing errors are listed individually at the end, not interleaved with progress
 
 ### Output Control
 
@@ -63,7 +63,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROG-03 | Phase 27 | Complete |
 | ERR-01 | Phase 27 | Complete |
 | ERR-02 | Phase 27 | Complete |
-| ERR-03 | Phase 27 | Pending |
+| ERR-03 | Phase 27 | Complete |
 | OUT-01 | Phase 28 | Pending |
 | OUT-02 | Phase 28 | Pending |
 | OUT-03 | Phase 28 | Pending |
