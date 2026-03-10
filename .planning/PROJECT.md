@@ -8,6 +8,18 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~400 r
 
 **Latest shipped:** v3.1 Indexing UX (2026-03-10)
 
+## Current Milestone: v4.0 Data Contract Intelligence
+
+**Goal:** Make kb understand what data crosses service boundaries, not just which services talk to each other. Index individual fields from Ecto schemas, proto messages, and GraphQL types as searchable entities with nullability metadata, enabling field-level impact analysis across the microservice topology.
+
+**Target features:**
+- `fields` table indexing individual Ecto schema fields, proto message fields, and GraphQL type fields
+- Field-level FTS search (`kb_search "employee_id"` returns every schema/proto/GraphQL type with that field)
+- Nullability metadata extraction (Ecto validate_required, proto optional keyword)
+- Shared concepts detection (same field name across multiple repos = data contract surface)
+- `kb_field_impact` command — trace a field through proto/event boundaries to all consuming services
+- Field-level edges linking fields across service boundaries via proto/Kafka topology
+
 ## Core Value
 
 Eliminate the repeated cost of AI agents re-learning the same codebase architecture every session. One index, always fresh, queryable in milliseconds.
@@ -38,7 +50,12 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-(None — next milestone TBD)
+- [ ] Fields table and extraction for Ecto/proto/GraphQL fields
+- [ ] Field-level FTS search
+- [ ] Nullability metadata from validate_required and proto optional
+- [ ] Shared concepts detection (cross-repo field matching)
+- [ ] kb_field_impact command for field-level impact analysis
+- [ ] Field-level edges in topology graph
 
 ### Deferred
 
@@ -136,4 +153,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-10 after v3.1 milestone completion*
+*Last updated: 2026-03-10 after v4.0 milestone start*
