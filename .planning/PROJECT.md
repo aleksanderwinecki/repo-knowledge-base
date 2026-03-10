@@ -8,6 +8,16 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem into a 
 
 **Latest shipped:** v4.0 Data Contract Intelligence (2026-03-10)
 
+## Current Milestone: v4.1 Indexing Performance
+
+**Goal:** Eliminate child process spawning bottleneck — read files from filesystem instead of `git show`/`git ls-tree`
+
+**Target features:**
+- Replace `readBranchFile()` (execSync git show) with `fs.readFileSync()`
+- Replace `listBranchFiles()` (execSync git ls-tree) with filesystem traversal
+- Remove branch parameter threading from all extractors
+- V9 migration fix for users with stale user_version=8 from vec0 era
+
 ## Core Value
 
 Eliminate the repeated cost of AI agents re-learning the same codebase architecture every session. One index, always fresh, queryable in milliseconds.
@@ -41,7 +51,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-(No active requirements — next milestone not yet planned)
+(Defined in REQUIREMENTS.md for v4.1)
 
 ### Deferred
 
@@ -141,4 +151,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-10 after v4.0 milestone*
+*Last updated: 2026-03-10 after v4.1 milestone start*
