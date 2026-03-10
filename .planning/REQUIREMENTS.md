@@ -16,9 +16,9 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 ### Field Search
 
-- [ ] **FSRCH-01**: `kb_search "<field_name>"` returns every schema/proto/GraphQL type containing a field with that name across all indexed repos
-- [ ] **FSRCH-02**: Field names are indexed in FTS5 as both tokenized and literal (exact match for compound names like `employee_id`, fuzzy match for individual tokens)
-- [ ] **FSRCH-03**: `kb_search --type field` filters results to field entities only
+- [x] **FSRCH-01**: `kb_search "<field_name>"` returns every schema/proto/GraphQL type containing a field with that name across all indexed repos
+- [x] **FSRCH-02**: Field names are indexed in FTS5 as both tokenized and literal (exact match for compound names like `employee_id`, fuzzy match for individual tokens)
+- [x] **FSRCH-03**: `kb_search --type field` filters results to field entities only
 
 ### Nullability
 
@@ -80,9 +80,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLD-04 | Phase 29 | Complete |
 | NULL-01 | Phase 29 | Complete |
 | NULL-02 | Phase 29 | Complete |
-| FSRCH-01 | Phase 30 | Pending |
-| FSRCH-02 | Phase 30 | Pending |
-| FSRCH-03 | Phase 30 | Pending |
+| FSRCH-01 | Phase 30 | Complete |
+| FSRCH-02 | Phase 30 | Complete |
+| FSRCH-03 | Phase 30 | Complete |
 | SHARED-01 | Phase 30 | Pending |
 | SHARED-02 | Phase 30 | Pending |
 | FEDGE-01 | Phase 31 | Pending |
