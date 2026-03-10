@@ -58,24 +58,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROG-01 | — | Pending |
-| PROG-02 | — | Pending |
-| PROG-03 | — | Pending |
-| ERR-01 | — | Pending |
-| ERR-02 | — | Pending |
-| ERR-03 | — | Pending |
-| OUT-01 | — | Pending |
-| OUT-02 | — | Pending |
-| OUT-03 | — | Pending |
-| SUM-01 | — | Pending |
-| SUM-02 | — | Pending |
-| SUM-03 | — | Pending |
+| PROG-01 | Phase 27 | Pending |
+| PROG-02 | Phase 27 | Pending |
+| PROG-03 | Phase 27 | Pending |
+| ERR-01 | Phase 27 | Pending |
+| ERR-02 | Phase 27 | Pending |
+| ERR-03 | Phase 27 | Pending |
+| OUT-01 | Phase 28 | Pending |
+| OUT-02 | Phase 28 | Pending |
+| OUT-03 | Phase 28 | Pending |
+| SUM-01 | Phase 28 | Pending |
+| SUM-02 | Phase 28 | Pending |
+| SUM-03 | Phase 28 | Pending |
 
 **Coverage:**
 - v3.1 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*
