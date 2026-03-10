@@ -10,10 +10,11 @@ import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
 import type { ProtoDefinition } from './proto.js';
 import { extractGraphqlDefinitions } from './graphql.js';
+import { parseGraphqlFields } from './graphql.js';
 import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
 import { persistRepoData, persistSurgicalData, insertTopologyEdges } from './writer.js';
-import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
+import type { ModuleData, EventData, EdgeData, ServiceData, FieldData } from './writer.js';
 import { extractTopologyEdges } from './topology/index.js';
 import type { TopologyEdge } from './topology/index.js';
 import { enrichFromEventCatalog } from './catalog.js';
@@ -35,6 +36,7 @@ export interface IndexStats {
   services: number;
   graphqlTypes: number;
   topologyEdges: number;
+  fields: number;
 }
 
 /** Result of indexing a single repo */
@@ -66,10 +68,12 @@ interface ExtractedRepoData {
   protoDefinitions: ProtoDefinition[];
   eventRelationships: EventRelationship[];
   topologyEdges: TopologyEdge[];
+  fields: FieldData[];
   // Surgical-specific
   changedFiles?: string[];
   surgicalModules?: ModuleData[];
   surgicalEvents?: EventData[];
+  surgicalFields?: FieldData[];
   existingRepoId?: number;
 }
 
@@ -174,6 +178,50 @@ async function extractRepoData(
   // Extract topology edges (gRPC, HTTP, gateway, Kafka)
   const topologyEdges = extractTopologyEdges(repoPath, branch, elixirModules);
 
+  // Map extractor outputs to FieldData[]
+  const ectoFields: FieldData[] = elixirModules
+    .filter(mod => mod.tableName)
+    .flatMap(mod =>
+      mod.schemaFields.map(f => ({
+        parentType: 'ecto_schema' as const,
+        parentName: mod.name,
+        fieldName: f.name,
+        fieldType: f.type,
+        nullable: !mod.requiredFields.includes(f.name),
+        sourceFile: mod.filePath,
+      }))
+    );
+
+  const protoFields: FieldData[] = protoDefinitions.flatMap(proto =>
+    proto.messages.flatMap(msg =>
+      msg.fields.map(f => ({
+        parentType: 'proto_message' as const,
+        parentName: msg.name,
+        fieldName: f.name,
+        fieldType: f.type,
+        nullable: f.optional,
+        sourceFile: proto.filePath,
+      }))
+    )
+  );
+
+  const graphqlFields: FieldData[] = graphqlDefinitions.flatMap(def =>
+    def.types
+      .filter(t => ['type', 'input', 'interface'].includes(t.kind))
+      .flatMap(t =>
+        parseGraphqlFields(t.body).map(f => ({
+          parentType: 'graphql_type' as const,
+          parentName: t.name,
+          fieldName: f.name,
+          fieldType: f.type,
+          nullable: !f.type.endsWith('!'),
+          sourceFile: def.filePath,
+        }))
+      )
+  );
+
+  const fields: FieldData[] = [...ectoFields, ...protoFields, ...graphqlFields];
+
   if (useSurgical && changes && dbSnapshot.repoId !== undefined) {
     // === SURGICAL MODE ===
     const allChangedFiles = [...changes.added, ...changes.modified, ...changes.deleted];
@@ -189,6 +237,8 @@ async function extractRepoData(
         sourceFile: proto.filePath,
       })));
 
+    const surgicalFields = fields.filter(f => changedSet.has(f.sourceFile));
+
     return {
       repoName,
       repoPath,
@@ -201,9 +251,11 @@ async function extractRepoData(
       protoDefinitions,
       eventRelationships,
       topologyEdges,
+      fields,
       changedFiles: allChangedFiles,
       surgicalModules,
       surgicalEvents,
+      surgicalFields,
       existingRepoId: dbSnapshot.repoId,
     };
   }
@@ -229,6 +281,7 @@ async function extractRepoData(
     protoDefinitions,
     eventRelationships,
     topologyEdges,
+    fields,
   };
 }
 
@@ -251,6 +304,7 @@ function persistExtractedData(
       modules: extracted.surgicalModules ?? [],
       events: extracted.surgicalEvents ?? [],
       services: extracted.services,
+      fields: extracted.surgicalFields ?? [],
     });
 
     // Re-derive ALL edges from full extractor output (not just changed files)
@@ -268,6 +322,7 @@ function persistExtractedData(
       services: extracted.services.length,
       graphqlTypes: graphqlTypeCount,
       topologyEdges: extracted.topologyEdges.length,
+      fields: extracted.fields.length,
       mode: 'surgical' as const,
     };
   }
@@ -278,6 +333,7 @@ function persistExtractedData(
     modules: extracted.allModules,
     events: extracted.events,
     services: extracted.services,
+    fields: extracted.fields,
   });
 
   // Insert edges based on event relationships
@@ -295,6 +351,7 @@ function persistExtractedData(
     services: extracted.services.length,
     graphqlTypes: graphqlTypeCount,
     topologyEdges: extracted.topologyEdges.length,
+    fields: extracted.fields.length,
     mode: 'full' as const,
   };
 }

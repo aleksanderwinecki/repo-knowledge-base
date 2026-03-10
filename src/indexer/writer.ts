@@ -122,6 +122,7 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const deleteEvents = db.prepare('DELETE FROM events WHERE repo_id = ?');
   const deleteFiles = db.prepare('DELETE FROM files WHERE repo_id = ?');
   const deleteServices = db.prepare('DELETE FROM services WHERE repo_id = ?');
+  const deleteFields = db.prepare('DELETE FROM fields WHERE repo_id = ?');
 
   // Remove FTS entries for all entity types
   clearEntityFts(selectModules, deleteFts, 'module:%', repoId);
@@ -139,6 +140,7 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   deleteEvents.run(repoId);
   deleteFiles.run(repoId);
   deleteServices.run(repoId);
+  deleteFields.run(repoId);
 }
 
 /**
@@ -158,6 +160,7 @@ export function clearRepoFiles(
   const deleteEventById = db.prepare('DELETE FROM events WHERE id = ?');
   const selectEventsBySourceFile = db.prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IS NULL AND source_file = ?');
   const deleteEdgesByFile = db.prepare('DELETE FROM edges WHERE source_file = ?');
+  const deleteFieldsByFile = db.prepare('DELETE FROM fields WHERE repo_id = ? AND source_file = ?');
   const deleteFileRecord = db.prepare('DELETE FROM files WHERE repo_id = ? AND path = ?');
 
   for (const filePath of filePaths) {
@@ -184,6 +187,9 @@ export function clearRepoFiles(
 
     // Remove edges from this file
     deleteEdgesByFile.run(filePath);
+
+    // Remove fields from this file
+    deleteFieldsByFile.run(repoId, filePath);
 
     // Remove the file record itself
     deleteFileRecord.run(repoId, filePath);
@@ -344,6 +350,42 @@ export function persistRepoData(
       }
     }
 
+    // Insert fields (after modules and events so parent IDs can be resolved)
+    if (data.fields && data.fields.length > 0) {
+      const insertField = db.prepare(`
+        INSERT INTO fields (repo_id, parent_type, parent_name, field_name, field_type,
+                            nullable, source_file, module_id, event_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const lookupModule = db.prepare('SELECT id FROM modules WHERE repo_id = ? AND name = ?');
+      const lookupEvent = db.prepare('SELECT id FROM events WHERE repo_id = ? AND name = ?');
+
+      for (const field of data.fields) {
+        let moduleId: number | null = null;
+        let eventId: number | null = null;
+
+        if (field.parentType === 'ecto_schema' || field.parentType === 'graphql_type') {
+          const mod = lookupModule.get(repoId, field.parentName) as { id: number } | undefined;
+          moduleId = mod?.id ?? null;
+        } else if (field.parentType === 'proto_message') {
+          const evt = lookupEvent.get(repoId, field.parentName) as { id: number } | undefined;
+          eventId = evt?.id ?? null;
+        }
+
+        insertField.run(
+          repoId,
+          field.parentType,
+          field.parentName,
+          field.fieldName,
+          field.fieldType,
+          field.nullable ? 1 : 0,
+          field.sourceFile,
+          moduleId,
+          eventId,
+        );
+      }
+    }
+
     // Insert edges
     if (data.edges) {
       const insertEdge = db.prepare(
@@ -410,6 +452,7 @@ export function persistSurgicalData(
     modules: ModuleData[];
     events: EventData[];
     services?: ServiceData[];
+    fields?: FieldData[];
   },
 ): void {
   const txn = db.transaction(() => {
@@ -440,7 +483,43 @@ export function persistSurgicalData(
       insertEventWithFts(insertFile, insertEvent, db, data.repoId, evt);
     }
 
-    // 5. Wipe and re-insert services if provided (services have no file_id, so full replace)
+    // 5. Insert fields for changed files (after modules and events for parent ID resolution)
+    if (data.fields && data.fields.length > 0) {
+      const insertField = db.prepare(`
+        INSERT INTO fields (repo_id, parent_type, parent_name, field_name, field_type,
+                            nullable, source_file, module_id, event_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const lookupModule = db.prepare('SELECT id FROM modules WHERE repo_id = ? AND name = ?');
+      const lookupEvent = db.prepare('SELECT id FROM events WHERE repo_id = ? AND name = ?');
+
+      for (const field of data.fields) {
+        let moduleId: number | null = null;
+        let eventId: number | null = null;
+
+        if (field.parentType === 'ecto_schema' || field.parentType === 'graphql_type') {
+          const mod = lookupModule.get(data.repoId, field.parentName) as { id: number } | undefined;
+          moduleId = mod?.id ?? null;
+        } else if (field.parentType === 'proto_message') {
+          const evt = lookupEvent.get(data.repoId, field.parentName) as { id: number } | undefined;
+          eventId = evt?.id ?? null;
+        }
+
+        insertField.run(
+          data.repoId,
+          field.parentType,
+          field.parentName,
+          field.fieldName,
+          field.fieldType,
+          field.nullable ? 1 : 0,
+          field.sourceFile,
+          moduleId,
+          eventId,
+        );
+      }
+    }
+
+    // 6. Wipe and re-insert services if provided (services have no file_id, so full replace)
     if (data.services) {
       // Remove FTS entries for existing services
       const existingServices = db
@@ -468,7 +547,7 @@ export function persistSurgicalData(
       }
     }
 
-    // 6. Clear ALL repo edges (caller will re-insert via insertEventEdges)
+    // 7. Clear ALL repo edges (caller will re-insert via insertEventEdges)
     clearRepoEdges(db, data.repoId);
   });
   txn();

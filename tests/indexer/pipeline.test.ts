@@ -1631,3 +1631,224 @@ end
     expect(successes[0].repo).toBe('refresh-repo');
   });
 });
+
+describe('field extraction mapping', () => {
+  function ensureMainBranch(repoDir: string): void {
+    try { execSync('git branch -m master main', { cwd: repoDir, stdio: 'pipe' }); } catch { /* already main */ }
+  }
+
+  it('Ecto schema fields are stored in fields table with parentType=ecto_schema', async () => {
+    const repoDir = createGitRepo('field-ecto', {
+      'mix.exs': 'defmodule FieldEcto.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule FieldEcto.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :guest_name, :string
+    field :status, :string
+    field :amount, :integer
+  end
+end
+`,
+    });
+
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const fields = db
+      .prepare("SELECT parent_type, parent_name, field_name, field_type FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('field-ecto') as { parent_type: string; parent_name: string; field_name: string; field_type: string }[];
+    expect(fields.length).toBe(3);
+    expect(fields.every(f => f.parent_type === 'ecto_schema')).toBe(true);
+    expect(fields.map(f => f.field_name).sort()).toEqual(['amount', 'guest_name', 'status']);
+    expect(fields.find(f => f.field_name === 'guest_name')!.field_type).toBe('string');
+  });
+
+  it('validate_required fields get nullable=false, others nullable=true', async () => {
+    const repoDir = createGitRepo('field-nullable', {
+      'mix.exs': 'defmodule FieldNullable.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule FieldNullable.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :guest_name, :string
+    field :status, :string
+    field :notes, :string
+  end
+
+  def changeset(booking, attrs) do
+    booking
+    |> cast(attrs, [:guest_name, :status, :notes])
+    |> validate_required([:guest_name, :status])
+  end
+end
+`,
+    });
+
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const fields = db
+      .prepare("SELECT field_name, nullable FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('field-nullable') as { field_name: string; nullable: number }[];
+    const byName = Object.fromEntries(fields.map(f => [f.field_name, f.nullable]));
+    expect(byName['guest_name']).toBe(0); // required -> not nullable
+    expect(byName['status']).toBe(0);     // required -> not nullable
+    expect(byName['notes']).toBe(1);      // not required -> nullable
+  });
+
+  it('proto messages produce fields with parentType=proto_message and correct optional mapping', async () => {
+    const repoDir = createGitRepo('field-proto', {
+      'mix.exs': 'defmodule FieldProto.MixProject do\nend',
+      'proto/booking.proto': `
+syntax = "proto3";
+package booking;
+
+message BookingCreated {
+  string id = 1;
+  optional string notes = 2;
+  int64 timestamp = 3;
+}
+`,
+    });
+
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const fields = db
+      .prepare("SELECT parent_type, parent_name, field_name, field_type, nullable FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('field-proto') as { parent_type: string; parent_name: string; field_name: string; field_type: string; nullable: number }[];
+    expect(fields.length).toBe(3);
+    expect(fields.every(f => f.parent_type === 'proto_message')).toBe(true);
+    expect(fields.every(f => f.parent_name === 'BookingCreated')).toBe(true);
+    const byName = Object.fromEntries(fields.map(f => [f.field_name, f]));
+    expect(byName['id'].nullable).toBe(0);        // plain field
+    expect(byName['notes'].nullable).toBe(1);      // optional field
+    expect(byName['timestamp'].nullable).toBe(0);  // plain field
+  });
+
+  it('GraphQL types produce fields (type/input/interface only, not enum)', async () => {
+    const repoDir = createGitRepo('field-graphql', {
+      'mix.exs': 'defmodule FieldGraphql.MixProject do\nend',
+      'schema.graphql': `
+type Booking {
+  id: ID!
+  guestName: String!
+  status: BookingStatus
+}
+
+input CreateBookingInput {
+  guestName: String!
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+}
+
+interface Node {
+  id: ID!
+}
+`,
+    });
+
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const fields = db
+      .prepare("SELECT parent_type, parent_name, field_name, field_type, nullable FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('field-graphql') as { parent_type: string; parent_name: string; field_name: string; field_type: string; nullable: number }[];
+    expect(fields.every(f => f.parent_type === 'graphql_type')).toBe(true);
+    // Booking: 3 fields, CreateBookingInput: 1 field, Node: 1 field = 5 total
+    expect(fields.length).toBe(5);
+    // No fields from enum
+    expect(fields.every(f => f.parent_name !== 'BookingStatus')).toBe(true);
+    // Non-null (!) fields should be nullable=0
+    const idField = fields.find(f => f.parent_name === 'Booking' && f.field_name === 'id');
+    expect(idField!.nullable).toBe(0); // ID! -> not nullable
+    const statusField = fields.find(f => f.parent_name === 'Booking' && f.field_name === 'status');
+    expect(statusField!.nullable).toBe(1); // BookingStatus (no !) -> nullable
+  });
+
+  it('IndexStats includes fields count', async () => {
+    const repoDir = createGitRepo('field-stats', {
+      'mix.exs': 'defmodule FieldStats.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule FieldStats.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :name, :string
+  end
+end
+`,
+      'proto/events.proto': `
+syntax = "proto3";
+message TestEvent {
+  string id = 1;
+}
+`,
+    });
+
+    const stats = await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    // Should have fields from both Ecto (1) and proto (1)
+    expect((stats as any).fields).toBe(2);
+  });
+
+  it('fields are included in surgical mode for changed files only', async () => {
+    const repoDir = createGitRepo('field-surgical', {
+      'mix.exs': 'defmodule FieldSurgical.MixProject do\nend',
+      'lib/booking.ex': `
+defmodule FieldSurgical.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :title, :string
+  end
+end
+`,
+      'lib/other.ex': `
+defmodule FieldSurgical.Other do
+  use Ecto.Schema
+
+  schema "others" do
+    field :name, :string
+  end
+end
+`,
+    });
+
+    ensureMainBranch(repoDir);
+
+    // Full index first
+    await indexSingleRepo(db, repoDir, { force: true, rootDir: tmpDir });
+
+    const fieldsBefore = db
+      .prepare("SELECT field_name FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?)")
+      .all('field-surgical') as { field_name: string }[];
+    expect(fieldsBefore.length).toBe(2);
+
+    // Modify only booking.ex
+    fs.writeFileSync(path.join(repoDir, 'lib', 'booking.ex'), `
+defmodule FieldSurgical.Booking do
+  use Ecto.Schema
+
+  schema "bookings" do
+    field :title, :string
+    field :description, :string
+  end
+end
+`);
+    execSync('git add -A && git commit -m "add description"', { cwd: repoDir, stdio: 'pipe' });
+
+    // Surgical re-index
+    const result = await indexSingleRepo(db, repoDir, { force: false, rootDir: tmpDir });
+    expect(result.mode).toBe('surgical');
+
+    // Should have 3 fields total: title + description from booking, name from other (unchanged)
+    const fieldsAfter = db
+      .prepare("SELECT field_name, source_file FROM fields WHERE repo_id = (SELECT id FROM repos WHERE name = ?) ORDER BY field_name")
+      .all('field-surgical') as { field_name: string; source_file: string }[];
+    expect(fieldsAfter.length).toBe(3);
+    expect(fieldsAfter.map(f => f.field_name).sort()).toEqual(['description', 'name', 'title']);
+  });
+});
