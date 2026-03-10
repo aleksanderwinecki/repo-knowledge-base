@@ -192,6 +192,108 @@ describe('searchText', () => {
     expect(results).toEqual([]);
   });
 
+  describe('field search', () => {
+    beforeEach(() => {
+      // Add field data to both repos
+      persistRepoData(db, {
+        metadata: {
+          name: 'hr-service',
+          path: '/repos/hr-service',
+          description: 'Human resources management',
+          techStack: ['elixir'],
+          keyFiles: ['mix.exs'],
+          currentCommit: 'ghi789',
+        },
+        modules: [
+          {
+            name: 'HR.Schema.Employee',
+            type: 'ecto_schema',
+            filePath: 'lib/hr/schema/employee.ex',
+            summary: 'Ecto schema for employees',
+            tableName: 'employees',
+          },
+        ],
+        events: [
+          {
+            name: 'EmployeeCreated',
+            schemaDefinition: 'message EmployeeCreated { string employee_id = 1; }',
+            sourceFile: 'proto/employee.proto',
+          },
+        ],
+        fields: [
+          {
+            parentType: 'ecto_schema',
+            parentName: 'HR.Schema.Employee',
+            fieldName: 'employee_id',
+            fieldType: 'integer',
+            nullable: false,
+            sourceFile: 'lib/hr/schema/employee.ex',
+          },
+          {
+            parentType: 'ecto_schema',
+            parentName: 'HR.Schema.Employee',
+            fieldName: 'full_name',
+            fieldType: 'string',
+            nullable: false,
+            sourceFile: 'lib/hr/schema/employee.ex',
+          },
+          {
+            parentType: 'proto_message',
+            parentName: 'EmployeeCreated',
+            fieldName: 'employee_id',
+            fieldType: 'string',
+            nullable: false,
+            sourceFile: 'proto/employee.proto',
+          },
+        ],
+      });
+    });
+
+    it('searchText("employee_id") returns results with entityType "field"', () => {
+      const results = searchText(db, 'employee_id');
+      const fieldResults = results.filter((r) => r.entityType === 'field');
+      expect(fieldResults.length).toBeGreaterThan(0);
+    });
+
+    it('searchText("employee") also returns employee_id field results (token matching)', () => {
+      const results = searchText(db, 'employee');
+      const fieldResults = results.filter((r) => r.entityType === 'field');
+      expect(fieldResults.length).toBeGreaterThan(0);
+    });
+
+    it('searchText with entityTypeFilter "field" returns only field results', () => {
+      const results = searchText(db, 'employee_id', { entityTypeFilter: 'field' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.entityType).toBe('field');
+      }
+    });
+
+    it('searchText with entityTypeFilter "module" does NOT return field results', () => {
+      const results = searchText(db, 'employee_id', { entityTypeFilter: 'module' });
+      for (const r of results) {
+        expect(r.entityType).not.toBe('field');
+      }
+    });
+
+    it('field results include correct repoName, filePath, subType', () => {
+      const results = searchText(db, 'employee_id', { entityTypeFilter: 'field' });
+      expect(results.length).toBeGreaterThan(0);
+
+      const ectoField = results.find((r) => r.subType === 'ecto_schema');
+      expect(ectoField).toBeDefined();
+      expect(ectoField!.repoName).toBe('hr-service');
+      expect(ectoField!.filePath).toBe('lib/hr/schema/employee.ex');
+      expect(ectoField!.subType).toBe('ecto_schema');
+
+      const protoField = results.find((r) => r.subType === 'proto_message');
+      expect(protoField).toBeDefined();
+      expect(protoField!.repoName).toBe('hr-service');
+      expect(protoField!.filePath).toBe('proto/employee.proto');
+      expect(protoField!.subType).toBe('proto_message');
+    });
+  });
+
   describe('sub-type filtering', () => {
     it('coarse entityTypeFilter=module returns all module sub-types', () => {
       const results = searchText(db, 'payment', { entityTypeFilter: 'module' });
