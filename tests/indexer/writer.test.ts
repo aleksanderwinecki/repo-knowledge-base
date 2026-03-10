@@ -691,3 +691,163 @@ describe('service persistence', () => {
     expect(rows[0].name).toBe('ExistingSvc');
   });
 });
+
+describe('field persistence', () => {
+  it('persistRepoData with FieldData[] inserts rows into fields table', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'TestSchema', type: 'ecto_schema', filePath: 'lib/test_schema.ex', summary: null, tableName: 'tests', schemaFields: JSON.stringify([{ name: 'title', type: 'string' }]) },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'TestSchema', fieldName: 'title', fieldType: 'string', nullable: false, sourceFile: 'lib/test_schema.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, fields });
+
+    const rows = db.prepare('SELECT * FROM fields WHERE repo_id = ?').all(repoId) as any[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].parent_type).toBe('ecto_schema');
+    expect(rows[0].parent_name).toBe('TestSchema');
+    expect(rows[0].field_name).toBe('title');
+    expect(rows[0].field_type).toBe('string');
+    expect(rows[0].nullable).toBe(0);
+    expect(rows[0].source_file).toBe('lib/test_schema.ex');
+  });
+
+  it('field rows have correct repo_id, parent_type, parent_name, field_name, field_type, nullable, source_file', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'OrderCreated', fieldName: 'id', fieldType: 'string', nullable: false, sourceFile: 'proto/order.proto' },
+      { parentType: 'proto_message' as const, parentName: 'OrderCreated', fieldName: 'notes', fieldType: 'string', nullable: true, sourceFile: 'proto/order.proto' },
+    ];
+    const events = [
+      { name: 'OrderCreated', schemaDefinition: 'message OrderCreated { string id = 1; }', sourceFile: 'proto/order.proto' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, events, fields });
+
+    const rows = db.prepare('SELECT repo_id, parent_type, parent_name, field_name, field_type, nullable, source_file FROM fields WHERE repo_id = ?').all(repoId) as any[];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.repo_id).toBe(repoId);
+      expect(row.parent_type).toBe('proto_message');
+      expect(row.parent_name).toBe('OrderCreated');
+      expect(row.source_file).toBe('proto/order.proto');
+    }
+    const idRow = rows.find((r: any) => r.field_name === 'id');
+    expect(idRow.nullable).toBe(0);
+    const notesRow = rows.find((r: any) => r.field_name === 'notes');
+    expect(notesRow.nullable).toBe(1);
+  });
+
+  it('module_id is resolved for ecto_schema fields', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Booking', type: 'ecto_schema', filePath: 'lib/booking.ex', summary: null, tableName: 'bookings', schemaFields: JSON.stringify([{ name: 'title', type: 'string' }]) },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Booking', fieldName: 'title', fieldType: 'string', nullable: false, sourceFile: 'lib/booking.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, fields });
+
+    const modRow = db.prepare("SELECT id FROM modules WHERE name = 'MyApp.Booking' AND repo_id = ?").get(repoId) as { id: number };
+    const fieldRow = db.prepare("SELECT module_id FROM fields WHERE field_name = 'title' AND repo_id = ?").get(repoId) as { module_id: number | null };
+    expect(fieldRow.module_id).toBe(modRow.id);
+  });
+
+  it('event_id is resolved for proto_message fields', () => {
+    const metadata = makeMetadata();
+    const events = [
+      { name: 'BookingCreated', schemaDefinition: 'message BookingCreated {}', sourceFile: 'proto/booking.proto' },
+    ];
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'BookingCreated', fieldName: 'id', fieldType: 'string', nullable: false, sourceFile: 'proto/booking.proto' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, events, fields });
+
+    const evtRow = db.prepare("SELECT id FROM events WHERE name = 'BookingCreated' AND repo_id = ?").get(repoId) as { id: number };
+    const fieldRow = db.prepare("SELECT event_id FROM fields WHERE field_name = 'id' AND repo_id = ?").get(repoId) as { event_id: number | null };
+    expect(fieldRow.event_id).toBe(evtRow.id);
+  });
+
+  it('clearRepoEntities removes all fields for a repo', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'Test', fieldName: 'a', fieldType: 'string', nullable: true, sourceFile: 'lib/test.ex' },
+      { parentType: 'ecto_schema' as const, parentName: 'Test', fieldName: 'b', fieldType: 'integer', nullable: false, sourceFile: 'lib/test.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, fields });
+
+    expect((db.prepare('SELECT COUNT(*) as count FROM fields WHERE repo_id = ?').get(repoId) as { count: number }).count).toBe(2);
+
+    clearRepoEntities(db, repoId);
+
+    expect((db.prepare('SELECT COUNT(*) as count FROM fields WHERE repo_id = ?').get(repoId) as { count: number }).count).toBe(0);
+  });
+
+  it('clearRepoFiles removes fields from specific source files only', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'ModA', type: 'module', filePath: 'lib/a.ex', summary: null },
+      { name: 'ModB', type: 'module', filePath: 'lib/b.ex', summary: null },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'x', fieldType: 'string', nullable: true, sourceFile: 'lib/a.ex' },
+      { parentType: 'ecto_schema' as const, parentName: 'ModB', fieldName: 'y', fieldType: 'string', nullable: true, sourceFile: 'lib/b.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, fields });
+
+    clearRepoFiles(db, repoId, ['lib/a.ex']);
+
+    const remaining = db.prepare('SELECT field_name FROM fields WHERE repo_id = ?').all(repoId) as { field_name: string }[];
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].field_name).toBe('y');
+  });
+
+  it('re-indexing (full persist twice) does not produce duplicate field rows', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'Test', fieldName: 'a', fieldType: 'string', nullable: true, sourceFile: 'lib/test.ex' },
+    ];
+
+    persistRepoData(db, { metadata, fields });
+    persistRepoData(db, { metadata, fields });
+
+    const rows = db.prepare('SELECT * FROM fields').all();
+    expect(rows).toHaveLength(1);
+  });
+
+  it('surgical persist inserts fields for changed files', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'ModA', type: 'module', filePath: 'lib/a.ex', summary: null },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'x', fieldType: 'string', nullable: true, sourceFile: 'lib/a.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, fields });
+
+    // Surgical update: changed file lib/a.ex with new field
+    persistSurgicalData(db, {
+      repoId,
+      metadata: makeMetadata({ currentCommit: 'new_commit' }),
+      changedFiles: ['lib/a.ex'],
+      modules: [
+        { name: 'ModA', type: 'module', filePath: 'lib/a.ex', summary: null },
+      ],
+      events: [],
+      fields: [
+        { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'x', fieldType: 'string', nullable: true, sourceFile: 'lib/a.ex' },
+        { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'z', fieldType: 'integer', nullable: false, sourceFile: 'lib/a.ex' },
+      ],
+    });
+
+    const rows = db.prepare('SELECT field_name FROM fields WHERE repo_id = ?').all(repoId) as { field_name: string }[];
+    expect(rows.map(r => r.field_name).sort()).toEqual(['x', 'z']);
+  });
+});
