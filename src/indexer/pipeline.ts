@@ -4,7 +4,7 @@ import pLimit from 'p-limit';
 import { discoverRepos } from './scanner.js';
 import { extractMetadata } from './metadata.js';
 import type { RepoMetadata } from './metadata.js';
-import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable, listBranchFiles, gitRefresh } from './git.js';
+import { resolveDefaultBranch, getBranchCommit, getChangedFilesSinceBranch, isCommitReachable, listWorkingTreeFiles, gitRefresh } from './git.js';
 import { extractElixirModules } from './elixir.js';
 import type { ElixirModule } from './elixir.js';
 import { extractProtoDefinitions } from './proto.js';
@@ -81,7 +81,6 @@ interface ExtractedRepoData {
 interface WorkItem {
   repoPath: string;
   repoName: string;
-  branch: string;
   options: IndexOptions;
   dbSnapshot: DbSnapshot;
 }
@@ -94,11 +93,10 @@ interface WorkItem {
 async function extractRepoData(
   repoPath: string,
   options: IndexOptions,
-  branch: string,
   dbSnapshot: DbSnapshot,
 ): Promise<ExtractedRepoData> {
-  // Step 1: Extract metadata from branch
-  const metadata = extractMetadata(repoPath, branch);
+  // Step 1: Extract metadata from working tree
+  const metadata = extractMetadata(repoPath);
   const repoName = metadata.name;
 
   // Step 2: Determine indexing mode from snapshot
@@ -117,18 +115,18 @@ async function extractRepoData(
     changes = getChangedFilesSinceBranch(
       repoPath,
       dbSnapshot.lastCommit!,
-      branch,
+      'HEAD',
     );
     const totalChanged = changes.added.length + changes.modified.length + changes.deleted.length;
-    const allFiles = listBranchFiles(repoPath, branch);
+    const allFiles = listWorkingTreeFiles(repoPath);
     const changeRatio = totalChanged / Math.max(allFiles.length, 1);
     useSurgical = totalChanged > 0 && totalChanged <= 200 && changeRatio <= 0.5;
   }
 
-  // Step 4: Run extractors (all branch-aware)
-  const elixirModules = extractElixirModules(repoPath, branch);
-  const protoDefinitions = extractProtoDefinitions(repoPath, branch);
-  const graphqlDefinitions = extractGraphqlDefinitions(repoPath, branch);
+  // Step 4: Run extractors (all read from working tree)
+  const elixirModules = extractElixirModules(repoPath);
+  const protoDefinitions = extractProtoDefinitions(repoPath);
+  const graphqlDefinitions = extractGraphqlDefinitions(repoPath);
 
   // Map gRPC services from proto definitions (EXT-01)
   const services: ServiceData[] = protoDefinitions.flatMap((proto) =>
@@ -173,10 +171,10 @@ async function extractRepoData(
   const allModules: ModuleData[] = [...elixirModuleData, ...graphqlModules, ...absintheModules];
 
   // Detect event relationships
-  const eventRelationships = detectEventRelationships(repoPath, branch, protoDefinitions, elixirModules);
+  const eventRelationships = detectEventRelationships(repoPath, protoDefinitions, elixirModules);
 
   // Extract topology edges (gRPC, HTTP, gateway, Kafka)
-  const topologyEdges = extractTopologyEdges(repoPath, branch, elixirModules);
+  const topologyEdges = extractTopologyEdges(repoPath, elixirModules);
 
   // Map extractor outputs to FieldData[]
   const ectoFields: FieldData[] = elixirModules
@@ -443,7 +441,7 @@ export async function indexAllRepos(
         lastCommit: existingRow?.last_indexed_commit ?? null,
       };
 
-      workItems.push({ repoPath, repoName, branch, options, dbSnapshot });
+      workItems.push({ repoPath, repoName, options, dbSnapshot });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       callbacks?.errors?.addIndexError(repoName, errorMsg);
@@ -460,7 +458,7 @@ export async function indexAllRepos(
 
   const extractionPromises = workItems.map((item) =>
     limit(async () => {
-      const data = await extractRepoData(item.repoPath, item.options, item.branch, item.dbSnapshot);
+      const data = await extractRepoData(item.repoPath, item.options, item.dbSnapshot);
       extractionDone++;
       callbacks?.progress?.update(extractionDone, extractionTotal, item.repoName);
       return data;
@@ -553,8 +551,7 @@ function checkSkip(
 }
 
 /**
- * Index a single repo from its default branch. Runs all extractors and persists results.
- * If branch is not provided, resolves it (used when called directly, not via indexAllRepos).
+ * Index a single repo from its working tree. Runs all extractors and persists results.
  *
  * Delegates to extractRepoData + persistExtractedData -- the same path used by indexAllRepos.
  * Async because extractRepoData returns a Promise (for p-limit compatibility in indexAllRepos).
@@ -563,16 +560,7 @@ export async function indexSingleRepo(
   db: Database.Database,
   repoPath: string,
   options: IndexOptions,
-  branch?: string,
 ): Promise<IndexStats & { mode: 'full' | 'surgical' }> {
-  // Resolve branch if not provided
-  if (!branch) {
-    branch = resolveDefaultBranch(repoPath) ?? undefined;
-    if (!branch) {
-      throw new Error('No main or master branch found');
-    }
-  }
-
   // Build DB snapshot (same query as indexAllRepos Phase 1)
   const repoName = path.basename(repoPath);
   const existingRow = db
@@ -585,7 +573,7 @@ export async function indexSingleRepo(
   };
 
   // Delegate to shared extraction and persistence
-  const extracted = await extractRepoData(repoPath, options, branch, dbSnapshot);
+  const extracted = await extractRepoData(repoPath, options, dbSnapshot);
   return persistExtractedData(db, extracted);
 }
 

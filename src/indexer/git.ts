@@ -119,52 +119,6 @@ export function getBranchCommit(
 }
 
 /**
- * List all files committed on a branch (from the branch tree, not working directory).
- * Uses `git ls-tree` plumbing command. Returns empty array on failure.
- */
-export function listBranchFiles(
-  repoPath: string,
-  branch: string,
-): string[] {
-  try {
-    const output = execSync(`git ls-tree -r --name-only ${branch}`, {
-      cwd: repoPath,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-    }).trim();
-    if (!output) return [];
-    return output.split('\n').filter(Boolean);
-  } catch {
-    // Branch or repo not readable
-    return [];
-  }
-}
-
-/**
- * Read a file's content from a specific branch ref using `git show`.
- * Does NOT touch the working tree. Returns null if file or branch doesn't exist.
- */
-export function readBranchFile(
-  repoPath: string,
-  branch: string,
-  filePath: string,
-): string | null {
-  try {
-    const content = execSync(`git show "${branch}:${filePath}"`, {
-      cwd: repoPath,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 500 * 1024, // 500KB, matching MAX_FILE_SIZE
-    });
-    return content;
-  } catch {
-    // File or branch doesn't exist
-    return null;
-  }
-}
-
-/**
  * Fetch from origin and reset the local default branch to match remote.
  * Safe for repos on feature branches: checks for dirty working tree before checkout.
  * Returns { refreshed: true } on success, { refreshed: false, error } on failure.
