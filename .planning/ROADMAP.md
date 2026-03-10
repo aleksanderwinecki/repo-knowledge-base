@@ -96,7 +96,7 @@
 ### v4.1 Indexing Performance (In Progress)
 
 - [x] **Phase 32: Schema Drop & Rebuild** - Replace incremental migrations with drop+rebuild, preserve learned facts (completed 2026-03-10)
-- [ ] **Phase 33: Filesystem Reads** - Replace git child process spawning with direct filesystem reads
+- [x] **Phase 33: Filesystem Reads** - Replace git child process spawning with direct filesystem reads (completed 2026-03-10)
 
 ## Phase Details
 
@@ -122,7 +122,7 @@ Plans:
   3. `kb index --repo foo --refresh` still fetches and resets to remote default branch before indexing
   4. Incremental indexing (skip unchanged repos via HEAD comparison) still works correctly
   5. All existing tests pass after the refactor
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 33-01-PLAN.md -- Add fs-based file I/O, refactor all extractors to drop branch param
 - [ ] 33-02-PLAN.md -- Wire pipeline, remove dead git functions, update all tests
@@ -140,4 +140,4 @@ Plans:
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32. Schema Drop & Rebuild | 1/1 | Complete    | 2026-03-10 | - |
-| 33. Filesystem Reads | 1/2 | In Progress|  | - |
+| 33. Filesystem Reads | 1/2 | Complete    | 2026-03-10 | - |
