@@ -21,9 +21,9 @@ Requirements for Indexing UX milestone. Each maps to roadmap phases.
 
 ### Output Control
 
-- [ ] **OUT-01**: JSON results array is only written to stdout when `--json` flag is passed or stdout is not a TTY (pipe detection)
-- [ ] **OUT-02**: Human-readable summary replaces the JSON dump as the default TTY output
-- [ ] **OUT-03**: Per-repo "Indexing X... done" lines are suppressed in favor of the progress counter (detail available via `--verbose` or `--json`)
+- [x] **OUT-01**: JSON results array is only written to stdout when `--json` flag is passed or stdout is not a TTY (pipe detection)
+- [x] **OUT-02**: Human-readable summary replaces the JSON dump as the default TTY output
+- [x] **OUT-03**: Per-repo "Indexing X... done" lines are suppressed in favor of the progress counter (detail available via `--verbose` or `--json`)
 
 ### Summary
 
@@ -64,9 +64,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ERR-01 | Phase 27 | Complete |
 | ERR-02 | Phase 27 | Complete |
 | ERR-03 | Phase 27 | Complete |
-| OUT-01 | Phase 28 | Pending |
-| OUT-02 | Phase 28 | Pending |
-| OUT-03 | Phase 28 | Pending |
+| OUT-01 | Phase 28 | Complete |
+| OUT-02 | Phase 28 | Complete |
+| OUT-03 | Phase 28 | Complete |
 | SUM-01 | Phase 28 | Complete |
 | SUM-02 | Phase 28 | Complete |
 | SUM-03 | Phase 28 | Complete |
