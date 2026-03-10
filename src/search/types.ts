@@ -51,6 +51,16 @@ export interface EntityFilters {
   repo?: string;
 }
 
+/** Per-occurrence field metadata for downstream consumers */
+export interface FieldOccurrence {
+  parentType: string;
+  parentName: string;
+  fieldType: string;
+  nullable: boolean;
+  sourceFile: string | null;
+  repoName: string;
+}
+
 /** Result of a dependency query */
 export interface DependencyResult {
   entity: { name: string; type: string; repoName: string };

@@ -87,11 +87,11 @@ function findExact(
         subTypeColumnFilter = filters.type;
       } else {
         // Unknown sub-type: query all tables (fallback)
-        types = ['repo', 'module', 'event', 'service'] as EntityType[];
+        types = ['repo', 'module', 'event', 'service', 'field'] as EntityType[];
       }
     }
   } else {
-    types = ['repo', 'module', 'event', 'service'] as EntityType[];
+    types = ['repo', 'module', 'event', 'service', 'field'] as EntityType[];
   }
 
   // Create pre-prepared relationship lookup for the entity loop
@@ -109,6 +109,17 @@ function findExact(
         description: entity.description,
         relationships,
       });
+    }
+  }
+
+  // Enrich field cards with shared concept metadata
+  if (cards.length > 0 && types.includes('field')) {
+    const fieldCards = cards.filter((c) => c.type === 'field');
+    const repoCount = new Set(fieldCards.map((c) => c.repoName)).size;
+    if (repoCount >= 2) {
+      for (const card of fieldCards) {
+        card.description = `[shared across ${repoCount} repos] ${card.description}`;
+      }
     }
   }
 
@@ -238,6 +249,7 @@ function createRelationshipLookup(db: Database.Database) {
     event: db.prepare('SELECT name FROM events WHERE id = ?'),
     service: db.prepare('SELECT name FROM services WHERE id = ?'),
     file: db.prepare('SELECT path as name FROM files WHERE id = ?'),
+    field: db.prepare('SELECT field_name as name FROM fields WHERE id = ?'),
   };
 
   const resolveName = (type: EntityType, id: number): string | null => {
@@ -423,6 +435,29 @@ function getEntitiesByExactName(
       }>;
       return rows.map((r) => ({
         id: r.id, name: r.name, repoName: r.repo_name, repoPath: r.repo_path, filePath: null, description: r.description,
+      }));
+    }
+    case 'field': {
+      let sql = `SELECT f.id, f.field_name as name, f.parent_type, f.parent_name,
+                        f.field_type, f.nullable, f.source_file,
+                        r.name as repo_name, r.path as repo_path
+                 FROM fields f JOIN repos r ON f.repo_id = r.id
+                 WHERE f.field_name = ?`;
+      const params: (string | number)[] = [name];
+      if (repoFilter) { sql += ' AND r.name = ?'; params.push(repoFilter); }
+      sql += ' ORDER BY r.name, f.parent_type, f.parent_name';
+      const rows = db.prepare(sql).all(...params) as Array<{
+        id: number; name: string; parent_type: string; parent_name: string;
+        field_type: string; nullable: number; source_file: string | null;
+        repo_name: string; repo_path: string;
+      }>;
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        repoName: r.repo_name,
+        repoPath: r.repo_path,
+        filePath: r.source_file,
+        description: `${r.parent_type} ${r.parent_name}.${r.name}: ${r.field_type} (${r.nullable ? 'nullable' : 'required'})`,
       }));
     }
     default:
