@@ -74,28 +74,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FLD-01 | TBD | Pending |
-| FLD-02 | TBD | Pending |
-| FLD-03 | TBD | Pending |
-| FLD-04 | TBD | Pending |
-| FSRCH-01 | TBD | Pending |
-| FSRCH-02 | TBD | Pending |
-| FSRCH-03 | TBD | Pending |
-| NULL-01 | TBD | Pending |
-| NULL-02 | TBD | Pending |
-| SHARED-01 | TBD | Pending |
-| SHARED-02 | TBD | Pending |
-| FIMPACT-01 | TBD | Pending |
-| FIMPACT-02 | TBD | Pending |
-| FIMPACT-03 | TBD | Pending |
-| FEDGE-01 | TBD | Pending |
-| FEDGE-02 | TBD | Pending |
+| FLD-01 | Phase 29 | Pending |
+| FLD-02 | Phase 29 | Pending |
+| FLD-03 | Phase 29 | Pending |
+| FLD-04 | Phase 29 | Pending |
+| NULL-01 | Phase 29 | Pending |
+| NULL-02 | Phase 29 | Pending |
+| FSRCH-01 | Phase 30 | Pending |
+| FSRCH-02 | Phase 30 | Pending |
+| FSRCH-03 | Phase 30 | Pending |
+| SHARED-01 | Phase 30 | Pending |
+| SHARED-02 | Phase 30 | Pending |
+| FEDGE-01 | Phase 31 | Pending |
+| FEDGE-02 | Phase 31 | Pending |
+| FIMPACT-01 | Phase 31 | Pending |
+| FIMPACT-02 | Phase 31 | Pending |
+| FIMPACT-03 | Phase 31 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*
