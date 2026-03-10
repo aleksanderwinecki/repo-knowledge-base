@@ -27,6 +27,9 @@ Available commands (all output JSON):
 - `kb search --list-types` — List available entity types with counts
 - `kb deps <repo-name>` — Service dependency graph (direct neighbors)
 - `kb deps <repo-name> --mechanism grpc` — Filter by communication type (grpc, http, kafka, event, gateway)
+- `kb impact <repo-name>` — Blast radius: what breaks if this service changes. `--mechanism`, `--depth`
+- `kb trace <from> <to>` — Shortest path between two services with per-hop mechanism labels
+- `kb explain <repo-name>` — Structured service overview card (connections, events, modules, hints)
 - `kb learn "fact" --repo name` — Teach a persistent fact
 - `kb learned` — List learned facts
 - `kb forget <id>` — Delete a fact
@@ -36,6 +39,7 @@ Available commands (all output JSON):
 - `kb index --repo app-foo --refresh` — Git fetch + reset to latest before indexing
 
 Use `kb search` when you need to find which service handles something, what modules exist for a domain, or how services are connected.
+Use `kb explain` to get a quick overview of any service. Use `kb impact` and `kb trace` for dependency analysis.
 ```
 
 ## Alternative: install as a skill
@@ -55,6 +59,6 @@ Override: `KB_DB_PATH=/path/to/db.sqlite`
 
 ## Development
 
-- `npm test` — 506 tests
+- `npm test` — 672 tests
 - `npm run build` — compile TypeScript
 - Source: `src/` (db, indexer, search, knowledge, cli)

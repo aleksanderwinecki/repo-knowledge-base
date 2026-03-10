@@ -51,6 +51,9 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 | `kb index` | Scan and index repos. `--root`, `--force`, `--repo <names...>`, `--refresh` |
 | `kb search <query>` | Full-text search (FTS5). `--entity`, `--repo`, `--type`, `--limit`, `--list-types` |
 | `kb deps <name>` | Service dependency graph. `--direction`, `--mechanism <grpc\|http\|gateway\|kafka\|event>` |
+| `kb impact <name>` | Blast radius analysis — what breaks if this service changes. `--mechanism`, `--depth` |
+| `kb trace <from> <to>` | Shortest path between two services with per-hop mechanism labels |
+| `kb explain <name>` | Structured service overview card — identity, connections, events, modules, next-step hints |
 | `kb learn <text>` | Store a fact. `--repo` to associate with a service |
 | `kb learned` | List learned facts. `--repo` to filter |
 | `kb forget <id>` | Delete a learned fact |
@@ -77,6 +80,9 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 - **Text search**: FTS5 with CamelCase/snake_case tokenizer — `"booking"` matches `BookingCreated`, `booking_service`
 - **Entity search**: Structured cards with relationships — find a module/event and see what connects to it
 - **Dependency query**: Topology graph traversal over gRPC, HTTP, gateway, Kafka, and event edges with mechanism filtering
+- **Impact analysis**: Blast radius — what breaks if a service changes, with depth-grouped severity tiers
+- **Flow tracing**: Shortest path between any two services with per-hop mechanism labels
+- **Service explanation**: Structured overview cards with connections, events, modules, and agent hints
 
 ### Storage
 
@@ -107,7 +113,7 @@ Add this to your `~/.claude/settings.json` (or the project-level `.claude/settin
 }
 ```
 
-That's it. Restart Claude Code and the 9 tools below become available in every conversation.
+That's it. Restart Claude Code and the 12 tools below become available in every conversation.
 
 ### Custom database path
 
@@ -139,8 +145,11 @@ By default the server uses `~/.kb/knowledge.db`. To use a different path:
 | `kb_forget` | Delete a learned fact by ID |
 | `kb_status` | Database statistics: entity counts, repo staleness, learned facts |
 | `kb_cleanup` | Detect deleted repos and stale facts (dry run by default) |
+| `kb_impact` | Blast radius analysis: what services break if this service changes |
+| `kb_trace` | Shortest path between two services with mechanism labels per hop |
+| `kb_explain` | Structured service overview card with connections, events, modules, and hints |
 
-Read tools (`kb_search`, `kb_entity`, `kb_deps`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
+Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
 
 ## Using with Claude Code (CLI)
 
@@ -155,13 +164,13 @@ src/
   search/      # Text search, entity queries, dependency traversal
   knowledge/   # Learned facts store
   cli/         # Commander.js CLI with all subcommands
-  mcp/         # MCP server, 9 tool handlers, auto-sync, formatting, hygiene
+  mcp/         # MCP server, 12 tool handlers, auto-sync, formatting, hygiene
 ```
 
 ## Development
 
 ```bash
-npm test          # Run 506 tests
+npm test          # Run 672 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```

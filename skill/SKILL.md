@@ -15,6 +15,9 @@ Query a persistent knowledge base that indexes 400+ microservice repos. Use this
 
 - **A search query** (default): `booking cancellation`, `PaymentProcessed`, `checkout flow`
 - **`deps <name>`**: Show service dependencies — `deps app-auth`, `deps app-payments`
+- **`impact <name>`**: Blast radius — what breaks if this service changes — `impact app-payments`, `impact app-auth --mechanism grpc`
+- **`trace <from> <to>`**: Shortest path between services — `trace app-checkout app-notifications`
+- **`explain <name>`**: Service overview card — `explain app-appointments`
 - **`entity <name>`**: Structured entity card — `entity BookingCreated`, `entity Resources.Schemas.Resource`
 - **`learn <fact>`**: Teach a new fact — `learn "payments owns billing" --repo app-payments`
 - **`status`**: Show database stats
@@ -45,6 +48,25 @@ kb deps "<entity_name>"
 Options:
 - `--mechanism <type>` — filter by communication type: `grpc`, `http`, `gateway`, `kafka`, `event`
 - `--direction <dir>` — `upstream` (default) or `downstream`
+
+### Impact analysis
+```bash
+kb impact "<service_name>"
+```
+
+Options:
+- `--mechanism <type>` — filter by communication type: `grpc`, `http`, `gateway`, `kafka`, `event`
+- `--depth <n>` — max traversal depth (default: 3, max: 10)
+
+### Flow tracing
+```bash
+kb trace "<from_service>" "<to_service>"
+```
+
+### Service explanation
+```bash
+kb explain "<service_name>"
+```
 
 ### Entity lookup
 ```bash
@@ -88,11 +110,32 @@ All output is JSON. Key fields:
 - `entity`: the queried service
 - `dependencies[]`: connected services with `mechanism` (gRPC, HTTP, Kafka, gateway, event), `confidence` (high/medium/low), and `path`
 
+**Impact analysis** — blast radius:
+- `service`: queried service name
+- `tiers`: `direct`, `indirect`, `transitive` — each with affected services and mechanisms
+- `stats`: total affected, blast radius score, mechanism breakdown
+
+**Flow trace** — shortest path:
+- `from`, `to`: service names
+- `path_summary`: arrow-chain notation (`A -[grpc]-> B -[event: OrderCreated]-> C`)
+- `hops[]`: per-hop `from`, `to`, `mechanism`, optional `via`
+
+**Service explanation** — overview card:
+- `name`, `description`, `path`: service identity
+- `summary`: one-liner ("Talks to 16 services. Called by 14.")
+- `talks_to`, `called_by`: connections grouped by mechanism
+- `events`: `produces` and `consumes` arrays
+- `modules`: counts per type with top 5 names
+- `hints`: suggested next commands
+
 ## When to use this skill
 
 - "Which service handles X?" → `kb search "X"`
 - "What does service Y depend on?" → `kb deps Y`
 - "What gRPC services does Y call?" → `kb deps Y --mechanism grpc`
+- "What breaks if I change app-payments?" → `kb impact app-payments`
+- "How does a request get from checkout to notifications?" → `kb trace app-checkout app-notifications`
+- "What does app-appointments do?" → `kb explain app-appointments`
 - "What is BookingCreated?" → `kb search "BookingCreated" --entity`
 - "What modules exist for billing?" → `kb search "billing" --type module`
 - "What GraphQL types exist?" → `kb search --list-types`
