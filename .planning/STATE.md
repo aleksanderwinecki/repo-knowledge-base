@@ -4,7 +4,7 @@ milestone: v3.1
 milestone_name: Indexing UX
 status: completed
 stopped_at: Completed 27-02-PLAN.md
-last_updated: "2026-03-10T11:13:22.066Z"
+last_updated: "2026-03-10T11:16:17.371Z"
 last_activity: 2026-03-10 — Completed 27-02 (Pipeline Wiring)
 progress:
   total_phases: 2

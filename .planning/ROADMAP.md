@@ -118,5 +118,5 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
-| 27. Progress & Errors | 2/2 | Complete   | 2026-03-10 | - |
+| 27. Progress & Errors | 2/2 | Complete    | 2026-03-10 | - |
 | 28. Output & Summary | v3.1 | 0/TBD | Not started | - |
