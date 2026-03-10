@@ -85,7 +85,7 @@
 
 ### v4.0 Data Contract Intelligence (Phases 29-31)
 
-- [ ] **Phase 29: Field Extraction & Schema** - Schema migration + extract fields from Ecto/proto/GraphQL with nullability metadata
+- [x] **Phase 29: Field Extraction & Schema** - Schema migration + extract fields from Ecto/proto/GraphQL with nullability metadata (completed 2026-03-10)
 - [ ] **Phase 30: Field Search & Shared Concepts** - FTS indexing of fields, type filtering, shared concept detection across repos
 - [ ] **Phase 31: Field Edges & Field Impact** - Cross-service field edges, BFS integration, kb_field_impact MCP tool and CLI command
 
@@ -101,7 +101,7 @@
   3. Running `kb index` on a repo with GraphQL type definitions stores each GraphQL field as a separate row in the `fields` table with correct parent type, field name, field type, and repo
   4. Ecto fields referenced in `validate_required` are stored with `nullable=false`; other cast fields are stored with `nullable=true`
   5. Proto fields with `optional` keyword are stored with `nullable=true`; plain proto3 fields are stored with `nullable=false`
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 29-01-PLAN.md -- V8 migration, FieldData contract, extractor enhancements (Elixir/proto/GraphQL)
 - [ ] 29-02-PLAN.md -- Pipeline field mapping + writer persistence for both full and surgical paths
@@ -140,6 +140,6 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
-| 29 | 1/2 | In Progress|  | - |
+| 29 | 2/2 | Complete   | 2026-03-10 | - |
 | 30 | v4.0 | 0/TBD | Not started | - |
 | 31 | v4.0 | 0/TBD | Not started | - |
