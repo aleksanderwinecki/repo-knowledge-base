@@ -1,4 +1,6 @@
 import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Get the current HEAD commit SHA for a repo.
@@ -272,5 +274,73 @@ export function getChangedFilesSinceBranch(
   } catch {
     // Expected: sinceCommit unreachable or GC'd
     return { added: [], modified: [], deleted: [] };
+  }
+}
+
+/** Directories to skip when walking the working tree */
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  '_build',
+  'deps',
+  'vendor',
+  'dist',
+  '.elixir_ls',
+]);
+
+/** Max file size for readWorkingTreeFile (500KB, matching readBranchFile) */
+const MAX_READ_SIZE = 500 * 1024;
+
+/**
+ * List all files in the repo working tree, skipping common non-source directories.
+ * Returns relative paths with forward-slash separators.
+ * Returns empty array if path doesn't exist or isn't readable.
+ */
+export function listWorkingTreeFiles(repoPath: string): string[] {
+  try {
+    const results: string[] = [];
+    const stack: string[] = [''];
+
+    while (stack.length > 0) {
+      const rel = stack.pop()!;
+      const abs = rel ? path.join(repoPath, rel) : repoPath;
+
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(abs, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (SKIP_DIRS.has(entry.name)) continue;
+          const dirRel = rel ? `${rel}/${entry.name}` : entry.name;
+          stack.push(dirRel);
+        } else if (entry.isFile()) {
+          const fileRel = rel ? `${rel}/${entry.name}` : entry.name;
+          results.push(fileRel);
+        }
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read a file from the repo working tree via filesystem.
+ * Returns null if file doesn't exist, is unreadable, or exceeds 500KB.
+ */
+export function readWorkingTreeFile(repoPath: string, filePath: string): string | null {
+  try {
+    const fullPath = path.join(repoPath, filePath);
+    const stat = fs.statSync(fullPath);
+    if (stat.size > MAX_READ_SIZE) return null;
+    return fs.readFileSync(fullPath, 'utf-8');
+  } catch {
+    return null;
   }
 }
