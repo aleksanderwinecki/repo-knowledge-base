@@ -7,7 +7,17 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~400 r
 ## Current State
 
 **Latest shipped:** v3.0 Graph Intelligence (2026-03-10)
-**Next milestone:** TBD
+
+## Current Milestone: v3.1 Indexing UX
+
+**Goal:** Make `kb index` output useful for humans watching a terminal during the ~1hr full reindex.
+
+**Target features:**
+- Progress counters with line-overwrite for git refresh and extraction phases
+- Grouped git refresh failure summary (by category: worktree conflict, dirty tree, timeout)
+- Live extraction/indexing progress (`[42/412] Indexing app-foo...`)
+- Compact final summary (counts only, errors listed individually)
+- JSON output gated behind `--json` flag or non-TTY detection
 
 ## Core Value
 
@@ -37,7 +47,10 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-(None — next milestone not yet defined)
+- [ ] Progress reporting during indexing
+- [ ] Grouped git refresh error summary
+- [ ] JSON output gated behind --json flag / non-TTY
+- [ ] Compact human-readable summary
 
 ### Deferred
 
@@ -130,4 +143,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-10 after v3.0 milestone completion*
+*Last updated: 2026-03-10 after v3.1 milestone start*
