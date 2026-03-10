@@ -28,7 +28,26 @@ import { registerExplainTool } from './tools/explain.js';
  * Used by tests and by the main() entry point below.
  */
 export function createServer(db: Database.Database): McpServer {
-  const server = new McpServer({ name: 'kb', version: '1.0.0' });
+  const server = new McpServer(
+    { name: 'kb', version: '1.0.0' },
+    {
+      instructions: [
+        'Knowledge base indexing 400+ microservice repos.',
+        'Use these tools BEFORE exploring repos manually or guessing which service owns something.',
+        'kb_search: find services, modules, events, schemas by keyword.',
+        'kb_entity: structured entity card with relationships.',
+        'kb_explain: full service overview card — start here when asked "what does X do?".',
+        'kb_deps: service dependency graph with mechanism filtering.',
+        'kb_impact: blast radius — what breaks if this service changes.',
+        'kb_trace: shortest path between two services.',
+        'kb_learn/kb_forget: store or delete persistent facts.',
+        'kb_status: database statistics and staleness check.',
+        'kb_list_types: discover available entity types with counts.',
+        'kb_reindex: refresh specific repos with latest code from remote.',
+        'kb_cleanup: detect deleted repos and stale facts.',
+      ].join(' '),
+    },
+  );
   registerSearchTool(server, db);
   registerEntityTool(server, db);
   registerDepsTool(server, db);
