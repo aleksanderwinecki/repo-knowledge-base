@@ -1,5 +1,22 @@
 # Milestones
 
+## v3.0 Graph Intelligence (Shipped: 2026-03-10)
+
+**Phases completed:** 4 phases (23-26), 9 plans
+**Timeline:** 1 day (2026-03-09)
+**Stats:** 46 commits, 58 files changed, 8,376 insertions, 672 tests, 8,417 LOC TypeScript
+
+**Key accomplishments:**
+- Graph infrastructure: in-memory adjacency list builder with BFS traversal primitives, event/Kafka two-hop resolution, shared edge utilities extracted from dependencies.ts
+- Blast radius analysis: `kb_impact` MCP tool and `kb impact` CLI — downstream impact with depth tiers, mechanism filtering, blast radius scoring, compact formatter for 4KB MCP budget
+- Flow tracing: `kb_trace` MCP tool and `kb trace` CLI — shortest path between services with per-hop mechanism labels, confidence scoring, and arrow-chain path summaries
+- Service explanation cards: `kb_explain` MCP tool and `kb explain` CLI — structured service overviews with connections, events, modules, entity counts, and agent-actionable hints
+- All three tools work over the existing topology edge data (11.7K edges) with no new indexing requirements
+
+**Delivered:** Three graph intelligence tools that give AI agents instant answers to blast radius, request flow, and service overview questions — built on top of the existing topology data with JS BFS (200-1000x faster than SQLite recursive CTEs).
+
+---
+
 ## v2.1 Cleanup & Tightening (Shipped: 2026-03-09)
 
 **Phases completed:** 2 phases (21-22), 4 plans

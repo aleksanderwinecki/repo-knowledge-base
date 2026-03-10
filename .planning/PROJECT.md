@@ -2,21 +2,12 @@
 
 ## What This Is
 
-A persistent knowledge base that indexes Fresha's microservice ecosystem (~50+ repos) into a single SQLite file with FTS5 search. Any AI agent can instantly query architectural knowledge, service relationships, event flows, and implementation patterns via CLI or MCP tools — without re-scanning repos every session.
+A persistent knowledge base that indexes Fresha's microservice ecosystem (~400 repos) into a single SQLite file with FTS5 search and graph intelligence. Any AI agent can instantly query architectural knowledge, service relationships, event flows, blast radius, request paths, and service overviews via CLI or MCP tools — without re-scanning repos every session.
 
 ## Current State
 
-**Latest shipped:** v2.1 Cleanup & Tightening (2026-03-09)
-**Current milestone:** v3.0 Graph Intelligence
-
-## Current Milestone: v3.0 Graph Intelligence
-
-**Goal:** Three new MCP tools that give AI agents instant answers to the questions they waste the most time researching: blast radius, request flows, and service overviews.
-
-**Target features:**
-- Impact analysis — "what breaks if I change service X?" via downstream graph traversal
-- Flow tracing — "trace a request from gateway to consumer" via shortest path queries
-- Service explanation — "what does this service do and what talks to it?" via aggregated cards
+**Latest shipped:** v3.0 Graph Intelligence (2026-03-10)
+**Next milestone:** TBD
 
 ## Core Value
 
@@ -26,6 +17,10 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v3.0 GRAPH-01..05: In-memory graph module with BFS traversal, event/Kafka resolution, shared edge utilities — Phase 23
+- v3.0 IMPACT-01..07: Blast radius analysis with mechanism filtering, depth tiers, compact MCP formatting — Phase 24
+- v3.0 TRACE-01..04: Flow tracing with shortest path, per-hop mechanisms, confidence scoring — Phase 25
+- v3.0 EXPLAIN-01..05: Service explanation cards with connections, events, modules, agent hints — Phase 26
 - v2.1 CLEAN-01..06: Embedding infrastructure removal (sqlite-vec, transformers.js, vec0, semantic/hybrid search) — Phase 21
 - v2.1 FIX-01, FIX-02: Implicit force for --repo, symlink support in scanner — Phase 22
 - v2.1 META-01: Project metadata updated to reflect post-cleanup reality — Phase 22
@@ -42,18 +37,20 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [ ] Impact analysis over topology graph (NOM-01)
-- [ ] Flow tracing across service topology (NOM-02)
-- [ ] Service explanation cards for agent onboarding
+(None — next milestone not yet defined)
 
 ### Deferred
 
 - [ ] Auto-learn patterns from completed tasks (INT-01)
 - [ ] Suggest relevant repos/files for feature descriptions (INT-02)
 - [ ] Cross-repo impact analysis (INT-03) — partially addressed by topology
-- [ ] Impact analysis queries over topology graph (NOM-01) — inspired by nomik.co
-- [ ] Flow tracing MCP tool across service topology (NOM-02) — inspired by nomik.co
-- [ ] Tree-sitter AST parsing for multi-language support (NOM-03) — inspired by nomik.co
+- [ ] Multiple path discovery (top N paths) in kb_trace (AGRAPH-01)
+- [ ] `--detail` flag for rich path data in kb_impact (AGRAPH-02)
+- [ ] Architecture rules engine ("X should not call Y") (AGRAPH-03)
+- [ ] Historical graph comparison / snapshots (AGRAPH-04)
+- [ ] Code-level (function granularity) impact analysis (AGRAPH-05)
+- [ ] Graph caching layer for sub-millisecond repeated queries (AGRAPH-06)
+- [ ] Tree-sitter AST parsing for multi-language support (NOM-03)
 
 ### Out of Scope
 
@@ -63,21 +60,24 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 - Real-time file watching — on-demand re-index is sufficient
 - Cloud deployment — local-only tool
 - Code review or linting — out of domain
+- Neo4j integration — SQLite handles 12K edges in <10ms
+- Graph visualization UI — CLI + MCP only
 
 ## Context
 
-Shipped v2.1 with 506 tests passing across 32 test files.
+Shipped v3.0 with 672 tests passing across 40 test files.
 Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0, v1.1, v1.2, v2.0, and v2.1 milestones.
+Built across v1.0, v1.1, v1.2, v2.0, v2.1, and v3.0 milestones (26 phases, 56 plans).
 
-9 MCP tools: kb_search, kb_entity, kb_deps, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
-CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb status, kb learn, kb learned, kb forget, kb docs.
+12 MCP tools: kb_search, kb_entity, kb_deps, kb_impact, kb_trace, kb_explain, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
+CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb impact (--mechanism, --depth), kb trace, kb explain, kb status, kb learn, kb learned, kb forget, kb docs.
 
 400 repos indexed: 125k modules, 8.4k events, 127 services, 11.7k topology edges.
 
 Known limitations:
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 - Topology extraction catches most patterns but unusual client wrappers may be missed
+- Indexing output is noisy and lacks progress indication for the ~1hr full reindex
 
 ## Key Decisions
 
@@ -113,6 +113,12 @@ Known limitations:
 | Remove embedding infrastructure entirely | 1hr generation time, OOM on targeted runs, FTS5 covers 95%+ of queries | v2.1 Good |
 | --repo implies force (skip staleness) | Targeted reindex always re-indexes; requiring --force was redundant UX | v2.1 Good |
 | SCHEMA_VERSION back to 7 (no vec0) | V8 was vec0 migration; removing it means DB auto-rebuilds cleanly | v2.1 Good |
+| JS BFS over SQLite recursive CTEs | 200-1000x faster; SQL loads edges in bulk, JS traverses in memory | v3.0 Good |
+| Event/Kafka two-hop resolution in graph builder | repo->event->repo collapsed to single logical edge transparently | v3.0 Good |
+| Compact formatter for hub nodes | Flat list + stats fits 300+ services in 4KB MCP budget; no generic halving | v3.0 Good |
+| kb_explain independent of graph module | Pure SQL aggregation simpler and sufficient for service cards | v3.0 Good |
+| Mechanism filter during BFS traversal | Applied at traversal time, not post-filter, for correct scoped queries | v3.0 Good |
+| Static agent hints with placeholder substitution | Simpler than dynamic hint generation; covers all common next-step patterns | v3.0 Good |
 
 ## Constraints
 
@@ -124,4 +130,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-09 after v3.0 milestone start*
+*Last updated: 2026-03-10 after v3.0 milestone completion*
