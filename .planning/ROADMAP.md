@@ -118,8 +118,8 @@ Plans:
   5. `kb_entity "employee_id" --type field` shows all repos, parent schemas/protos/types, field types, and nullability for that field name
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 30-01-PLAN.md -- FTS field indexing, type plumbing, hydrator, cleanup (FSRCH-01/02/03)
-- [ ] 30-02-PLAN.md -- Field entity cards with shared concept detection (SHARED-01/02)
+- [x] 30-01-PLAN.md -- FTS field indexing, type plumbing, hydrator, cleanup (FSRCH-01/02/03)
+- [x] 30-02-PLAN.md -- Field entity cards with shared concept detection (SHARED-01/02)
 
 ### Phase 31: Field Edges & Field Impact
 **Goal**: Users can trace a field name from its origin schemas through proto/event boundaries to all consuming services, seeing nullability at each hop
@@ -130,7 +130,10 @@ Plans:
   2. Field-level edges are traversable by the existing BFS machinery in graph.ts (bfsDownstream/bfsUpstream work with field edges)
   3. `kb_field_impact "employee_id"` shows: origin repos with parent schemas, proto boundaries with Kafka topics, consuming repos with their local field info, and nullability at each hop
   4. `kb_field_impact` is available as both MCP tool and CLI command (`kb field-impact "employee_id"`)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 31-01-PLAN.md -- Field edge creation in writer + analyzeFieldImpact core function (FEDGE-01/02, FIMPACT-01/02)
+- [ ] 31-02-PLAN.md -- MCP tool + CLI command wiring (FIMPACT-03)
 
 ## Progress
 
@@ -144,5 +147,5 @@ Plans:
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29 | v4.0 | 2/2 | Complete | 2026-03-10 |
-| 30 | 2/2 | Complete    | 2026-03-10 | - |
-| 31 | v4.0 | 0/TBD | Not started | - |
+| 30 | v4.0 | 2/2 | Complete | 2026-03-10 |
+| 31 | v4.0 | 0/2 | Not started | - |
