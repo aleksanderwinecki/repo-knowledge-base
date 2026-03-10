@@ -1,5 +1,22 @@
 # Milestones
 
+## v4.0 Data Contract Intelligence (Shipped: 2026-03-10)
+
+**Phases completed:** 3 phases (29-31), 6 plans, 9 tasks
+**Timeline:** 1 day (2026-03-10)
+**Stats:** 25 commits, 49 files changed, 5,326 insertions, 789 tests
+
+**Key accomplishments:**
+- Field extraction: individual fields parsed from Ecto schemas (`validate_required` → nullability), proto messages (`optional` keyword), and GraphQL types (`!` suffix) during indexing — stored in new `fields` table via V8 migration
+- Field search: fields indexed into FTS5 with compound name tokenization (`employee_id` → matches "employee", "id", "employee_id"), `--type field` filtering, field entity hydration
+- Shared concept detection: fields appearing in 2+ repos identified at query time with cross-repo occurrence counts via `kb_entity`
+- Field edges: `maps_to` edges created between matching Ecto/proto field names within the same repo during indexing
+- Field impact analysis: `kb_field_impact` traces a field from origin schemas through proto/Kafka boundaries to all consuming services with nullability at each hop — available as both MCP tool and CLI command
+
+**Delivered:** Data contract intelligence that lets AI agents trace any field name from its origin schema through proto/event boundaries to all consuming services, seeing nullability at every hop — turning cross-service data contract questions from hour-long archaeology into 3-second queries.
+
+---
+
 ## v3.1 Indexing UX (Shipped: 2026-03-10)
 
 **Phases completed:** 2 phases (27-28), 4 plans, 5 tasks

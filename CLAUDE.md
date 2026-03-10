@@ -37,8 +37,9 @@ Use `/mcp` inside a session to check server status. Available MCP tools:
 - `kb_list_types` — List available entity types with counts
 - `kb_reindex` — Reindex specific repos with optional git refresh
 - `kb_cleanup` — Detect deleted repos and stale facts
+- `kb_field_impact` — Trace a field name across service boundaries with nullability at each hop
 
-Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) auto-sync stale repos before returning results.
+Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`, `kb_field_impact`) auto-sync stale repos before returning results.
 
 ### CLI fallback
 
@@ -59,6 +60,8 @@ If MCP isn't configured, the `kb` CLI works directly:
 - `kb index --force` — Re-index all repos
 - `kb index --repo app-foo app-bar` — Re-index specific repos only
 - `kb index --repo app-foo --refresh` — Git fetch + reset to latest before indexing
+- `kb field-impact "field_name"` — Trace a field across service boundaries with nullability at each hop
+- `kb search "field_name" --type field` — Search for fields across all indexed repos
 
 ### Skill
 
@@ -75,6 +78,6 @@ Override: `KB_DB_PATH=/path/to/db.sqlite`
 
 ## Development
 
-- `npm test` — 772 tests
+- `npm test` — 789 tests
 - `npm run build` — compile TypeScript
 - Source: `src/` (db, indexer, search, knowledge, cli, mcp)

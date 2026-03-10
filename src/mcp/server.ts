@@ -33,7 +33,7 @@ export function createServer(db: Database.Database): McpServer {
     { name: 'kb', version: '1.0.0' },
     {
       instructions: [
-        'Knowledge base indexing 400+ microservice repos.',
+        'Knowledge base indexing microservice repos.',
         'Use these tools BEFORE exploring repos manually or guessing which service owns something.',
         'kb_search: find services, modules, events, schemas by keyword.',
         'kb_entity: structured entity card with relationships.',

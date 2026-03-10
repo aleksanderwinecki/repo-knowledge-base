@@ -7,9 +7,9 @@ allowed-tools: Bash(kb:*)
 
 # Repository Knowledge Base
 
-> **Prefer MCP**: If the `kb` MCP server is connected, use MCP tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) directly instead of this skill. They provide structured I/O with no shell overhead. This skill is a CLI fallback for when MCP isn't configured.
+> **Prefer MCP**: If the `kb` MCP server is connected, use MCP tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`, `kb_field_impact`) directly instead of this skill. They provide structured I/O with no shell overhead. This skill is a CLI fallback for when MCP isn't configured.
 
-Query a persistent knowledge base that indexes 400+ microservice repos. Use this to find services, modules, events, dependencies, topology edges, and learned facts without re-scanning repos.
+Query a persistent knowledge base that indexes all microservice repos. Use this to find services, modules, events, dependencies, topology edges, and learned facts without re-scanning repos.
 
 ## Arguments
 
@@ -20,6 +20,7 @@ Query a persistent knowledge base that indexes 400+ microservice repos. Use this
 - **`impact <name>`**: Blast radius — what breaks if this service changes — `impact app-payments`, `impact app-auth --mechanism grpc`
 - **`trace <from> <to>`**: Shortest path between services — `trace app-checkout app-notifications`
 - **`explain <name>`**: Service overview card — `explain app-appointments`
+- **`field-impact <field>`**: Trace a field across service boundaries — `field-impact employee_id`
 - **`entity <name>`**: Structured entity card — `entity BookingCreated`, `entity Resources.Schemas.Resource`
 - **`learn <fact>`**: Teach a new fact — `learn "payments owns billing" --repo app-payments`
 - **`status`**: Show database stats
@@ -37,7 +38,7 @@ kb search "$ARGUMENTS"
 
 Refine results with:
 - `--repo <name>` — filter by repo
-- `--type <type>` — filter by type: coarse (`repo`, `module`, `event`, `service`) or sub-type (`schema`, `context`, `graphql_query`, `grpc`, etc.)
+- `--type <type>` — filter by type: coarse (`repo`, `module`, `event`, `service`, `field`) or sub-type (`schema`, `context`, `graphql_query`, `grpc`, etc.)
 - `--entity` — structured entity card with relationships
 - `--list-types` — discover available entity types with counts
 - `--limit <n>` — max results (default 20)
@@ -70,6 +71,13 @@ kb trace "<from_service>" "<to_service>"
 kb explain "<service_name>"
 ```
 
+### Field impact
+```bash
+kb field-impact "<field_name>"
+```
+
+Traces a field from its origin schemas through proto/event boundaries to all consuming services, showing nullability at each hop.
+
 ### Entity lookup
 ```bash
 kb search "$ENTITY_NAME" --entity
@@ -98,7 +106,7 @@ kb status
 All output is JSON. Key fields:
 
 **Search results** — array of matches:
-- `entityType`: module, event, service, repo, learned_fact
+- `entityType`: module, event, service, repo, field, learned_fact
 - `name`: entity name
 - `repoName`: which repo it belongs to
 - `filePath`: file where it was found
@@ -136,6 +144,8 @@ All output is JSON. Key fields:
 - "What does service Y depend on?" → `kb deps Y`
 - "What gRPC services does Y call?" → `kb deps Y --mechanism grpc`
 - "What breaks if I change app-payments?" → `kb impact app-payments`
+- "Where does the employee_id field flow?" → `kb field-impact employee_id`
+- "Which services have an employee_id field?" → `kb search "employee_id" --type field`
 - "How does a request get from checkout to notifications?" → `kb trace app-checkout app-notifications`
 - "What does app-appointments do?" → `kb explain app-appointments`
 - "What is BookingCreated?" → `kb search "BookingCreated" --entity`

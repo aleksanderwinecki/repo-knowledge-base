@@ -64,6 +64,32 @@ Show knowledge base statistics.
 kb status
 \`\`\`
 
+### kb impact <service>
+Blast radius analysis: what services break if this service changes.
+\`\`\`bash
+kb impact app-payments                          # Full blast radius
+kb impact app-payments --mechanism grpc         # Filter by communication type
+kb impact app-payments --depth 2                # Limit traversal depth
+\`\`\`
+
+### kb trace <from> <to>
+Shortest path between two services with mechanism labels per hop.
+\`\`\`bash
+kb trace app-checkout app-notifications
+\`\`\`
+
+### kb explain <service>
+Structured service overview card — connections, events, modules, hints.
+\`\`\`bash
+kb explain app-appointments
+\`\`\`
+
+### kb field-impact <field>
+Trace a field across service boundaries with nullability at each hop.
+\`\`\`bash
+kb field-impact employee_id                     # Trace field through all services
+\`\`\`
+
 ### kb docs
 Show this documentation.
 \`\`\`bash

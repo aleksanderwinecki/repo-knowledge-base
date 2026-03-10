@@ -2,23 +2,11 @@
 
 ## What This Is
 
-A persistent knowledge base that indexes Fresha's microservice ecosystem (~400 repos) into a single SQLite file with FTS5 search and graph intelligence. Any AI agent can instantly query architectural knowledge, service relationships, event flows, blast radius, request paths, and service overviews via CLI or MCP tools — without re-scanning repos every session.
+A persistent knowledge base that indexes Fresha's microservice ecosystem into a single SQLite file with FTS5 search, graph intelligence, and data contract tracing. Any AI agent can instantly query architectural knowledge, service relationships, event flows, blast radius, request paths, field-level data contracts, and service overviews via CLI or MCP tools — without re-scanning repos every session.
 
 ## Current State
 
-**Latest shipped:** v3.1 Indexing UX (2026-03-10)
-
-## Current Milestone: v4.0 Data Contract Intelligence
-
-**Goal:** Make kb understand what data crosses service boundaries, not just which services talk to each other. Index individual fields from Ecto schemas, proto messages, and GraphQL types as searchable entities with nullability metadata, enabling field-level impact analysis across the microservice topology.
-
-**Target features:**
-- `fields` table indexing individual Ecto schema fields, proto message fields, and GraphQL type fields
-- Field-level FTS search (`kb_search "employee_id"` returns every schema/proto/GraphQL type with that field)
-- Nullability metadata extraction (Ecto validate_required, proto optional keyword)
-- Shared concepts detection (same field name across multiple repos = data contract surface)
-- `kb_field_impact` command — trace a field through proto/event boundaries to all consuming services
-- Field-level edges linking fields across service boundaries via proto/Kafka topology
+**Latest shipped:** v4.0 Data Contract Intelligence (2026-03-10)
 
 ## Core Value
 
@@ -28,6 +16,9 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v4.0 FLD-01..04, NULL-01..02: Field extraction from Ecto/proto/GraphQL with nullability metadata — Phase 29
+- v4.0 FSRCH-01..03, SHARED-01..02: Field FTS search, type filtering, shared concept detection — Phase 30
+- v4.0 FEDGE-01..02, FIMPACT-01..03: Field edges (maps_to), field impact analysis via MCP + CLI — Phase 31
 - v3.1 PROG-01..03, ERR-01..03: Live progress counters with TTY detection, categorized error grouping — Phase 27
 - v3.1 OUT-01..03, SUM-01..03: Output gating (--json/pipe), compact human summary — Phase 28
 - v3.0 GRAPH-01..05: In-memory graph module with BFS traversal, event/Kafka resolution, shared edge utilities — Phase 23
@@ -50,12 +41,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [ ] Fields table and extraction for Ecto/proto/GraphQL fields
-- [ ] Field-level FTS search
-- [ ] Nullability metadata from validate_required and proto optional
-- [ ] Shared concepts detection (cross-repo field matching)
-- [ ] kb_field_impact command for field-level impact analysis
-- [ ] Field-level edges in topology graph
+(No active requirements — next milestone not yet planned)
 
 ### Deferred
 
@@ -83,20 +69,18 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v3.1 with 711 tests passing across 43 test files.
+Shipped v4.0 with 789 tests passing across 45 test files.
 Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0-v3.1 milestones (28 phases, 60 plans).
+Built across v1.0-v4.0 milestones (31 phases, 66 plans).
 
-12 MCP tools: kb_search, kb_entity, kb_deps, kb_impact, kb_trace, kb_explain, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
-CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb impact (--mechanism, --depth), kb trace, kb explain, kb status, kb learn, kb learned, kb forget, kb docs.
+13 MCP tools: kb_search, kb_entity, kb_deps, kb_impact, kb_trace, kb_explain, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup, kb_field_impact.
+CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb impact (--mechanism, --depth), kb trace, kb explain, kb field-impact, kb status, kb learn, kb learned, kb forget, kb docs.
 
-400 repos indexed: 125k modules, 8.4k events, 127 services, 11.7k topology edges.
+Indexes all repos under configured root. Use `kb status` for current counts.
 
 Known limitations:
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 - Topology extraction catches most patterns but unusual client wrappers may be missed
-- Individual field names (Ecto schema fields, proto message fields) are not searchable — stored as JSON blobs, not FTS-indexed
-- No field-level cross-service tracing — topology shows service-to-service edges but not which data fields flow through those edges
 
 ## Key Decisions
 
@@ -142,15 +126,19 @@ Known limitations:
 | resolveOutputMode as pure function | Testable output gating: --json or !isTTY = json, else human summary | v3.1 Good |
 | Progress on stderr, data on stdout | Separates machine-readable JSON from human progress/errors | v3.1 Good |
 | Braille spinner with auto-stop | Shows activity during initial scan; auto-clears when progress counter takes over | v3.1 Good |
+| FieldData interface as universal contract | All three extractors produce same shape; pipeline maps uniformly | v4.0 Good |
+| Query-time shared concept detection | No materialized table; GROUP BY HAVING on existing fields table + idx_fields_name index | v4.0 Good |
+| Intra-repo maps_to edges only | Ecto↔proto matching within same repo; inter-repo traversal via existing service graph | v4.0 Good |
+| Field impact stitches fields + service graph | SQL for field occurrences, BFS for inter-repo hops; no new graph infrastructure needed | v4.0 Good |
 
 ## Constraints
 
 - **Runtime**: Local only, no external infrastructure
 - **Storage**: SQLite — zero dependencies
 - **Language**: Node.js/TypeScript
-- **Indexing speed**: Full index completes in under 10 minutes for 400 repos
+- **Indexing speed**: Full index completes in under 10 minutes
 - **Query speed**: Search returns in under 2 seconds
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-10 after v4.0 milestone start*
+*Last updated: 2026-03-10 after v4.0 milestone*

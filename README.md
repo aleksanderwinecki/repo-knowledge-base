@@ -4,8 +4,8 @@ Persistent knowledge base that indexes your entire microservice ecosystem so AI 
 
 ## What it does
 
-- **Indexes** all repos under a root directory, extracting Elixir modules, Ecto schemas, GraphQL types, proto definitions, gRPC services, and Kafka events
-- **Searches** across all indexed content with full-text search (FTS5) and structured entity queries
+- **Indexes** all repos under a root directory, extracting Elixir modules, Ecto schemas, GraphQL types, proto definitions, gRPC services, Kafka events, and individual field-level data with nullability metadata
+- **Searches** across all indexed content with full-text search (FTS5), structured entity queries, and field-level search across all schemas/protos/GraphQL types
 - **Maps dependencies** between services via gRPC calls, HTTP clients, gateway routing, Kafka topics, and shared events
 - **Learns** facts you teach it manually, persistently stored alongside indexed data
 - **Incremental** — only re-indexes repos with new commits since last scan
@@ -29,16 +29,9 @@ claude mcp add kb -- node /path/to/repo-knowledge-base/dist/mcp/server.js
 
 Once connected, Claude Code can call `kb_search`, `kb_deps`, `kb_explain`, etc. directly — no CLI piping needed.
 
-## Stats (real-world)
+## Stats
 
-| Metric | Value |
-|--------|-------|
-| Repos indexed | 400 |
-| Modules | 125,000+ |
-| Events/protos | 8,400+ |
-| Services | 127 |
-| Topology edges | 11,700+ |
-| Learned facts | unlimited |
+Run `kb status` to see current counts (repos, modules, events, services, topology edges, fields, learned facts). Counts depend on what's checked out under your repos root.
 
 ## Commands
 
@@ -52,6 +45,7 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 | `kb impact <name>` | Blast radius analysis — what breaks if this service changes. `--mechanism`, `--depth` |
 | `kb trace <from> <to>` | Shortest path between two services with per-hop mechanism labels |
 | `kb explain <name>` | Structured service overview card — identity, connections, events, modules, next-step hints |
+| `kb field-impact <field>` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers, nullability |
 | `kb learn <text>` | Store a fact. `--repo` to associate with a service |
 | `kb learned` | List learned facts. `--repo` to filter |
 | `kb forget <id>` | Delete a learned fact |
@@ -71,7 +65,8 @@ All output is JSON. Designed for AI agent consumption, not human reading.
    - **HTTP**: Tesla/HTTPoison base_url patterns
    - **Gateway**: routing config linking gateways to upstream services
    - **Kafka**: producer/consumer topic matching
-6. **Writer** persists everything to SQLite with FTS5 indexing
+6. **Field extractor** parses individual fields from Ecto schemas, proto messages, and GraphQL types with nullability metadata
+7. **Writer** persists everything to SQLite with FTS5 indexing
 
 ### Search
 
@@ -81,6 +76,7 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 - **Impact analysis**: Blast radius — what breaks if a service changes, with depth-grouped severity tiers
 - **Flow tracing**: Shortest path between any two services with per-hop mechanism labels
 - **Service explanation**: Structured overview cards with connections, events, modules, and agent hints
+- **Field impact**: Trace a field name from origin schemas through proto/event boundaries to all consuming services with nullability at each hop
 
 ### Storage
 
@@ -138,8 +134,9 @@ claude mcp add kb --env KB_DB_PATH=/path/to/knowledge.db -- node /path/to/dist/m
 | `kb_impact` | Blast radius analysis: what services break if this service changes |
 | `kb_trace` | Shortest path between two services with mechanism labels per hop |
 | `kb_explain` | Structured service overview card with connections, events, modules, and hints |
+| `kb_field_impact` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers, nullability |
 
-Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
+Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`, `kb_field_impact`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
 
 ## CLI (alternative)
 
@@ -167,13 +164,13 @@ src/
   search/      # Text search, entity queries, dependency traversal
   knowledge/   # Learned facts store
   cli/         # Commander.js CLI with all subcommands
-  mcp/         # MCP server, 12 tool handlers, auto-sync, formatting, hygiene
+  mcp/         # MCP server, 13 tool handlers, auto-sync, formatting, hygiene
 ```
 
 ## Development
 
 ```bash
-npm test          # Run 672 tests
+npm test          # Run 789 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```
