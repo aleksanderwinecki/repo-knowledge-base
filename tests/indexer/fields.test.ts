@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { extractRequiredFields, parseElixirFile } from '../../src/indexer/elixir.js';
 import { parseProtoFile } from '../../src/indexer/proto.js';
+import { parseGraphqlFields } from '../../src/indexer/graphql.js';
+import type { GraphqlField } from '../../src/indexer/graphql.js';
 
 describe('Elixir required fields', () => {
   it('extracts fields from simple validate_required call', () => {
@@ -169,5 +171,85 @@ message User {
     expect(fields[2]).toEqual({ type: 'string', name: 'email', optional: false });
     expect(fields[3]).toEqual({ type: 'int32', name: 'age', optional: true });
     expect(fields[4]).toEqual({ type: 'string', name: 'tags', optional: false });
+  });
+});
+
+describe('GraphQL field parsing', () => {
+  it('parses basic field declaration', () => {
+    const result = parseGraphqlFields('name: String');
+    expect(result).toEqual([{ name: 'name', type: 'String' }]);
+  });
+
+  it('parses non-null field with !', () => {
+    const result = parseGraphqlFields('name: String!');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.type).toBe('String!');
+  });
+
+  it('parses list type', () => {
+    const result = parseGraphqlFields('items: [Item]');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.type).toBe('[Item]');
+  });
+
+  it('parses non-null list of non-null items', () => {
+    const result = parseGraphqlFields('items: [Item!]!');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.type).toBe('[Item!]!');
+  });
+
+  it('parses field with arguments', () => {
+    const result = parseGraphqlFields('users(limit: Int): [User]');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ name: 'users', type: '[User]' });
+  });
+
+  it('parses multiple fields in body', () => {
+    const body = `
+  id: ID!
+  name: String!
+  email: String
+  posts: [Post!]!
+`;
+    const result = parseGraphqlFields(body);
+    expect(result).toHaveLength(4);
+    expect(result[0]).toEqual({ name: 'id', type: 'ID!' });
+    expect(result[1]).toEqual({ name: 'name', type: 'String!' });
+    expect(result[2]).toEqual({ name: 'email', type: 'String' });
+    expect(result[3]).toEqual({ name: 'posts', type: '[Post!]!' });
+  });
+
+  it('returns empty array for enum body (no colon lines)', () => {
+    const body = `
+  PENDING
+  CONFIRMED
+  CANCELLED
+`;
+    const result = parseGraphqlFields(body);
+    expect(result).toHaveLength(0);
+  });
+
+  it('skips comment lines', () => {
+    const body = `
+  # This is a comment
+  name: String!
+  # Another comment
+  email: String
+`;
+    const result = parseGraphqlFields(body);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.name).toBe('name');
+    expect(result[1]!.name).toBe('email');
+  });
+
+  it('returns empty array for empty body', () => {
+    const result = parseGraphqlFields('');
+    expect(result).toHaveLength(0);
+  });
+
+  it('GraphqlField interface has name and type properties', () => {
+    const field: GraphqlField = { name: 'test', type: 'String!' };
+    expect(field.name).toBe('test');
+    expect(field.type).toBe('String!');
   });
 });

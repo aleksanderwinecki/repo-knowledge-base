@@ -8,6 +8,12 @@ export interface GraphqlType {
   extended: boolean;
 }
 
+/** A parsed GraphQL field from a type/input/interface body */
+export interface GraphqlField {
+  name: string;
+  type: string;  // Full type expression including !, [], [!], etc.
+}
+
 /** Complete GraphQL file parse result */
 export interface GraphqlDefinition {
   filePath: string;
@@ -86,6 +92,21 @@ export function parseGraphqlFile(filePath: string, content: string): GraphqlDefi
   }
 
   return { filePath, types };
+}
+
+/**
+ * Parse field declarations from a GraphQL type/input/interface body.
+ * Skips enum values (no colon), comment lines (# prefix), and empty lines.
+ * Only use for type, input, and interface kinds -- not enum, union, or scalar.
+ */
+export function parseGraphqlFields(body: string): GraphqlField[] {
+  const fields: GraphqlField[] = [];
+  const fieldRe = /^\s*(\w+)(?:\([^)]*\))?\s*:\s*(\[?\w+!?\]?!?)/gm;
+  let match;
+  while ((match = fieldRe.exec(body)) !== null) {
+    fields.push({ name: match[1]!, type: match[2]! });
+  }
+  return fields;
 }
 
 /**
