@@ -95,7 +95,7 @@
 
 ### v4.1 Indexing Performance (In Progress)
 
-- [ ] **Phase 32: Schema Drop & Rebuild** - Replace incremental migrations with drop+rebuild, preserve learned facts
+- [x] **Phase 32: Schema Drop & Rebuild** - Replace incremental migrations with drop+rebuild, preserve learned facts (completed 2026-03-10)
 - [ ] **Phase 33: Filesystem Reads** - Replace git child process spawning with direct filesystem reads
 
 ## Phase Details
@@ -108,7 +108,7 @@
   1. When schema version changes, the DB is dropped and recreated with the current schema -- no migration chain to maintain
   2. A single `createSchema()` function creates all tables at the current version -- no migration functions exist
   3. User's learned facts survive a schema rebuild (exported before drop, re-imported after)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 32-01-PLAN.md -- Replace migration system with createSchema + drop-rebuild
 
@@ -136,5 +136,5 @@ Plans:
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
-| 32. Schema Drop & Rebuild | v4.1 | 0/1 | Planned | - |
+| 32. Schema Drop & Rebuild | 1/1 | Complete   | 2026-03-10 | - |
 | 33. Filesystem Reads | v4.1 | 0/0 | Not started | - |

@@ -16,9 +16,9 @@ Requirements for Indexing Performance milestone. Each maps to roadmap phases.
 
 ### Schema Simplification
 
-- [ ] **SCH-01**: Schema version mismatch triggers full DB recreate (drop + rebuild) instead of incremental migrations
-- [ ] **SCH-02**: Migration system removed — single `createSchema()` function creates all tables at current version
-- [ ] **SCH-03**: Learned facts preserved across schema rebuilds (exported before drop, re-imported after)
+- [x] **SCH-01**: Schema version mismatch triggers full DB recreate (drop + rebuild) instead of incremental migrations
+- [x] **SCH-02**: Migration system removed — single `createSchema()` function creates all tables at current version
+- [x] **SCH-03**: Learned facts preserved across schema rebuilds (exported before drop, re-imported after)
 
 ### Correctness
 
@@ -57,9 +57,9 @@ Deferred to post-v4.1 milestones.
 | FS-02 | Phase 33 | Pending |
 | FS-03 | Phase 33 | Pending |
 | FS-04 | Phase 33 | Pending |
-| SCH-01 | Phase 32 | Pending |
-| SCH-02 | Phase 32 | Pending |
-| SCH-03 | Phase 32 | Pending |
+| SCH-01 | Phase 32 | Complete |
+| SCH-02 | Phase 32 | Complete |
+| SCH-03 | Phase 32 | Complete |
 | COR-01 | Phase 33 | Pending |
 | COR-02 | Phase 33 | Pending |
 | COR-03 | Phase 33 | Pending |

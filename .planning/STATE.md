@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.1
 milestone_name: Indexing Performance
-status: ready_to_plan
-last_updated: "2026-03-10"
-last_activity: 2026-03-10 — Roadmap created (2 phases, 10 requirements)
+status: completed
+stopped_at: Completed 32-01-PLAN.md
+last_updated: "2026-03-10T15:42:23.297Z"
+last_activity: 2026-03-10 — Completed 32-01 schema drop+rebuild
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -20,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.1 Indexing Performance — Phase 32 ready to plan
+**Current focus:** v4.1 Indexing Performance — Phase 32 complete, Phase 33 next
 
 ## Current Position
 
 Phase: 32 of 33 (Schema Drop & Rebuild)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-10 — Roadmap created
+Plan: 1 of 1 (complete)
+Status: Phase 32 complete
+Last activity: 2026-03-10 — Completed 32-01 schema drop+rebuild
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -50,6 +51,10 @@ v4.1 context:
 - Replacing with fs.readFileSync() eliminates process spawning entirely
 - V9 migration fix already written gets replaced by simpler drop+rebuild approach
 - Schema simplification done first so drop+rebuild mechanism is in place before filesystem refactor
+- Drop+rebuild implemented: SCHEMA_VERSION=10, createSchema() creates all 8 tables + 13 indexes, learned facts preserved across rebuilds
+- Fact IDs change after rebuild (content-identified, acceptable)
+- Re-index facts in FTS immediately during rebuild
+- [Phase 32]: Drop+rebuild replaces 9 incremental migrations; learned facts preserved via export/reimport with FTS re-indexing
 
 ### Pending Todos
 
@@ -61,7 +66,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-10
-Stopped at: Roadmap created for v4.1 Indexing Performance
+Last session: 2026-03-10T15:42:23.295Z
+Stopped at: Completed 32-01-PLAN.md
 Resume file: None
-Next: `/gsd:plan-phase 32`
+Next: `/gsd:plan-phase 33`
