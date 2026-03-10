@@ -9,9 +9,9 @@ Requirements for Indexing Performance milestone. Each maps to roadmap phases.
 
 ### Filesystem Reads
 
-- [ ] **FS-01**: Extractors read file contents via `fs.readFileSync()` instead of `execSync('git show ...')`
-- [ ] **FS-02**: File listing uses filesystem traversal instead of `execSync('git ls-tree ...')`
-- [ ] **FS-03**: Branch parameter removed from all extractor function signatures
+- [x] **FS-01**: Extractors read file contents via `fs.readFileSync()` instead of `execSync('git show ...')`
+- [x] **FS-02**: File listing uses filesystem traversal instead of `execSync('git ls-tree ...')`
+- [x] **FS-03**: Branch parameter removed from all extractor function signatures
 - [ ] **FS-04**: Pipeline uses repo working tree path directly — no branch resolution needed for extraction
 
 ### Schema Simplification
@@ -53,9 +53,9 @@ Deferred to post-v4.1 milestones.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FS-01 | Phase 33 | Pending |
-| FS-02 | Phase 33 | Pending |
-| FS-03 | Phase 33 | Pending |
+| FS-01 | Phase 33 | Complete |
+| FS-02 | Phase 33 | Complete |
+| FS-03 | Phase 33 | Complete |
 | FS-04 | Phase 33 | Pending |
 | SCH-01 | Phase 32 | Complete |
 | SCH-02 | Phase 32 | Complete |
