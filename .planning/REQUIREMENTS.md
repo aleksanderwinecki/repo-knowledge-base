@@ -34,7 +34,7 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 - [x] **FIMPACT-01**: `kb_field_impact "<field_name>"` traces a field from its origin schemas through proto/event boundaries to all consuming services
 - [x] **FIMPACT-02**: Output shows: origin repo + parent schema, proto boundary with topic, consuming repos + their local field info, nullability at each hop
-- [ ] **FIMPACT-03**: Available as both MCP tool (`kb_field_impact`) and CLI command (`kb field-impact`)
+- [x] **FIMPACT-03**: Available as both MCP tool (`kb_field_impact`) and CLI command (`kb field-impact`)
 
 ### Field Edges
 
@@ -89,7 +89,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FEDGE-02 | Phase 31 | Complete |
 | FIMPACT-01 | Phase 31 | Complete |
 | FIMPACT-02 | Phase 31 | Complete |
-| FIMPACT-03 | Phase 31 | Pending |
+| FIMPACT-03 | Phase 31 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 16 total

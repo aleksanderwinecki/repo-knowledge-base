@@ -87,7 +87,7 @@
 
 - [x] **Phase 29: Field Extraction & Schema** - Schema migration + extract fields from Ecto/proto/GraphQL with nullability metadata (completed 2026-03-10)
 - [x] **Phase 30: Field Search & Shared Concepts** - FTS indexing of fields, type filtering, shared concept detection across repos (completed 2026-03-10)
-- [ ] **Phase 31: Field Edges & Field Impact** - Cross-service field edges, BFS integration, kb_field_impact MCP tool and CLI command
+- [x] **Phase 31: Field Edges & Field Impact** - Cross-service field edges, BFS integration, kb_field_impact MCP tool and CLI command (completed 2026-03-10)
 
 ## Phase Details
 
@@ -130,7 +130,7 @@ Plans:
   2. Field-level edges are traversable by the existing BFS machinery in graph.ts (bfsDownstream/bfsUpstream work with field edges)
   3. `kb_field_impact "employee_id"` shows: origin repos with parent schemas, proto boundaries with Kafka topics, consuming repos with their local field info, and nullability at each hop
   4. `kb_field_impact` is available as both MCP tool and CLI command (`kb field-impact "employee_id"`)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 31-01-PLAN.md -- Field edge creation in writer + analyzeFieldImpact core function (FEDGE-01/02, FIMPACT-01/02)
 - [ ] 31-02-PLAN.md -- MCP tool + CLI command wiring (FIMPACT-03)
@@ -148,4 +148,4 @@ Plans:
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29 | v4.0 | 2/2 | Complete | 2026-03-10 |
 | 30 | v4.0 | 2/2 | Complete | 2026-03-10 |
-| 31 | 1/2 | In Progress|  | - |
+| 31 | 2/2 | Complete   | 2026-03-10 | - |
