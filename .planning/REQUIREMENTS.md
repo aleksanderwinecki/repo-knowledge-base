@@ -53,22 +53,22 @@ Deferred to post-v4.1 milestones.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FS-01 | — | Pending |
-| FS-02 | — | Pending |
-| FS-03 | — | Pending |
-| FS-04 | — | Pending |
-| SCH-01 | — | Pending |
-| SCH-02 | — | Pending |
-| SCH-03 | — | Pending |
-| COR-01 | — | Pending |
-| COR-02 | — | Pending |
-| COR-03 | — | Pending |
+| FS-01 | Phase 33 | Pending |
+| FS-02 | Phase 33 | Pending |
+| FS-03 | Phase 33 | Pending |
+| FS-04 | Phase 33 | Pending |
+| SCH-01 | Phase 32 | Pending |
+| SCH-02 | Phase 32 | Pending |
+| SCH-03 | Phase 32 | Pending |
+| COR-01 | Phase 33 | Pending |
+| COR-02 | Phase 33 | Pending |
+| COR-03 | Phase 33 | Pending |
 
 **Coverage:**
 - v4.1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*

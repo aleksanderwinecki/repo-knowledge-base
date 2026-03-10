@@ -10,6 +10,7 @@
 - v3.0 Graph Intelligence -- Phases 23-26 (shipped 2026-03-10)
 - v3.1 Indexing UX -- Phases 27-28 (shipped 2026-03-10)
 - v4.0 Data Contract Intelligence -- Phases 29-31 (shipped 2026-03-10)
+- v4.1 Indexing Performance -- Phases 32-33 (in progress)
 
 ## Phases
 
@@ -92,6 +93,35 @@
 
 </details>
 
+### v4.1 Indexing Performance (In Progress)
+
+- [ ] **Phase 32: Schema Drop & Rebuild** - Replace incremental migrations with drop+rebuild, preserve learned facts
+- [ ] **Phase 33: Filesystem Reads** - Replace git child process spawning with direct filesystem reads
+
+## Phase Details
+
+### Phase 32: Schema Drop & Rebuild
+**Goal**: Schema version mismatches handled by clean drop+rebuild instead of incremental migrations
+**Depends on**: Phase 31
+**Requirements**: SCH-01, SCH-02, SCH-03
+**Success Criteria** (what must be TRUE):
+  1. When schema version changes, the DB is dropped and recreated with the current schema -- no migration chain to maintain
+  2. A single `createSchema()` function creates all tables at the current version -- no migration functions exist
+  3. User's learned facts survive a schema rebuild (exported before drop, re-imported after)
+**Plans**: TBD
+
+### Phase 33: Filesystem Reads
+**Goal**: Extractors read from the working tree filesystem instead of spawning git child processes
+**Depends on**: Phase 32
+**Requirements**: FS-01, FS-02, FS-03, FS-04, COR-01, COR-02, COR-03
+**Success Criteria** (what must be TRUE):
+  1. Running `kb index` produces identical results with no `execSync('git show')` or `execSync('git ls-tree')` calls anywhere in the codebase
+  2. Extractor functions accept a repo path -- no `branch` parameter in any extractor signature
+  3. `kb index --repo foo --refresh` still fetches and resets to remote default branch before indexing
+  4. Incremental indexing (skip unchanged repos via HEAD comparison) still works correctly
+  5. All existing tests pass after the refactor
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -104,3 +134,5 @@
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
+| 32. Schema Drop & Rebuild | v4.1 | 0/0 | Not started | - |
+| 33. Filesystem Reads | v4.1 | 0/0 | Not started | - |

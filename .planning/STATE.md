@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v4.1
 milestone_name: Indexing Performance
-status: defining_requirements
+status: ready_to_plan
 last_updated: "2026-03-10"
-last_activity: 2026-03-10 — Milestone v4.1 started
+last_activity: 2026-03-10 — Roadmap created (2 phases, 10 requirements)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.1 Indexing Performance — defining requirements
+**Current focus:** v4.1 Indexing Performance — Phase 32 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 32 of 33 (Schema Drop & Rebuild)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-10 — Milestone v4.1 started
+Status: Ready to plan
+Last activity: 2026-03-10 — Roadmap created
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -46,7 +48,8 @@ v4.1 context:
 - readBranchFile() spawns `git show branch:path` per file — ~2-5ms overhead per call
 - listBranchFiles() spawns `git ls-tree` per repo
 - Replacing with fs.readFileSync() eliminates process spawning entirely
-- V9 migration fix already written (re-ensures fields table for stale V8 DBs)
+- V9 migration fix already written gets replaced by simpler drop+rebuild approach
+- Schema simplification done first so drop+rebuild mechanism is in place before filesystem refactor
 
 ### Pending Todos
 
@@ -59,6 +62,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Milestone v4.1 started, defining requirements
+Stopped at: Roadmap created for v4.1 Indexing Performance
 Resume file: None
-Next: Define requirements → create roadmap → execute
+Next: `/gsd:plan-phase 32`
