@@ -140,6 +140,6 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
-| 29 | 2/2 | Complete   | 2026-03-10 | - |
+| 29 | 2/2 | Complete    | 2026-03-10 | - |
 | 30 | v4.0 | 0/TBD | Not started | - |
 | 31 | v4.0 | 0/TBD | Not started | - |
