@@ -211,4 +211,116 @@ describe('findEntity', () => {
       }
     });
   });
+
+  describe('field entity cards', () => {
+    beforeEach(() => {
+      // repo-alpha: has employee_id (required) in ecto_schema and a unique_field
+      persistRepoData(db, {
+        metadata: {
+          name: 'repo-alpha',
+          path: '/repos/repo-alpha',
+          description: 'Alpha service',
+          techStack: ['elixir'],
+          keyFiles: ['mix.exs'],
+          currentCommit: 'ccc333',
+        },
+        modules: [],
+        fields: [
+          {
+            parentType: 'ecto_schema',
+            parentName: 'Employee',
+            fieldName: 'employee_id',
+            fieldType: 'integer',
+            nullable: false,
+            sourceFile: 'lib/employee.ex',
+          },
+          {
+            parentType: 'ecto_schema',
+            parentName: 'Employee',
+            fieldName: 'unique_field',
+            fieldType: 'string',
+            nullable: true,
+            sourceFile: 'lib/employee.ex',
+          },
+        ],
+      });
+
+      // repo-beta: has employee_id (nullable) in proto_message
+      persistRepoData(db, {
+        metadata: {
+          name: 'repo-beta',
+          path: '/repos/repo-beta',
+          description: 'Beta service',
+          techStack: ['elixir'],
+          keyFiles: ['mix.exs'],
+          currentCommit: 'ddd444',
+        },
+        modules: [],
+        fields: [
+          {
+            parentType: 'proto_message',
+            parentName: 'EmployeeProto',
+            fieldName: 'employee_id',
+            fieldType: 'int32',
+            nullable: true,
+            sourceFile: 'proto/employee.proto',
+          },
+        ],
+      });
+    });
+
+    it('findEntity with type=field returns cards for each occurrence across repos', () => {
+      const results = findEntity(db, 'employee_id', { type: 'field' });
+      expect(results.length).toBe(2);
+      expect(results.every((c) => c.type === 'field')).toBe(true);
+      const repoNames = results.map((c) => c.repoName);
+      expect(repoNames).toContain('repo-alpha');
+      expect(repoNames).toContain('repo-beta');
+    });
+
+    it('each field card has description with parent_name, field_type, and nullable/required', () => {
+      const results = findEntity(db, 'employee_id', { type: 'field' });
+      const alphaCard = results.find((c) => c.repoName === 'repo-alpha')!;
+      expect(alphaCard.description).toContain('Employee');
+      expect(alphaCard.description).toContain('integer');
+      expect(alphaCard.description).toContain('required');
+
+      const betaCard = results.find((c) => c.repoName === 'repo-beta')!;
+      expect(betaCard.description).toContain('EmployeeProto');
+      expect(betaCard.description).toContain('int32');
+      expect(betaCard.description).toContain('nullable');
+    });
+
+    it('field in 2+ repos gets shared concept prefix in description', () => {
+      const results = findEntity(db, 'employee_id', { type: 'field' });
+      for (const card of results) {
+        expect(card.description).toContain('[shared across 2 repos]');
+      }
+    });
+
+    it('field in only 1 repo does NOT include shared in description', () => {
+      const results = findEntity(db, 'unique_field', { type: 'field' });
+      expect(results.length).toBe(1);
+      expect(results[0].description).not.toContain('[shared');
+    });
+
+    it('repo filter works for field entity queries', () => {
+      const results = findEntity(db, 'employee_id', { type: 'field', repo: 'repo-alpha' });
+      expect(results.length).toBe(1);
+      expect(results[0].repoName).toBe('repo-alpha');
+    });
+
+    it('findEntity with no type filter still finds fields by exact name', () => {
+      const results = findEntity(db, 'employee_id');
+      const fieldCards = results.filter((c) => c.type === 'field');
+      expect(fieldCards.length).toBeGreaterThan(0);
+    });
+
+    it('field entity cards are sorted by repo name, then parent type, then parent name', () => {
+      const results = findEntity(db, 'employee_id', { type: 'field' });
+      // repo-alpha should come before repo-beta
+      expect(results[0].repoName).toBe('repo-alpha');
+      expect(results[1].repoName).toBe('repo-beta');
+    });
+  });
 });
