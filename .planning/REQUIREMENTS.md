@@ -9,14 +9,14 @@ Requirements for Indexing UX milestone. Each maps to roadmap phases.
 
 ### Progress Reporting
 
-- [ ] **PROG-01**: Git refresh phase shows a live counter that updates in-place (`Refreshing [42/412]...`)
-- [ ] **PROG-02**: Extraction/indexing phase shows a live counter with current repo name (`Indexing [42/412] app-foo...`)
-- [ ] **PROG-03**: Progress counters use `\r` line overwrite on TTY, plain newlines on non-TTY
+- [x] **PROG-01**: Git refresh phase shows a live counter that updates in-place (`Refreshing [42/412]...`)
+- [x] **PROG-02**: Extraction/indexing phase shows a live counter with current repo name (`Indexing [42/412] app-foo...`)
+- [x] **PROG-03**: Progress counters use `\r` line overwrite on TTY, plain newlines on non-TTY
 
 ### Error Grouping
 
-- [ ] **ERR-01**: Git refresh failures are collected and printed as a grouped summary by failure category (worktree conflict, dirty working tree, timeout, other)
-- [ ] **ERR-02**: "Skipping X: no main or master branch" messages are collected and shown as a single count with repo list
+- [x] **ERR-01**: Git refresh failures are collected and printed as a grouped summary by failure category (worktree conflict, dirty working tree, timeout, other)
+- [x] **ERR-02**: "Skipping X: no main or master branch" messages are collected and shown as a single count with repo list
 - [ ] **ERR-03**: Indexing errors are listed individually at the end, not interleaved with progress
 
 ### Output Control
@@ -58,11 +58,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROG-01 | Phase 27 | Pending |
-| PROG-02 | Phase 27 | Pending |
-| PROG-03 | Phase 27 | Pending |
-| ERR-01 | Phase 27 | Pending |
-| ERR-02 | Phase 27 | Pending |
+| PROG-01 | Phase 27 | Complete |
+| PROG-02 | Phase 27 | Complete |
+| PROG-03 | Phase 27 | Complete |
+| ERR-01 | Phase 27 | Complete |
+| ERR-02 | Phase 27 | Complete |
 | ERR-03 | Phase 27 | Pending |
 | OUT-01 | Phase 28 | Pending |
 | OUT-02 | Phase 28 | Pending |

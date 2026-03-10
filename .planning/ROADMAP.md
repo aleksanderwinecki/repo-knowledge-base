@@ -93,7 +93,7 @@
   5. Repos with no main/master branch are reported as a single count with repo list, not individual "Skipping X" messages scattered through output
 **Plans:** 2 plans
 Plans:
-- [ ] 27-01-PLAN.md -- ProgressReporter and ErrorCollector classes with TDD
+- [x] 27-01-PLAN.md -- ProgressReporter and ErrorCollector classes with TDD
 - [ ] 27-02-PLAN.md -- Wire progress/error classes into pipeline and CLI
 
 ### Phase 28: Output Control & Summary
@@ -118,5 +118,5 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
-| 27. Progress & Errors | v3.1 | 0/2 | Planned | - |
+| 27. Progress & Errors | v3.1 | 1/2 | In Progress | - |
 | 28. Output & Summary | v3.1 | 0/TBD | Not started | - |
