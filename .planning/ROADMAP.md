@@ -122,7 +122,10 @@ Plans:
   3. `kb index --repo foo --refresh` still fetches and resets to remote default branch before indexing
   4. Incremental indexing (skip unchanged repos via HEAD comparison) still works correctly
   5. All existing tests pass after the refactor
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 33-01-PLAN.md -- Add fs-based file I/O, refactor all extractors to drop branch param
+- [ ] 33-02-PLAN.md -- Wire pipeline, remove dead git functions, update all tests
 
 ## Progress
 
@@ -137,4 +140,4 @@ Plans:
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32. Schema Drop & Rebuild | 1/1 | Complete    | 2026-03-10 | - |
-| 33. Filesystem Reads | v4.1 | 0/0 | Not started | - |
+| 33. Filesystem Reads | v4.1 | 0/2 | Not started | - |
