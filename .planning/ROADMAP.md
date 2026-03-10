@@ -136,5 +136,5 @@ Plans:
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
-| 32. Schema Drop & Rebuild | 1/1 | Complete   | 2026-03-10 | - |
+| 32. Schema Drop & Rebuild | 1/1 | Complete    | 2026-03-10 | - |
 | 33. Filesystem Reads | v4.1 | 0/0 | Not started | - |

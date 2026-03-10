@@ -4,7 +4,7 @@ milestone: v4.1
 milestone_name: Indexing Performance
 status: completed
 stopped_at: Completed 32-01-PLAN.md
-last_updated: "2026-03-10T15:42:23.297Z"
+last_updated: "2026-03-10T15:45:51.530Z"
 last_activity: 2026-03-10 — Completed 32-01 schema drop+rebuild
 progress:
   total_phases: 2
