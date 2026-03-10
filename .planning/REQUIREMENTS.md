@@ -27,9 +27,9 @@ Requirements for Indexing UX milestone. Each maps to roadmap phases.
 
 ### Summary
 
-- [ ] **SUM-01**: Final summary shows: total repos, indexed count, skipped count, error count, and elapsed time
-- [ ] **SUM-02**: Errors section lists each failed repo with its error message
-- [ ] **SUM-03**: Summary is compact — fits in a single terminal screen for a 400-repo run
+- [x] **SUM-01**: Final summary shows: total repos, indexed count, skipped count, error count, and elapsed time
+- [x] **SUM-02**: Errors section lists each failed repo with its error message
+- [x] **SUM-03**: Summary is compact — fits in a single terminal screen for a 400-repo run
 
 ## Future Requirements
 
@@ -67,9 +67,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OUT-01 | Phase 28 | Pending |
 | OUT-02 | Phase 28 | Pending |
 | OUT-03 | Phase 28 | Pending |
-| SUM-01 | Phase 28 | Pending |
-| SUM-02 | Phase 28 | Pending |
-| SUM-03 | Phase 28 | Pending |
+| SUM-01 | Phase 28 | Complete |
+| SUM-02 | Phase 28 | Complete |
+| SUM-03 | Phase 28 | Complete |
 
 **Coverage:**
 - v3.1 requirements: 12 total

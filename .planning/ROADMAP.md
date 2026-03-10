@@ -106,7 +106,7 @@ Plans:
   3. Per-repo "Indexing X... done" lines are gone from default output -- progress counter is the only mid-run output (detail available via `--verbose` or `--json`)
   4. Errors are listed individually in the summary with repo name and error message
   5. The entire summary for a 400-repo run fits on a single terminal screen (compact, no bloat)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 28-01-PLAN.md -- printSummary formatter with TDD
 - [ ] 28-02-PLAN.md -- Wire --json/--verbose flags and output gating into index command
@@ -122,4 +122,4 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27. Progress & Errors | v3.1 | 2/2 | Complete | 2026-03-10 |
-| 28. Output & Summary | v3.1 | 0/2 | Not started | - |
+| 28. Output & Summary | 1/2 | In Progress|  | - |
