@@ -14,22 +14,20 @@ Persistent knowledge base that indexes your entire microservice ecosystem so AI 
 ## Quick start
 
 ```bash
-# Install
-npm install
-npm run build
-npm link          # makes `kb` available globally
+# Build
+npm install && npm run build && npm link
 
 # Index your repos (first run takes a few minutes)
 kb index --root ~/Documents/Repos
 
-# Search
-kb search "booking cancellation"
-kb search "BookingCreated" --entity
-kb deps app-auth
-
-# Teach it
-kb learn "payments-service owns the billing domain" --repo payments-service
+# Add to Claude Code as MCP server (recommended)
+claude mcp add kb -- node /path/to/repo-knowledge-base/dist/mcp/server.js
 ```
+
+> **nvm users**: Claude Code doesn't load nvm's PATH, so use absolute paths:
+> `claude mcp add kb -- /path/to/.nvm/versions/node/vX.Y.Z/bin/node /path/to/repo-knowledge-base/dist/mcp/server.js`
+
+Once connected, Claude Code can call `kb_search`, `kb_deps`, `kb_explain`, etc. directly — no CLI piping needed.
 
 ## Stats (real-world)
 
@@ -88,48 +86,40 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 
 Single SQLite file at `~/.kb/knowledge.db` (override with `KB_DB_PATH` env var). Uses WAL mode, FTS5 virtual tables, and a generic edges table for the topology graph.
 
-## MCP Server
+## MCP Server (recommended)
 
-The knowledge base ships as an MCP server so Claude Code (or any MCP client) can query it directly — no CLI piping needed.
+The knowledge base ships as an MCP server — the primary way to integrate with Claude Code. Tools are called directly, no shell overhead, structured I/O, and auto-sync for stale repos.
 
 ### Setup
 
 ```bash
-# Build and link (if you haven't already)
+# Build (if you haven't already)
 npm install && npm run build && npm link
+
+# Add to Claude Code
+claude mcp add kb -- node /absolute/path/to/repo-knowledge-base/dist/mcp/server.js
+
+# Verify
+claude mcp get kb
 ```
 
-### Add to Claude Code
+> **nvm users**: Claude Code spawns MCP servers outside your shell, so nvm's PATH isn't available. Use the absolute path to node:
+> ```bash
+> claude mcp add kb -- ~/.nvm/versions/node/v22.20.0/bin/node ~/Documents/Repos/repo-knowledge-base/dist/mcp/server.js
+> ```
 
-Add this to your `~/.claude/settings.json` (or the project-level `.claude/settings.json`):
+Restart Claude Code after adding. Use `/mcp` inside a session to verify the server is connected.
 
-```json
-{
-  "mcpServers": {
-    "kb": {
-      "command": "kb-mcp"
-    }
-  }
-}
-```
+### Scopes
 
-That's it. Restart Claude Code and the 12 tools below become available in every conversation.
+- **Local** (default): Available to you in the current project only
+- **User** (`--scope user`): Available across all projects
+- **Project** (`--scope project`): Stored in `.mcp.json`, shared via version control
 
 ### Custom database path
 
-By default the server uses `~/.kb/knowledge.db`. To use a different path:
-
-```json
-{
-  "mcpServers": {
-    "kb": {
-      "command": "kb-mcp",
-      "env": {
-        "KB_DB_PATH": "/path/to/your/knowledge.db"
-      }
-    }
-  }
-}
+```bash
+claude mcp add kb --env KB_DB_PATH=/path/to/knowledge.db -- node /path/to/dist/mcp/server.js
 ```
 
 ### Available tools
@@ -151,9 +141,22 @@ By default the server uses `~/.kb/knowledge.db`. To use a different path:
 
 Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
 
-## Using with Claude Code (CLI)
+## CLI (alternative)
 
-You can also use the `kb` CLI directly. See [CLAUDE.md](CLAUDE.md) for setup instructions, or install the `kb` skill for automatic integration.
+The `kb` CLI is available as a fallback when MCP isn't configured, or for manual use in the terminal.
+
+```bash
+kb search "booking cancellation"
+kb deps app-auth --mechanism grpc
+kb explain app-appointments
+kb learn "payments owns billing" --repo app-payments
+```
+
+See [CLAUDE.md](CLAUDE.md) for full command reference. You can also install the `/kb` skill for Claude Code CLI integration:
+
+```bash
+cp -r /path/to/repo-knowledge-base/skill ~/.claude/skills/kb
+```
 
 ## Architecture
 

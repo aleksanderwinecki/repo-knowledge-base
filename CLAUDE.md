@@ -1,27 +1,49 @@
 # repo-knowledge-base
 
-This is a knowledge base CLI tool (`kb`) that indexes microservice repos and exposes search, dependency queries, and manual fact storage. All output is JSON.
+Knowledge base that indexes microservice repos and exposes search, dependency queries, and manual fact storage via MCP server and CLI. All output is JSON.
 
 ## Setup
 
 ```bash
 # From repo root
-npm install && npm run build
-
-# Link globally so `kb` is available everywhere
-npm link
+npm install && npm run build && npm link
 ```
 
-## Using kb in any Claude Code session
+## Using kb with Claude Code
 
-Add this to the project's CLAUDE.md or your global `~/.claude/CLAUDE.md`:
+### MCP server (recommended)
 
-```markdown
-## Knowledge Base
+The MCP server is the primary integration — Claude Code calls tools directly with structured I/O, no shell overhead.
 
-The `kb` CLI indexes all repos under ~/Documents/Repos/ into a searchable knowledge base.
+```bash
+# Add to Claude Code (use absolute paths for nvm users)
+claude mcp add kb -- node /path/to/repo-knowledge-base/dist/mcp/server.js
 
-Available commands (all output JSON):
+# Verify connection
+claude mcp get kb
+```
+
+Use `/mcp` inside a session to check server status. Available MCP tools:
+
+- `kb_search` — Full-text search across indexed repos
+- `kb_entity` — Structured entity card with relationships
+- `kb_deps` — Service dependency graph. Filter: `mechanism`, `direction`, `depth`
+- `kb_impact` — Blast radius: what breaks if this service changes. Filter: `mechanism`, `depth`
+- `kb_trace` — Shortest path between two services with per-hop mechanism labels
+- `kb_explain` — Structured service overview card (connections, events, modules, hints)
+- `kb_learn` — Store a persistent fact
+- `kb_forget` — Delete a fact by ID
+- `kb_status` — Database stats
+- `kb_list_types` — List available entity types with counts
+- `kb_reindex` — Reindex specific repos with optional git refresh
+- `kb_cleanup` — Detect deleted repos and stale facts
+
+Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) auto-sync stale repos before returning results.
+
+### CLI fallback
+
+If MCP isn't configured, the `kb` CLI works directly:
+
 - `kb search "query"` — Full-text search across indexed repos
 - `kb search "Name" --entity` — Structured entity card with relationships
 - `kb search --list-types` — List available entity types with counts
@@ -38,19 +60,13 @@ Available commands (all output JSON):
 - `kb index --repo app-foo app-bar` — Re-index specific repos only
 - `kb index --repo app-foo --refresh` — Git fetch + reset to latest before indexing
 
-Use `kb search` when you need to find which service handles something, what modules exist for a domain, or how services are connected.
-Use `kb explain` to get a quick overview of any service. Use `kb impact` and `kb trace` for dependency analysis.
-```
+### Skill
 
-## Alternative: install as a skill
-
-Copy the skill directory for automatic Claude Code integration:
+Install the `/kb` skill for CLI integration in any Claude Code session:
 
 ```bash
 cp -r /path/to/repo-knowledge-base/skill ~/.claude/skills/kb
 ```
-
-Then use `/kb <query>` in any Claude Code session.
 
 ## Database location
 
@@ -61,4 +77,4 @@ Override: `KB_DB_PATH=/path/to/db.sqlite`
 
 - `npm test` — 672 tests
 - `npm run build` — compile TypeScript
-- Source: `src/` (db, indexer, search, knowledge, cli)
+- Source: `src/` (db, indexer, search, knowledge, cli, mcp)

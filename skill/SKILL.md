@@ -1,11 +1,13 @@
 ---
 name: kb
-description: Query the repo knowledge base — search across all indexed microservices, find dependencies, look up modules and events. Use when you need to understand the codebase architecture or find which service handles something.
+description: Query the repo knowledge base via CLI — search across all indexed microservices, find dependencies, look up modules and events. Prefer MCP tools (kb_search, kb_deps, etc.) when available; this skill is a CLI fallback.
 argument-hint: <search query or command>
 allowed-tools: Bash(kb:*)
 ---
 
 # Repository Knowledge Base
+
+> **Prefer MCP**: If the `kb` MCP server is connected, use MCP tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`) directly instead of this skill. They provide structured I/O with no shell overhead. This skill is a CLI fallback for when MCP isn't configured.
 
 Query a persistent knowledge base that indexes 400+ microservice repos. Use this to find services, modules, events, dependencies, topology edges, and learned facts without re-scanning repos.
 
