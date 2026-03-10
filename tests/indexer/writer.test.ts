@@ -821,6 +821,126 @@ describe('field persistence', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('persistRepoData with fields indexes them into FTS', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null, tableName: 'employees', schemaFields: JSON.stringify([{ name: 'employee_id', type: 'integer' }]) },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/employee.ex' },
+    ];
+
+    persistRepoData(db, { metadata, modules, fields });
+
+    // FTS should contain field entries with entity_type LIKE 'field:%'
+    const ftsRows = db.prepare("SELECT * FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as any[];
+    expect(ftsRows.length).toBeGreaterThan(0);
+  });
+
+  it('field FTS entity_type is field:{parentType}', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/employee.ex' },
+    ];
+
+    persistRepoData(db, { metadata, modules, fields });
+
+    const ftsRows = db.prepare("SELECT entity_type FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as { entity_type: string }[];
+    expect(ftsRows.length).toBeGreaterThan(0);
+    expect(ftsRows[0].entity_type).toBe('field:ecto_schema');
+  });
+
+  it('field FTS name contains the field_name', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'OrderCreated', fieldName: 'order_status', fieldType: 'string', nullable: false, sourceFile: 'proto/order.proto' },
+    ];
+    const events = [
+      { name: 'OrderCreated', schemaDefinition: 'message OrderCreated {}', sourceFile: 'proto/order.proto' },
+    ];
+
+    persistRepoData(db, { metadata, events, fields });
+
+    const ftsRows = db.prepare("SELECT name FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as { name: string }[];
+    expect(ftsRows.length).toBeGreaterThan(0);
+    expect(ftsRows[0].name).toContain('order');
+    expect(ftsRows[0].name).toContain('status');
+  });
+
+  it('field FTS description contains parentName and fieldType', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'name', fieldType: 'string', nullable: true, sourceFile: 'lib/employee.ex' },
+    ];
+
+    persistRepoData(db, { metadata, fields });
+
+    const ftsRows = db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as { description: string }[];
+    expect(ftsRows.length).toBeGreaterThan(0);
+    // Description should contain parentName and fieldType
+    expect(ftsRows[0].description).toContain('MyApp.Employee');
+    expect(ftsRows[0].description).toContain('string');
+  });
+
+  it('clearRepoEntities removes field FTS entries before deleting field rows', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'Test', fieldName: 'a', fieldType: 'string', nullable: true, sourceFile: 'lib/test.ex' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, fields });
+
+    // Verify FTS entry exists
+    const ftsBefore = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { count: number };
+    expect(ftsBefore.count).toBeGreaterThan(0);
+
+    clearRepoEntities(db, repoId);
+
+    // FTS entries should be gone
+    const ftsAfter = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { count: number };
+    expect(ftsAfter.count).toBe(0);
+  });
+
+  it('clearRepoFiles removes field FTS entries before deleting field rows for changed files', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'x', fieldType: 'string', nullable: true, sourceFile: 'lib/a.ex' },
+      { parentType: 'ecto_schema' as const, parentName: 'ModB', fieldName: 'y', fieldType: 'string', nullable: true, sourceFile: 'lib/b.ex' },
+    ];
+    const modules = [
+      { name: 'ModA', type: 'module', filePath: 'lib/a.ex', summary: null },
+      { name: 'ModB', type: 'module', filePath: 'lib/b.ex', summary: null },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, fields });
+
+    // Verify 2 field FTS entries exist
+    const ftsBefore = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { count: number };
+    expect(ftsBefore.count).toBe(2);
+
+    clearRepoFiles(db, repoId, ['lib/a.ex']);
+
+    // Only 1 field FTS entry should remain (for lib/b.ex)
+    const ftsAfter = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { count: number };
+    expect(ftsAfter.count).toBe(1);
+  });
+
+  it('re-indexing (persistRepoData twice) does not duplicate field FTS entries', () => {
+    const metadata = makeMetadata();
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'Test', fieldName: 'a', fieldType: 'string', nullable: true, sourceFile: 'lib/test.ex' },
+    ];
+
+    persistRepoData(db, { metadata, fields });
+    persistRepoData(db, { metadata, fields });
+
+    const ftsRows = db.prepare("SELECT COUNT(*) as count FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as { count: number }[];
+    expect(ftsRows[0].count).toBe(1);
+  });
+
   it('surgical persist inserts fields for changed files', () => {
     const metadata = makeMetadata();
     const modules = [
