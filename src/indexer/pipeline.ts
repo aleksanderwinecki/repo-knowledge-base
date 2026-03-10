@@ -398,8 +398,16 @@ export async function indexAllRepos(
   const concurrency = parseInt(process.env.KB_CONCURRENCY ?? '4', 10) || 4;
   const limit = pLimit(concurrency);
 
+  let extractionDone = 0;
+  const extractionTotal = workItems.length;
+
   const extractionPromises = workItems.map((item) =>
-    limit(() => extractRepoData(item.repoPath, item.options, item.branch, item.dbSnapshot)),
+    limit(async () => {
+      const data = await extractRepoData(item.repoPath, item.options, item.branch, item.dbSnapshot);
+      extractionDone++;
+      callbacks?.progress?.update(extractionDone, extractionTotal, item.repoName);
+      return data;
+    }),
   );
 
   const settled = await Promise.allSettled(extractionPromises);
@@ -412,7 +420,6 @@ export async function indexAllRepos(
     if (result.status === 'fulfilled') {
       try {
         const stats = persistExtractedData(db, result.value);
-        callbacks?.progress?.update(i + 1, settled.length, item.repoName);
         results.push({ repo: item.repoName, status: 'success', mode: stats.mode, stats });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);

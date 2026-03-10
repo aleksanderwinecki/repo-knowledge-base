@@ -27,13 +27,43 @@ export interface PipelineCallbacks {
 // ProgressReporter
 // ---------------------------------------------------------------------------
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 export class ProgressReporter {
   private readonly stream: NodeJS.WriteStream;
   private readonly isTTY: boolean;
+  private spinTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(stream?: NodeJS.WriteStream) {
     this.stream = stream ?? process.stderr;
     this.isTTY = !!this.stream.isTTY;
+  }
+
+  /**
+   * Show an animated spinner with a message (TTY only).
+   * On non-TTY, writes the message once as a plain line.
+   * Auto-stops when update() or finish() is called.
+   */
+  spin(message: string): void {
+    this.stopSpin();
+    if (this.isTTY) {
+      let frame = 0;
+      this.spinTimer = setInterval(() => {
+        this.stream.clearLine(0);
+        this.stream.cursorTo(0);
+        this.stream.write(`${SPINNER_FRAMES[frame % SPINNER_FRAMES.length]} ${message}`);
+        frame++;
+      }, 80);
+    } else {
+      this.stream.write(message + '\n');
+    }
+  }
+
+  private stopSpin(): void {
+    if (this.spinTimer) {
+      clearInterval(this.spinTimer);
+      this.spinTimer = null;
+    }
   }
 
   /**
@@ -42,6 +72,7 @@ export class ProgressReporter {
    * - With label: "Indexing [current/total] label..."
    */
   update(current: number, total: number, label?: string): void {
+    this.stopSpin();
     const text = label
       ? `Indexing [${current}/${total}] ${label}...`
       : `Refreshing [${current}/${total}]...`;
@@ -61,6 +92,7 @@ export class ProgressReporter {
    * On non-TTY: writes the message (if any) as a plain line.
    */
   finish(message?: string): void {
+    this.stopSpin();
     if (this.isTTY) {
       this.stream.clearLine(0);
       this.stream.cursorTo(0);

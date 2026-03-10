@@ -40,6 +40,8 @@ export function registerIndex(program: Command) {
       const progress = new ProgressReporter(process.stderr);
       const errors = new ErrorCollector();
 
+      progress.spin('Scanning repos...');
+
       const results = await withDbAsync(async (db) =>
         withTimingAsync('index-all', () =>
           indexAllRepos(db, {

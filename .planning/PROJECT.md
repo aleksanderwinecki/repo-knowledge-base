@@ -6,18 +6,7 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem (~400 r
 
 ## Current State
 
-**Latest shipped:** v3.0 Graph Intelligence (2026-03-10)
-
-## Current Milestone: v3.1 Indexing UX
-
-**Goal:** Make `kb index` output useful for humans watching a terminal during the ~1hr full reindex.
-
-**Target features:**
-- Progress counters with line-overwrite for git refresh and extraction phases
-- Grouped git refresh failure summary (by category: worktree conflict, dirty tree, timeout)
-- Live extraction/indexing progress (`[42/412] Indexing app-foo...`)
-- Compact final summary (counts only, errors listed individually)
-- JSON output gated behind `--json` flag or non-TTY detection
+**Latest shipped:** v3.1 Indexing UX (2026-03-10)
 
 ## Core Value
 
@@ -27,6 +16,8 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v3.1 PROG-01..03, ERR-01..03: Live progress counters with TTY detection, categorized error grouping — Phase 27
+- v3.1 OUT-01..03, SUM-01..03: Output gating (--json/pipe), compact human summary — Phase 28
 - v3.0 GRAPH-01..05: In-memory graph module with BFS traversal, event/Kafka resolution, shared edge utilities — Phase 23
 - v3.0 IMPACT-01..07: Blast radius analysis with mechanism filtering, depth tiers, compact MCP formatting — Phase 24
 - v3.0 TRACE-01..04: Flow tracing with shortest path, per-hop mechanisms, confidence scoring — Phase 25
@@ -47,10 +38,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-- [ ] Progress reporting during indexing
-- [ ] Grouped git refresh error summary
-- [ ] JSON output gated behind --json flag / non-TTY
-- [ ] Compact human-readable summary
+(None — next milestone TBD)
 
 ### Deferred
 
@@ -78,9 +66,9 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ## Context
 
-Shipped v3.0 with 672 tests passing across 40 test files.
+Shipped v3.1 with 711 tests passing across 43 test files.
 Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0, v1.1, v1.2, v2.0, v2.1, and v3.0 milestones (26 phases, 56 plans).
+Built across v1.0-v3.1 milestones (28 phases, 60 plans).
 
 12 MCP tools: kb_search, kb_entity, kb_deps, kb_impact, kb_trace, kb_explain, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup.
 CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb impact (--mechanism, --depth), kb trace, kb explain, kb status, kb learn, kb learned, kb forget, kb docs.
@@ -90,7 +78,8 @@ CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-
 Known limitations:
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 - Topology extraction catches most patterns but unusual client wrappers may be missed
-- Indexing output is noisy and lacks progress indication for the ~1hr full reindex
+- Individual field names (Ecto schema fields, proto message fields) are not searchable — stored as JSON blobs, not FTS-indexed
+- No field-level cross-service tracing — topology shows service-to-service edges but not which data fields flow through those edges
 
 ## Key Decisions
 
@@ -132,6 +121,10 @@ Known limitations:
 | kb_explain independent of graph module | Pure SQL aggregation simpler and sufficient for service cards | v3.0 Good |
 | Mechanism filter during BFS traversal | Applied at traversal time, not post-filter, for correct scoped queries | v3.0 Good |
 | Static agent hints with placeholder substitution | Simpler than dynamic hint generation; covers all common next-step patterns | v3.0 Good |
+| Optional PipelineCallbacks pattern | CLI passes reporters, MCP passes nothing — zero coupling between pipeline and presentation | v3.1 Good |
+| resolveOutputMode as pure function | Testable output gating: --json or !isTTY = json, else human summary | v3.1 Good |
+| Progress on stderr, data on stdout | Separates machine-readable JSON from human progress/errors | v3.1 Good |
+| Braille spinner with auto-stop | Shows activity during initial scan; auto-clears when progress counter takes over | v3.1 Good |
 
 ## Constraints
 
@@ -143,4 +136,4 @@ Known limitations:
 - **MCP responses**: Under 4KB per response
 
 ---
-*Last updated: 2026-03-10 after v3.1 milestone start*
+*Last updated: 2026-03-10 after v3.1 milestone completion*

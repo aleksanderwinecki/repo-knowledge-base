@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Indexing UX
-status: complete
+status: completed
 stopped_at: Completed 28-02-PLAN.md (v3.1 milestone complete)
-last_updated: "2026-03-10T11:35:07Z"
+last_updated: "2026-03-10T12:00:44.633Z"
 last_activity: 2026-03-10 — Completed 28-02 (Output Gating)
 progress:
   total_phases: 2

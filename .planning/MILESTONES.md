@@ -1,5 +1,23 @@
 # Milestones
 
+## v3.1 Indexing UX (Shipped: 2026-03-10)
+
+**Phases completed:** 2 phases (27-28), 4 plans, 5 tasks
+**Timeline:** 1 day (2026-03-10)
+**Stats:** 16 commits, 23 files changed, 3,023 insertions, 711 tests
+
+**Key accomplishments:**
+- ProgressReporter: TTY-aware in-place counters with `\r` overwrite for git refresh (`Refreshing [42/412]...`) and extraction (`Indexing [42/412] app-foo...`), plain newlines on non-TTY
+- ErrorCollector: categorized git refresh error grouping (worktree conflict, dirty tree, timeout, other) with deferred grouped summary output
+- Animated spinner during initial repo scanning phase
+- printSummary: compact one-line header (`Indexing complete: 400 repos (380 indexed, 15 skipped, 5 errors) in 42.3s`) with delegated error details
+- Output gating: `--json` flag and non-TTY pipe detection for JSON output, human summary as TTY default, `--verbose` flag declared for future per-repo detail
+- PipelineCallbacks pattern: optional callbacks on indexAllRepos — CLI passes reporters, MCP passes nothing (silent)
+
+**Delivered:** Transformed `kb index` from a noisy 400-line JSON dump into a clean progress-reporting CLI with live counters, grouped errors, and a compact human-readable summary — while preserving JSON output for pipe consumers.
+
+---
+
 ## v3.0 Graph Intelligence (Shipped: 2026-03-10)
 
 **Phases completed:** 4 phases (23-26), 9 plans
