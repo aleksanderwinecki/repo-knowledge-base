@@ -9,10 +9,10 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 ### Field Extraction
 
-- [ ] **FLD-01**: Ecto schema `field/3` calls are extracted as individual searchable field entities with name, type, and parent module
-- [ ] **FLD-02**: Proto message field declarations are extracted as individual searchable field entities with name, type, and parent message
-- [ ] **FLD-03**: GraphQL type field definitions are extracted as individual searchable field entities with name, type, and parent type
-- [ ] **FLD-04**: `fields` table created via schema migration with columns: parent_type, parent_name, field_name, field_type, nullable, source_file, repo_id, module_id, event_id
+- [x] **FLD-01**: Ecto schema `field/3` calls are extracted as individual searchable field entities with name, type, and parent module
+- [x] **FLD-02**: Proto message field declarations are extracted as individual searchable field entities with name, type, and parent message
+- [x] **FLD-03**: GraphQL type field definitions are extracted as individual searchable field entities with name, type, and parent type
+- [x] **FLD-04**: `fields` table created via schema migration with columns: parent_type, parent_name, field_name, field_type, nullable, source_file, repo_id, module_id, event_id
 
 ### Field Search
 
@@ -22,8 +22,8 @@ Requirements for Data Contract Intelligence milestone. Each maps to roadmap phas
 
 ### Nullability
 
-- [ ] **NULL-01**: Ecto `validate_required` fields are marked nullable=false; other cast fields are marked nullable=true
-- [ ] **NULL-02**: Proto `optional` keyword marks field as nullable=true; plain fields are nullable=false (proto3 default semantics)
+- [x] **NULL-01**: Ecto `validate_required` fields are marked nullable=false; other cast fields are marked nullable=true
+- [x] **NULL-02**: Proto `optional` keyword marks field as nullable=true; plain fields are nullable=false (proto3 default semantics)
 
 ### Shared Concepts
 
@@ -74,12 +74,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FLD-01 | Phase 29 | Pending |
-| FLD-02 | Phase 29 | Pending |
-| FLD-03 | Phase 29 | Pending |
-| FLD-04 | Phase 29 | Pending |
-| NULL-01 | Phase 29 | Pending |
-| NULL-02 | Phase 29 | Pending |
+| FLD-01 | Phase 29 | Complete |
+| FLD-02 | Phase 29 | Complete |
+| FLD-03 | Phase 29 | Complete |
+| FLD-04 | Phase 29 | Complete |
+| NULL-01 | Phase 29 | Complete |
+| NULL-02 | Phase 29 | Complete |
 | FSRCH-01 | Phase 30 | Pending |
 | FSRCH-02 | Phase 30 | Pending |
 | FSRCH-03 | Phase 30 | Pending |

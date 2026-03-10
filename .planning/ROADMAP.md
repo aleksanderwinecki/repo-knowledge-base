@@ -101,7 +101,7 @@
   3. Running `kb index` on a repo with GraphQL type definitions stores each GraphQL field as a separate row in the `fields` table with correct parent type, field name, field type, and repo
   4. Ecto fields referenced in `validate_required` are stored with `nullable=false`; other cast fields are stored with `nullable=true`
   5. Proto fields with `optional` keyword are stored with `nullable=true`; plain proto3 fields are stored with `nullable=false`
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 29-01-PLAN.md -- V8 migration, FieldData contract, extractor enhancements (Elixir/proto/GraphQL)
 - [ ] 29-02-PLAN.md -- Pipeline field mapping + writer persistence for both full and surgical paths
@@ -140,6 +140,6 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
-| 29 | v4.0 | 0/2 | In progress | - |
+| 29 | 1/2 | In Progress|  | - |
 | 30 | v4.0 | 0/TBD | Not started | - |
 | 31 | v4.0 | 0/TBD | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Data Contract Intelligence
 status: in_progress
-stopped_at: Roadmap created, ready to plan Phase 29
-last_updated: "2026-03-10T14:00:00Z"
-last_activity: 2026-03-10 — v4.0 roadmap created (3 phases, 16 requirements)
+stopped_at: Completed 29-01-PLAN.md
+last_updated: "2026-03-10T12:54:00Z"
+last_activity: 2026-03-10 — Phase 29 Plan 01 complete (V8 migration + field extraction)
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 17
 ---
 
 # Project State
@@ -26,17 +26,21 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 29 (Phase 1 of 3 in v4.0) — Field Extraction & Schema
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-10 — v4.0 roadmap created
+Plan: 1 of 2 complete
+Status: Executing
+Last activity: 2026-03-10 — Plan 01 complete (V8 migration + field extraction)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 60 (across v1.0-v3.1)
+- Total plans completed: 61 (across v1.0-v4.0)
 - 28 phases across 7 milestones shipped
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 29 | 01 | 7min | 3 | 9 |
 
 ## Accumulated Context
 
@@ -49,6 +53,13 @@ v4.0 roadmap decisions:
 - Nullability bundled with extraction (same regex pass, same table)
 - Field edges + field impact in one phase (edges are the data, impact is the query)
 
+Phase 29 Plan 01 decisions:
+- FieldData parentType uses string literal union type for compile-time safety
+- nullable defaults to 1 (true) in SQLite for safety
+- extractRequiredFields searches entire module content (not just schema block)
+- Proto optional detection is keyword-based per NULL-02 requirement
+- GraphQL field regex naturally handles edge cases via character class constraints
+
 ### Pending Todos
 
 None.
@@ -60,6 +71,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: v4.0 roadmap created
+Stopped at: Completed 29-01-PLAN.md
 Resume file: None
-Next: `/gsd:plan-phase 29`
+Next: Execute 29-02-PLAN.md
