@@ -94,7 +94,7 @@
 **Plans:** 2/2 plans complete
 Plans:
 - [x] 27-01-PLAN.md -- ProgressReporter and ErrorCollector classes with TDD
-- [ ] 27-02-PLAN.md -- Wire progress/error classes into pipeline and CLI
+- [x] 27-02-PLAN.md -- Wire progress/error classes into pipeline and CLI
 
 ### Phase 28: Output Control & Summary
 **Goal**: Default `kb index` output is a compact human-readable summary instead of a JSON dump, with JSON available on demand
@@ -106,7 +106,10 @@ Plans:
   3. Per-repo "Indexing X... done" lines are gone from default output -- progress counter is the only mid-run output (detail available via `--verbose` or `--json`)
   4. Errors are listed individually in the summary with repo name and error message
   5. The entire summary for a 400-repo run fits on a single terminal screen (compact, no bloat)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 28-01-PLAN.md -- printSummary formatter with TDD
+- [ ] 28-02-PLAN.md -- Wire --json/--verbose flags and output gating into index command
 
 ## Progress
 
@@ -118,5 +121,5 @@ Plans:
 | 16-20 | v2.0 | 11/11 | Complete | 2026-03-09 |
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
-| 27. Progress & Errors | 2/2 | Complete    | 2026-03-10 | - |
-| 28. Output & Summary | v3.1 | 0/TBD | Not started | - |
+| 27. Progress & Errors | v3.1 | 2/2 | Complete | 2026-03-10 |
+| 28. Output & Summary | v3.1 | 0/2 | Not started | - |
