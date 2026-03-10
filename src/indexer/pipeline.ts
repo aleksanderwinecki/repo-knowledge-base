@@ -17,6 +17,8 @@ import type { ModuleData, EventData, EdgeData, ServiceData } from './writer.js';
 import { extractTopologyEdges } from './topology/index.js';
 import type { TopologyEdge } from './topology/index.js';
 import { enrichFromEventCatalog } from './catalog.js';
+import type { PipelineCallbacks } from './progress.js';
+export type { PipelineCallbacks } from './progress.js';
 /** Options for the indexing pipeline */
 export interface IndexOptions {
   force: boolean;
@@ -312,6 +314,7 @@ function persistExtractedData(
 export async function indexAllRepos(
   db: Database.Database,
   options: IndexOptions,
+  callbacks?: PipelineCallbacks,
 ): Promise<IndexResult[]> {
   let repos = discoverRepos(options.rootDir);
   const results: IndexResult[] = [];
@@ -333,15 +336,19 @@ export async function indexAllRepos(
 
   // Git refresh step (before indexing, so pipeline sees updated branch tips)
   if (options.refresh) {
-    for (const repoPath of repos) {
+    const refreshTotal = repos.length;
+    for (let i = 0; i < repos.length; i++) {
+      callbacks?.progress?.update(i + 1, refreshTotal);
+      const repoPath = repos[i]!;
       const branch = resolveDefaultBranch(repoPath);
       if (branch) {
         const result = gitRefresh(repoPath, branch);
         if (!result.refreshed) {
-          console.warn(`Git refresh failed for ${path.basename(repoPath)}: ${result.error}`);
+          callbacks?.errors?.addRefreshError(path.basename(repoPath), result.error ?? 'unknown');
         }
       }
     }
+    callbacks?.progress?.finish();
   }
 
   // === Phase 1: Sequential preparation (all DB reads) ===
@@ -352,7 +359,7 @@ export async function indexAllRepos(
       // Resolve default branch (main or master)
       const branch = resolveDefaultBranch(repoPath);
       if (!branch) {
-        console.warn(`Skipping ${repoName}: no main or master branch`);
+        callbacks?.errors?.addNoBranch(repoName);
         results.push({ repo: repoName, status: 'skipped', mode: 'skipped', skipReason: 'no main or master branch' });
         continue;
       }
@@ -382,7 +389,7 @@ export async function indexAllRepos(
       workItems.push({ repoPath, repoName, branch, options, dbSnapshot });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`Indexing ${repoName}... ERROR: ${errorMsg}`);
+      callbacks?.errors?.addIndexError(repoName, errorMsg);
       results.push({ repo: repoName, status: 'error', error: errorMsg });
     }
   }
@@ -405,29 +412,24 @@ export async function indexAllRepos(
     if (result.status === 'fulfilled') {
       try {
         const stats = persistExtractedData(db, result.value);
-        console.log(
-          `Indexing ${item.repoName}... done (${stats.modules} modules, ${stats.protos} protos)`,
-        );
+        callbacks?.progress?.update(i + 1, settled.length, item.repoName);
         results.push({ repo: item.repoName, status: 'success', mode: stats.mode, stats });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`Indexing ${item.repoName}... ERROR: ${errorMsg}`);
+        callbacks?.errors?.addIndexError(item.repoName, errorMsg);
         results.push({ repo: item.repoName, status: 'error', error: errorMsg });
       }
     } else {
       const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
-      console.error(`Indexing ${item.repoName}... ERROR: ${errorMsg}`);
+      callbacks?.errors?.addIndexError(item.repoName, errorMsg);
       results.push({ repo: item.repoName, status: 'error', error: errorMsg });
     }
   }
 
-  // Print summary
+  // Finish progress (clears TTY line or writes newline)
+  callbacks?.progress?.finish();
+
   const success = results.filter((r) => r.status === 'success').length;
-  const skipped = results.filter((r) => r.status === 'skipped').length;
-  const errors = results.filter((r) => r.status === 'error').length;
-  console.log(
-    `\nIndexing complete: ${results.length} repos (${success} indexed, ${skipped} skipped, ${errors} errors)`,
-  );
 
   // Event Catalog enrichment: run after all repos indexed (EXT-05)
   // Only on full index runs when at least one repo was actually indexed
