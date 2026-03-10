@@ -103,8 +103,8 @@
   5. Proto fields with `optional` keyword are stored with `nullable=true`; plain proto3 fields are stored with `nullable=false`
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 29-01-PLAN.md -- V8 migration, FieldData contract, extractor enhancements (Elixir/proto/GraphQL)
-- [ ] 29-02-PLAN.md -- Pipeline field mapping + writer persistence for both full and surgical paths
+- [x] 29-01-PLAN.md -- V8 migration, FieldData contract, extractor enhancements (Elixir/proto/GraphQL)
+- [x] 29-02-PLAN.md -- Pipeline field mapping + writer persistence for both full and surgical paths
 
 ### Phase 30: Field Search & Shared Concepts
 **Goal**: Users can search for any field name across the entire indexed codebase and discover which field names are shared data contracts across multiple repos
@@ -116,7 +116,10 @@ Plans:
   3. `kb_search --type field` (CLI) and `kb_search` with `type: "field"` (MCP) filters results to field entities only
   4. After indexing, field names appearing in 2+ repos are identified as shared concepts with cross-repo occurrence counts
   5. `kb_entity "employee_id" --type field` shows all repos, parent schemas/protos/types, field types, and nullability for that field name
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 30-01-PLAN.md -- FTS field indexing, type plumbing, hydrator, cleanup (FSRCH-01/02/03)
+- [ ] 30-02-PLAN.md -- Field entity cards with shared concept detection (SHARED-01/02)
 
 ### Phase 31: Field Edges & Field Impact
 **Goal**: Users can trace a field name from its origin schemas through proto/event boundaries to all consuming services, seeing nullability at each hop
@@ -140,6 +143,6 @@ Plans:
 | 21-22 | v2.1 | 4/4 | Complete | 2026-03-09 |
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
-| 29 | 2/2 | Complete    | 2026-03-10 | - |
-| 30 | v4.0 | 0/TBD | Not started | - |
+| 29 | v4.0 | 2/2 | Complete | 2026-03-10 |
+| 30 | v4.0 | 0/2 | Not started | - |
 | 31 | v4.0 | 0/TBD | Not started | - |
