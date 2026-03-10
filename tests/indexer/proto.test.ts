@@ -38,8 +38,8 @@ message BookingCreated {
 `;
     const result = parseProtoFile('booking.proto', content);
     expect(result.messages[0].fields).toHaveLength(3);
-    expect(result.messages[0].fields[0]).toEqual({ type: 'string', name: 'booking_id' });
-    expect(result.messages[0].fields[1]).toEqual({ type: 'int32', name: 'amount' });
+    expect(result.messages[0].fields[0]).toEqual({ type: 'string', name: 'booking_id', optional: false });
+    expect(result.messages[0].fields[1]).toEqual({ type: 'int32', name: 'amount', optional: false });
   });
 
   it('extracts package name', () => {
@@ -82,8 +82,8 @@ message BookingList {
 `;
     const result = parseProtoFile('list.proto', content);
     expect(result.messages[0].fields).toHaveLength(2);
-    expect(result.messages[0].fields[0]).toEqual({ type: 'string', name: 'tags' });
-    expect(result.messages[0].fields[1]).toEqual({ type: 'Booking', name: 'items' });
+    expect(result.messages[0].fields[0]).toEqual({ type: 'string', name: 'tags', optional: false });
+    expect(result.messages[0].fields[1]).toEqual({ type: 'Booking', name: 'items', optional: false });
   });
 
   it('handles multiple messages', () => {

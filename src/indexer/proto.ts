@@ -4,6 +4,7 @@ import { listBranchFiles, readBranchFile } from './git.js';
 export interface ProtoField {
   type: string;
   name: string;
+  optional: boolean;
 }
 
 /** A parsed proto message */
@@ -110,20 +111,22 @@ function extractMessages(content: string): ProtoMessage[] {
 
 /**
  * Extract fields from a message body.
+ * Captures the qualifier (repeated/optional/required) to determine optionality.
  */
 function extractFields(body: string): ProtoField[] {
   const fields: ProtoField[] = [];
   const fieldRe =
-    /^\s+(?:repeated\s+|optional\s+|required\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*\d+/gm;
+    /^\s+(repeated\s+|optional\s+|required\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*\d+/gm;
 
   let match;
   while ((match = fieldRe.exec(body)) !== null) {
+    const qualifier = match[1]?.trim();
     // Skip nested message/enum/oneof declarations
-    const type = match[1]!;
+    const type = match[2]!;
     if (['message', 'enum', 'oneof', 'reserved', 'option', 'extend'].includes(type)) {
       continue;
     }
-    fields.push({ type, name: match[2]! });
+    fields.push({ type, name: match[3]!, optional: qualifier === 'optional' });
   }
 
   return fields;

@@ -12,6 +12,7 @@ export interface ElixirModule {
   associations: { kind: string; name: string; target: string }[];
   absintheTypes: { kind: string; name: string }[];
   grpcStubs: string[];
+  requiredFields: string[];
 }
 
 /** Max file size to process (500KB) */
@@ -89,6 +90,7 @@ export function parseElixirFile(
     const { schemaFields, associations } = extractSchemaDetails(moduleContent);
     const absintheTypes = extractAbsintheTypes(moduleContent);
     const grpcStubs = extractGrpcStubs(moduleContent);
+    const requiredFields = Array.from(extractRequiredFields(moduleContent));
     const type = tableName ? 'schema' : classifyModule(name);
 
     modules.push({
@@ -102,6 +104,7 @@ export function parseElixirFile(
       associations,
       absintheTypes,
       grpcStubs,
+      requiredFields,
     });
   }
 
@@ -267,6 +270,27 @@ function extractGrpcStubs(moduleContent: string): string[] {
   }
 
   return Array.from(stubs);
+}
+
+/**
+ * Extract required field names from all validate_required calls in module content.
+ * Handles both explicit changeset arg and pipe form.
+ * Returns the union of all required fields across all changesets.
+ */
+export function extractRequiredFields(moduleContent: string): Set<string> {
+  const required = new Set<string>();
+  // Match validate_required with optional changeset arg, then atom list
+  const re = /validate_required\s*\(\s*(?:\w+\s*,\s*)?\[([\s\S]*?)\]/g;
+  let match;
+  while ((match = re.exec(moduleContent)) !== null) {
+    const atomList = match[1]!;
+    const atomRe = /:(\w+)/g;
+    let atomMatch;
+    while ((atomMatch = atomRe.exec(atomList)) !== null) {
+      required.add(atomMatch[1]!);
+    }
+  }
+  return required;
 }
 
 /**

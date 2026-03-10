@@ -27,6 +27,7 @@ function makeModule(overrides: Partial<ElixirModule> = {}): ElixirModule {
     associations: [],
     absintheTypes: [],
     grpcStubs: [],
+    requiredFields: [],
     ...overrides,
   };
 }
