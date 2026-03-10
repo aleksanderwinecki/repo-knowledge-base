@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { SCHEMA_VERSION } from '../../src/db/schema.js';
 import { getCurrentVersion, setVersion, runMigrations } from '../../src/db/migrations.js';
+import type { FieldData } from '../../src/indexer/writer.js';
 import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import os from 'os';
@@ -372,8 +373,8 @@ describe('v4 migration', () => {
     expect(evtRow.file_id).toBeNull(); // migrated rows have null file_id
   });
 
-  it('SCHEMA_VERSION is 7', () => {
-    expect(SCHEMA_VERSION).toBe(7);
+  it('SCHEMA_VERSION is 8', () => {
+    expect(SCHEMA_VERSION).toBe(8);
   });
 
   it('fresh database has file_id column on events', () => {
@@ -633,6 +634,136 @@ describe('v7 migration', () => {
     expect(edge.relationship_type).toBe('calls_grpc');
     expect(edge.source_file).toBe('src/client.ex');
     expect(edge.metadata).toBeNull();
+  });
+});
+
+describe('v8 migration', () => {
+  let db: Database.Database;
+  let dbPath: string;
+
+  /**
+   * Create a raw v7 database by running v1-v7 migrations manually,
+   * then setting user_version to 7.
+   */
+  function createV7Database(filePath: string): Database.Database {
+    const rawDb = new BetterSqlite3(filePath);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('foreign_keys = ON');
+    runMigrations(rawDb, 0, 7);
+    setVersion(rawDb, 7);
+    return rawDb;
+  }
+
+  afterEach(() => {
+    if (db?.open) closeDatabase(db);
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('fresh database creates fields table with correct columns', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v8-fresh-cols-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    const columns = db.pragma('table_info(fields)') as Array<{ name: string }>;
+    const colNames = columns.map((c) => c.name);
+
+    expect(colNames).toContain('id');
+    expect(colNames).toContain('repo_id');
+    expect(colNames).toContain('parent_type');
+    expect(colNames).toContain('parent_name');
+    expect(colNames).toContain('field_name');
+    expect(colNames).toContain('field_type');
+    expect(colNames).toContain('nullable');
+    expect(colNames).toContain('source_file');
+    expect(colNames).toContain('module_id');
+    expect(colNames).toContain('event_id');
+    expect(colNames).toContain('created_at');
+  });
+
+  it('v7->v8 incremental migration adds fields table', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v8-incr-${Date.now()}.db`);
+    db = createV7Database(dbPath);
+
+    // Verify fields table does NOT exist in v7
+    const tablesBefore = (db.pragma('table_list') as Array<{ name: string }>).map((t) => t.name);
+    expect(tablesBefore).not.toContain('fields');
+
+    // Close and reopen to trigger migration
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    // Verify fields table now exists
+    const tablesAfter = (db.pragma('table_list') as Array<{ name: string }>).map((t) => t.name);
+    expect(tablesAfter).toContain('fields');
+
+    // Verify version is current
+    expect(getCurrentVersion(db)).toBe(SCHEMA_VERSION);
+  });
+
+  it('fields table has correct indexes', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v8-idx-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='fields'"
+    ).all() as Array<{ name: string }>;
+    const indexNames = indexes.map((i) => i.name);
+
+    expect(indexNames).toContain('idx_fields_repo');
+    expect(indexNames).toContain('idx_fields_name');
+    expect(indexNames).toContain('idx_fields_parent');
+    expect(indexNames).toContain('idx_fields_module');
+    expect(indexNames).toContain('idx_fields_event');
+  });
+
+  it('foreign key cascade deletes fields when repo is deleted', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v8-cascade-${Date.now()}.db`);
+    db = openDatabase(dbPath);
+
+    // Insert a repo
+    db.prepare("INSERT INTO repos (name, path) VALUES ('fk-test', '/tmp/fk')").run();
+    const repo = db.prepare("SELECT id FROM repos WHERE name = 'fk-test'").get() as { id: number };
+
+    // Insert a field referencing the repo
+    db.prepare(
+      "INSERT INTO fields (repo_id, parent_type, parent_name, field_name, field_type, nullable) VALUES (?, 'ecto_schema', 'User', 'email', 'string', 0)"
+    ).run(repo.id);
+
+    const fieldsBefore = db.prepare('SELECT COUNT(*) as count FROM fields WHERE repo_id = ?').get(repo.id) as { count: number };
+    expect(fieldsBefore.count).toBe(1);
+
+    // Delete the repo -- field should cascade
+    db.prepare('DELETE FROM repos WHERE id = ?').run(repo.id);
+    const fieldsAfter = db.prepare('SELECT COUNT(*) as count FROM fields WHERE repo_id = ?').get(repo.id) as { count: number };
+    expect(fieldsAfter.count).toBe(0);
+  });
+
+  it('FieldData interface is exported from writer.ts', () => {
+    // Type-level check: this import would fail at compile time if FieldData doesn't exist
+    const fieldData: FieldData = {
+      parentType: 'ecto_schema',
+      parentName: 'User',
+      fieldName: 'email',
+      fieldType: 'string',
+      nullable: false,
+      sourceFile: 'lib/my_app/user.ex',
+    };
+    expect(fieldData.parentType).toBe('ecto_schema');
+    expect(fieldData.nullable).toBe(false);
+  });
+
+  it('schema version reaches current after migration from v7', () => {
+    dbPath = path.join(os.tmpdir(), `rkb-v8-version-${Date.now()}.db`);
+    db = createV7Database(dbPath);
+    expect(getCurrentVersion(db)).toBe(7);
+
+    closeDatabase(db);
+    db = openDatabase(dbPath);
+
+    expect(getCurrentVersion(db)).toBe(SCHEMA_VERSION);
   });
 });
 

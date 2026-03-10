@@ -11,6 +11,18 @@ export interface ServiceData {
   serviceType: string;
 }
 
+/** Field-level data from extractors (Ecto schemas, proto messages, GraphQL types) */
+export interface FieldData {
+  parentType: 'ecto_schema' | 'proto_message' | 'graphql_type';
+  parentName: string;
+  fieldName: string;
+  fieldType: string;
+  nullable: boolean;
+  sourceFile: string;
+  moduleId?: number | null;
+  eventId?: number | null;
+}
+
 /** Data to persist for a single repo */
 export interface RepoData {
   metadata: RepoMetadata;
@@ -18,6 +30,7 @@ export interface RepoData {
   events?: EventData[];
   edges?: EdgeData[];
   services?: ServiceData[];
+  fields?: FieldData[];
 }
 
 /** Module data from extractors (Elixir modules, etc.) */

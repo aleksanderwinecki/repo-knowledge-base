@@ -45,6 +45,9 @@ export function runMigrations(
     if (fromVersion < 7 && toVersion >= 7) {
       migrateToV7(db);
     }
+    if (fromVersion < 8 && toVersion >= 8) {
+      migrateToV8(db);
+    }
   });
 
   migrate();
@@ -247,6 +250,35 @@ function migrateToV6(db: Database.Database): void {
 function migrateToV7(db: Database.Database): void {
   db.exec(`
     ALTER TABLE edges ADD COLUMN metadata TEXT;
+  `);
+}
+
+/**
+ * V8: Create fields table for individual field-level extraction data.
+ * Stores fields from Ecto schemas, proto messages, and GraphQL types
+ * with nullability metadata for data contract intelligence.
+ */
+function migrateToV8(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+      parent_type TEXT NOT NULL,
+      parent_name TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      field_type TEXT NOT NULL,
+      nullable INTEGER NOT NULL DEFAULT 1,
+      source_file TEXT,
+      module_id INTEGER REFERENCES modules(id) ON DELETE SET NULL,
+      event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fields_repo ON fields(repo_id);
+    CREATE INDEX IF NOT EXISTS idx_fields_name ON fields(field_name);
+    CREATE INDEX IF NOT EXISTS idx_fields_parent ON fields(parent_type, parent_name);
+    CREATE INDEX IF NOT EXISTS idx_fields_module ON fields(module_id);
+    CREATE INDEX IF NOT EXISTS idx_fields_event ON fields(event_id);
   `);
 }
 
