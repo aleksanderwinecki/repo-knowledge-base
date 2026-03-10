@@ -116,6 +116,7 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const selectModules = db.prepare('SELECT id FROM modules WHERE repo_id = ?');
   const selectEvents = db.prepare('SELECT id FROM events WHERE repo_id = ?');
   const selectServices = db.prepare('SELECT id FROM services WHERE repo_id = ?');
+  const selectFields = db.prepare('SELECT id FROM fields WHERE repo_id = ?');
   const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
   const deleteEdges = db.prepare("DELETE FROM edges WHERE (source_type = 'repo' AND source_id = ?) OR (source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?))");
   const deleteModules = db.prepare('DELETE FROM modules WHERE repo_id = ?');
@@ -128,6 +129,7 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   clearEntityFts(selectModules, deleteFts, 'module:%', repoId);
   clearEntityFts(selectEvents, deleteFts, 'event:%', repoId);
   clearEntityFts(selectServices, deleteFts, 'service:%', repoId);
+  clearEntityFts(selectFields, deleteFts, 'field:%', repoId);
 
   // Remove FTS entry for the repo itself
   deleteFts.run('repo:%', repoId);
@@ -159,6 +161,7 @@ export function clearRepoFiles(
   const selectEventsByFileId = db.prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IN (SELECT id FROM files WHERE repo_id = ? AND path = ?)');
   const deleteEventById = db.prepare('DELETE FROM events WHERE id = ?');
   const selectEventsBySourceFile = db.prepare('SELECT id FROM events WHERE repo_id = ? AND file_id IS NULL AND source_file = ?');
+  const selectFieldsByFile = db.prepare('SELECT id FROM fields WHERE repo_id = ? AND source_file = ?');
   const deleteEdgesByFile = db.prepare('DELETE FROM edges WHERE source_file = ?');
   const deleteFieldsByFile = db.prepare('DELETE FROM fields WHERE repo_id = ? AND source_file = ?');
   const deleteFileRecord = db.prepare('DELETE FROM files WHERE repo_id = ? AND path = ?');
@@ -187,6 +190,12 @@ export function clearRepoFiles(
 
     // Remove edges from this file
     deleteEdgesByFile.run(filePath);
+
+    // Remove field FTS entries before deleting field rows
+    const fieldIds = selectFieldsByFile.all(repoId, filePath) as { id: number }[];
+    for (const f of fieldIds) {
+      deleteFts.run('field:%', f.id);
+    }
 
     // Remove fields from this file
     deleteFieldsByFile.run(repoId, filePath);
@@ -372,7 +381,7 @@ export function persistRepoData(
           eventId = evt?.id ?? null;
         }
 
-        insertField.run(
+        const fieldInfo = insertField.run(
           repoId,
           field.parentType,
           field.parentName,
@@ -383,6 +392,14 @@ export function persistRepoData(
           moduleId,
           eventId,
         );
+        const fieldId = Number(fieldInfo.lastInsertRowid);
+        indexEntity(db, {
+          type: 'field' as EntityType,
+          id: fieldId,
+          name: field.fieldName,
+          description: `${field.parentName} ${field.fieldType}`,
+          subType: field.parentType,
+        });
       }
     }
 
@@ -505,7 +522,7 @@ export function persistSurgicalData(
           eventId = evt?.id ?? null;
         }
 
-        insertField.run(
+        const fieldInfo = insertField.run(
           data.repoId,
           field.parentType,
           field.parentName,
@@ -516,6 +533,14 @@ export function persistSurgicalData(
           moduleId,
           eventId,
         );
+        const fieldId = Number(fieldInfo.lastInsertRowid);
+        indexEntity(db, {
+          type: 'field' as EntityType,
+          id: fieldId,
+          name: field.fieldName,
+          description: `${field.parentName} ${field.fieldType}`,
+          subType: field.parentType,
+        });
       }
     }
 

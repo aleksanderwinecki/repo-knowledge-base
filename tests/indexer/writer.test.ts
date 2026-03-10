@@ -880,8 +880,8 @@ describe('field persistence', () => {
 
     const ftsRows = db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").all() as { description: string }[];
     expect(ftsRows.length).toBeGreaterThan(0);
-    // Description should contain parentName and fieldType
-    expect(ftsRows[0].description).toContain('MyApp.Employee');
+    // Description contains tokenized parentName and fieldType (FTS tokenizer lowercases)
+    expect(ftsRows[0].description).toContain('employee');
     expect(ftsRows[0].description).toContain('string');
   });
 

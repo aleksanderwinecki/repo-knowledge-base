@@ -137,6 +137,12 @@ export function createEntityHydrator(db: Database.Database) {
        FROM services s JOIN repos r ON s.repo_id = r.id WHERE s.id = ?`,
     ),
     learned_fact: db.prepare('SELECT id, content, repo FROM learned_facts WHERE id = ?'),
+    field: db.prepare(
+      `SELECT f.id, f.field_name, f.parent_type, f.parent_name, f.field_type,
+              f.nullable, f.source_file, r.name as repo_name, r.path as repo_path
+       FROM fields f JOIN repos r ON f.repo_id = r.id
+       WHERE f.id = ?`,
+    ),
   };
 
   return (entityType: EntityType, entityId: number): EntityInfo | null => {
@@ -181,6 +187,22 @@ export function createEntityHydrator(db: Database.Database) {
           repoPath: '',
           filePath: null,
           description: row.content,
+        };
+      }
+      case 'field': {
+        const row = stmts.field.get(entityId) as {
+          id: number; field_name: string; parent_type: string; parent_name: string;
+          field_type: string; nullable: number; source_file: string | null;
+          repo_name: string; repo_path: string;
+        } | undefined;
+        if (!row) return null;
+        return {
+          id: row.id,
+          name: row.field_name,
+          repoName: row.repo_name,
+          repoPath: row.repo_path,
+          filePath: row.source_file,
+          description: `${row.parent_name} ${row.field_type} ${row.nullable ? 'nullable' : 'required'}`,
         };
       }
       default:

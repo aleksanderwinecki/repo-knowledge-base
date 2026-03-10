@@ -63,7 +63,7 @@ export interface Edge {
 }
 
 /** Valid entity types for the knowledge base */
-export type EntityType = 'repo' | 'file' | 'module' | 'service' | 'event' | 'learned_fact';
+export type EntityType = 'repo' | 'file' | 'module' | 'service' | 'event' | 'learned_fact' | 'field';
 
 /** Valid relationship types */
 export type RelationshipType =

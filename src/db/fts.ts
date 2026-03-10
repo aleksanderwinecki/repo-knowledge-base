@@ -12,7 +12,7 @@ export interface SearchResult {
 }
 
 /** Coarse (parent) entity types that map to DB tables */
-export const COARSE_TYPES = new Set(['repo', 'file', 'module', 'service', 'event', 'learned_fact']);
+export const COARSE_TYPES = new Set(['repo', 'file', 'module', 'service', 'event', 'learned_fact', 'field']);
 
 /**
  * Create the FTS5 virtual table for full-text search.
