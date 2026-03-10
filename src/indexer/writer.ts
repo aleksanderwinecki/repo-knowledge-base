@@ -119,6 +119,8 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const selectFields = db.prepare('SELECT id FROM fields WHERE repo_id = ?');
   const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
   const deleteEdges = db.prepare("DELETE FROM edges WHERE (source_type = 'repo' AND source_id = ?) OR (source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?))");
+  const deleteFieldEdgesBySource = db.prepare("DELETE FROM edges WHERE source_type = 'field' AND source_id IN (SELECT id FROM fields WHERE repo_id = ?)");
+  const deleteFieldEdgesByTarget = db.prepare("DELETE FROM edges WHERE target_type = 'field' AND target_id IN (SELECT id FROM fields WHERE repo_id = ?)");
   const deleteModules = db.prepare('DELETE FROM modules WHERE repo_id = ?');
   const deleteEvents = db.prepare('DELETE FROM events WHERE repo_id = ?');
   const deleteFiles = db.prepare('DELETE FROM files WHERE repo_id = ?');
@@ -136,6 +138,10 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
 
   // Delete edges (no FK constraint on polymorphic edges)
   deleteEdges.run(repoId, repoId);
+
+  // Delete field-to-field edges before deleting field rows (both directions)
+  deleteFieldEdgesBySource.run(repoId);
+  deleteFieldEdgesByTarget.run(repoId);
 
   // Delete dependent entities (CASCADE handles most, but be explicit)
   deleteModules.run(repoId);
@@ -292,6 +298,33 @@ function insertServiceWithFts(
 }
 
 /**
+ * Create maps_to edges between ecto_schema and proto_message fields
+ * that share the same field_name within the same repo.
+ */
+export function insertFieldEdges(db: Database.Database, repoId: number): void {
+  const matches = db.prepare(`
+    SELECT e.id AS ecto_id, p.id AS proto_id
+    FROM fields e
+    JOIN fields p ON e.field_name = p.field_name AND e.repo_id = p.repo_id
+    WHERE e.repo_id = ?
+      AND e.parent_type = 'ecto_schema'
+      AND p.parent_type = 'proto_message'
+  `).all(repoId) as Array<{ ecto_id: number; proto_id: number }>;
+
+  if (matches.length === 0) return;
+
+  const insertEdge = db.prepare(
+    `INSERT INTO edges (source_type, source_id, target_type, target_id,
+                        relationship_type, source_file)
+     VALUES ('field', ?, 'field', ?, 'maps_to', NULL)`,
+  );
+
+  for (const match of matches) {
+    insertEdge.run(match.ecto_id, match.proto_id);
+  }
+}
+
+/**
  * Persist all extracted data for a repo in a single transaction.
  * Upserts the repo, clears old data, inserts new data, and syncs FTS.
  */
@@ -403,6 +436,9 @@ export function persistRepoData(
       }
     }
 
+    // Create field-to-field maps_to edges (ecto <-> proto matching by name)
+    insertFieldEdges(db, repoId);
+
     // Insert edges
     if (data.edges) {
       const insertEdge = db.prepare(
@@ -436,6 +472,8 @@ export function clearRepoEdges(db: Database.Database, repoId: number): void {
   // Hoist all prepared statements above loops
   const deleteRepoEdges = db.prepare("DELETE FROM edges WHERE source_type = 'repo' AND source_id = ?");
   const deleteServiceEdges = db.prepare("DELETE FROM edges WHERE source_type = 'service' AND source_id IN (SELECT id FROM services WHERE repo_id = ?)");
+  const deleteFieldEdgesBySource = db.prepare("DELETE FROM edges WHERE source_type = 'field' AND source_id IN (SELECT id FROM fields WHERE repo_id = ?)");
+  const deleteFieldEdgesByTarget = db.prepare("DELETE FROM edges WHERE target_type = 'field' AND target_id IN (SELECT id FROM fields WHERE repo_id = ?)");
   const selectConsumerEvents = db.prepare("SELECT id FROM events WHERE repo_id = ? AND schema_definition LIKE 'consumed:%'");
   const deleteFts = db.prepare('DELETE FROM knowledge_fts WHERE entity_type LIKE ? AND entity_id = ?');
   const deleteEventById = db.prepare('DELETE FROM events WHERE id = ?');
@@ -445,6 +483,10 @@ export function clearRepoEdges(db: Database.Database, repoId: number): void {
 
   // Clear service-sourced edges for this repo's services
   deleteServiceEdges.run(repoId);
+
+  // Clear field-to-field edges for this repo (both directions since either end may be deleted)
+  deleteFieldEdgesBySource.run(repoId);
+  deleteFieldEdgesByTarget.run(repoId);
 
   // Clean up consumer-created events (will be re-created by insertEventEdges if still relevant)
   const consumerEvents = selectConsumerEvents.all(repoId) as { id: number }[];
@@ -574,6 +616,9 @@ export function persistSurgicalData(
 
     // 7. Clear ALL repo edges (caller will re-insert via insertEventEdges)
     clearRepoEdges(db, data.repoId);
+
+    // 8. Re-create field-to-field maps_to edges after edge cleanup
+    insertFieldEdges(db, data.repoId);
   });
   txn();
 }

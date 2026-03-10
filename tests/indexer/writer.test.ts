@@ -941,6 +941,44 @@ describe('field persistence', () => {
     expect(ftsRows[0].count).toBe(1);
   });
 
+  it('surgical persist clears and recreates field edges for the repo', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'ModA', type: 'ecto_schema', filePath: 'lib/a.ex', summary: null, tableName: 'tests', schemaFields: null },
+    ];
+    const events = [
+      { name: 'ProtoA', schemaDefinition: 'message ProtoA {}', sourceFile: 'proto/a.proto' },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/a.ex' },
+      { parentType: 'proto_message' as const, parentName: 'ProtoA', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/a.proto' },
+    ];
+
+    const { repoId } = persistRepoData(db, { metadata, modules, events, fields });
+
+    // Verify initial field edge exists
+    const edgesBefore = db.prepare("SELECT COUNT(*) as count FROM edges WHERE relationship_type = 'maps_to'").get() as { count: number };
+    expect(edgesBefore.count).toBe(1);
+
+    // Surgical update: changed file lib/a.ex with renamed field
+    persistSurgicalData(db, {
+      repoId,
+      metadata: makeMetadata({ currentCommit: 'new_commit' }),
+      changedFiles: ['lib/a.ex'],
+      modules: [
+        { name: 'ModA', type: 'ecto_schema', filePath: 'lib/a.ex', summary: null, tableName: 'tests', schemaFields: null },
+      ],
+      events: [],
+      fields: [
+        { parentType: 'ecto_schema' as const, parentName: 'ModA', fieldName: 'emp_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/a.ex' },
+      ],
+    });
+
+    // Old field edge should be gone (no matching field names anymore)
+    const edgesAfter = db.prepare("SELECT COUNT(*) as count FROM edges WHERE relationship_type = 'maps_to'").get() as { count: number };
+    expect(edgesAfter.count).toBe(0);
+  });
+
   it('surgical persist inserts fields for changed files', () => {
     const metadata = makeMetadata();
     const modules = [
@@ -969,5 +1007,108 @@ describe('field persistence', () => {
 
     const rows = db.prepare('SELECT field_name FROM fields WHERE repo_id = ?').all(repoId) as { field_name: string }[];
     expect(rows.map(r => r.field_name).sort()).toEqual(['x', 'z']);
+  });
+});
+
+describe('field edges', () => {
+  it('creates maps_to edge when ecto and proto fields share the same name in same repo', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null, tableName: 'employees', schemaFields: null },
+    ];
+    const events = [
+      { name: 'EmployeeCreated', schemaDefinition: 'message EmployeeCreated {}', sourceFile: 'proto/employee.proto' },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/employee.ex' },
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'name', fieldType: 'string', nullable: false, sourceFile: 'lib/employee.ex' },
+      { parentType: 'proto_message' as const, parentName: 'EmployeeCreated', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/employee.proto' },
+    ];
+
+    persistRepoData(db, { metadata, modules, events, fields });
+
+    const edges = db.prepare("SELECT * FROM edges WHERE relationship_type = 'maps_to'").all() as any[];
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source_type).toBe('field');
+    expect(edges[0].target_type).toBe('field');
+  });
+
+  it('creates N:M edges when ecto field matches multiple proto messages', () => {
+    const metadata = makeMetadata();
+    const events = [
+      { name: 'CreateEmployee', schemaDefinition: 'message CreateEmployee {}', sourceFile: 'proto/create.proto' },
+      { name: 'UpdateEmployee', schemaDefinition: 'message UpdateEmployee {}', sourceFile: 'proto/update.proto' },
+    ];
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/employee.ex' },
+      { parentType: 'proto_message' as const, parentName: 'CreateEmployee', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/create.proto' },
+      { parentType: 'proto_message' as const, parentName: 'UpdateEmployee', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/update.proto' },
+    ];
+
+    persistRepoData(db, { metadata, modules, events, fields });
+
+    const edges = db.prepare("SELECT * FROM edges WHERE relationship_type = 'maps_to'").all() as any[];
+    expect(edges).toHaveLength(2);
+  });
+
+  it('creates no maps_to edges when no field names match across ecto/proto', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null },
+    ];
+    const events = [
+      { name: 'OrderCreated', schemaDefinition: 'message OrderCreated {}', sourceFile: 'proto/order.proto' },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'name', fieldType: 'string', nullable: false, sourceFile: 'lib/employee.ex' },
+      { parentType: 'proto_message' as const, parentName: 'OrderCreated', fieldName: 'order_id', fieldType: 'string', nullable: false, sourceFile: 'proto/order.proto' },
+    ];
+
+    persistRepoData(db, { metadata, modules, events, fields });
+
+    const edges = db.prepare("SELECT * FROM edges WHERE relationship_type = 'maps_to'").all() as any[];
+    expect(edges).toHaveLength(0);
+  });
+
+  it('does not create duplicate maps_to edges on re-index', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'MyApp.Employee', type: 'ecto_schema', filePath: 'lib/employee.ex', summary: null },
+    ];
+    const events = [
+      { name: 'EmployeeCreated', schemaDefinition: 'message EmployeeCreated {}', sourceFile: 'proto/employee.proto' },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'MyApp.Employee', fieldName: 'employee_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/employee.ex' },
+      { parentType: 'proto_message' as const, parentName: 'EmployeeCreated', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/employee.proto' },
+    ];
+
+    persistRepoData(db, { metadata, modules, events, fields });
+    persistRepoData(db, { metadata, modules, events, fields });
+
+    const edges = db.prepare("SELECT * FROM edges WHERE relationship_type = 'maps_to'").all() as any[];
+    expect(edges).toHaveLength(1);
+  });
+
+  it('does not create maps_to edges for graphql fields', () => {
+    const metadata = makeMetadata();
+    const modules = [
+      { name: 'Employee', type: 'graphql_type', filePath: 'lib/schema.ex', summary: null },
+    ];
+    const events = [
+      { name: 'EmployeeCreated', schemaDefinition: 'message EmployeeCreated {}', sourceFile: 'proto/employee.proto' },
+    ];
+    const fields = [
+      { parentType: 'graphql_type' as const, parentName: 'Employee', fieldName: 'employee_id', fieldType: 'ID', nullable: false, sourceFile: 'lib/schema.ex' },
+      { parentType: 'proto_message' as const, parentName: 'EmployeeCreated', fieldName: 'employee_id', fieldType: 'int32', nullable: false, sourceFile: 'proto/employee.proto' },
+    ];
+
+    persistRepoData(db, { metadata, modules, events, fields });
+
+    const edges = db.prepare("SELECT * FROM edges WHERE relationship_type = 'maps_to'").all() as any[];
+    expect(edges).toHaveLength(0);
   });
 });

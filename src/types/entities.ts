@@ -74,4 +74,5 @@ export type RelationshipType =
   | 'calls_http'
   | 'routes_to'
   | 'produces_kafka'
-  | 'consumes_kafka';
+  | 'consumes_kafka'
+  | 'maps_to';
