@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from './git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from './git.js';
 
 /** Extracted Elixir module data */
 export interface ElixirModule {
@@ -30,11 +30,11 @@ const LIB_PATH_PATTERNS = [
 ];
 
 /**
- * Extract all Elixir modules from a repo by reading from a git branch.
+ * Extract all Elixir modules from a repo working tree.
  * Scans lib/ and apps/star/lib/ for .ex files (umbrella apps).
  */
-export function extractElixirModules(repoPath: string, branch: string): ElixirModule[] {
-  const allFiles = listBranchFiles(repoPath, branch);
+export function extractElixirModules(repoPath: string): ElixirModule[] {
+  const allFiles = listWorkingTreeFiles(repoPath);
   const modules: ElixirModule[] = [];
 
   // Filter for .ex files under lib paths
@@ -44,7 +44,7 @@ export function extractElixirModules(repoPath: string, branch: string): ElixirMo
 
   for (const filePath of exFiles) {
     try {
-      const content = readBranchFile(repoPath, branch, filePath);
+      const content = readWorkingTreeFile(repoPath, filePath);
       if (!content || content.length > MAX_FILE_SIZE) continue;
 
       const parsed = parseElixirFile(filePath, content);

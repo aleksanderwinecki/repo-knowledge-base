@@ -13,13 +13,12 @@ import type { TopologyEdge } from './types.js';
  */
 export function extractTopologyEdges(
   repoPath: string,
-  branch: string,
   elixirModules: ElixirModule[],
 ): TopologyEdge[] {
   return [
-    ...extractGrpcClientEdges(repoPath, branch, elixirModules),
-    ...extractHttpClientEdges(repoPath, branch),
-    ...extractGatewayEdges(repoPath, branch),
-    ...extractKafkaEdges(repoPath, branch),
+    ...extractGrpcClientEdges(repoPath, elixirModules),
+    ...extractHttpClientEdges(repoPath),
+    ...extractGatewayEdges(repoPath),
+    ...extractKafkaEdges(repoPath),
   ];
 }

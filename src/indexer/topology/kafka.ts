@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from '../git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from '../git.js';
 import type { TopologyEdge } from './types.js';
 
 /**
@@ -56,9 +56,8 @@ function isTestPath(filePath: string): boolean {
  */
 export function extractKafkaEdges(
   repoPath: string,
-  branch: string,
 ): TopologyEdge[] {
-  const allFiles = listBranchFiles(repoPath, branch);
+  const allFiles = listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)) && !isTestPath(f),
   );
@@ -66,7 +65,7 @@ export function extractKafkaEdges(
   const edges: TopologyEdge[] = [];
 
   for (const filePath of exFiles) {
-    const content = readBranchFile(repoPath, branch, filePath);
+    const content = readWorkingTreeFile(repoPath, filePath);
     if (!content) continue;
 
     // --- Producer detection ---

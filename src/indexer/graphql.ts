@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from './git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from './git.js';
 
 /** A parsed GraphQL type/input/enum/interface/union/scalar definition */
 export interface GraphqlType {
@@ -24,17 +24,17 @@ export interface GraphqlDefinition {
 const MAX_FILE_SIZE = 500 * 1024;
 
 /**
- * Extract all GraphQL definitions from a repo by reading from a git branch.
- * Scans the entire branch tree for .graphql files.
+ * Extract all GraphQL definitions from a repo working tree.
+ * Scans the entire tree for .graphql files.
  */
-export function extractGraphqlDefinitions(repoPath: string, branch: string): GraphqlDefinition[] {
-  const allFiles = listBranchFiles(repoPath, branch);
+export function extractGraphqlDefinitions(repoPath: string): GraphqlDefinition[] {
+  const allFiles = listWorkingTreeFiles(repoPath);
   const graphqlFiles = allFiles.filter((f) => f.endsWith('.graphql'));
   const definitions: GraphqlDefinition[] = [];
 
   for (const filePath of graphqlFiles) {
     try {
-      const content = readBranchFile(repoPath, branch, filePath);
+      const content = readWorkingTreeFile(repoPath, filePath);
       if (!content || content.length > MAX_FILE_SIZE) continue;
 
       const parsed = parseGraphqlFile(filePath, content);

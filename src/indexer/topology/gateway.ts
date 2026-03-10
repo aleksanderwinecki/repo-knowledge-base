@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from '../git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from '../git.js';
 import type { TopologyEdge } from './types.js';
 
 /**
@@ -27,9 +27,8 @@ const DESCRIBE_RE =
  */
 export function extractGatewayEdges(
   repoPath: string,
-  branch: string,
 ): TopologyEdge[] {
-  const allFiles = listBranchFiles(repoPath, branch);
+  const allFiles = listWorkingTreeFiles(repoPath);
   const serviceFiles = allFiles.filter((f) => COMPOSE_SERVICE_RE.test(f));
 
   if (serviceFiles.length === 0) {
@@ -39,7 +38,7 @@ export function extractGatewayEdges(
   const edges: TopologyEdge[] = [];
 
   for (const filePath of serviceFiles) {
-    const content = readBranchFile(repoPath, branch, filePath);
+    const content = readWorkingTreeFile(repoPath, filePath);
     if (!content) continue;
 
     // Reset regex lastIndex for each file (global flag)

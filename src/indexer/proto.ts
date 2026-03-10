@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from './git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from './git.js';
 
 /** A single proto message field */
 export interface ProtoField {
@@ -38,17 +38,17 @@ export interface ProtoDefinition {
 const MAX_FILE_SIZE = 500 * 1024;
 
 /**
- * Extract all proto definitions from a repo by reading from a git branch.
- * Scans the entire branch tree for .proto files.
+ * Extract all proto definitions from a repo working tree.
+ * Scans the entire tree for .proto files.
  */
-export function extractProtoDefinitions(repoPath: string, branch: string): ProtoDefinition[] {
-  const allFiles = listBranchFiles(repoPath, branch);
+export function extractProtoDefinitions(repoPath: string): ProtoDefinition[] {
+  const allFiles = listWorkingTreeFiles(repoPath);
   const protoFiles = allFiles.filter((f) => f.endsWith('.proto'));
   const definitions: ProtoDefinition[] = [];
 
   for (const filePath of protoFiles) {
     try {
-      const content = readBranchFile(repoPath, branch, filePath);
+      const content = readWorkingTreeFile(repoPath, filePath);
       if (!content || content.length > MAX_FILE_SIZE) continue;
 
       const parsed = parseProtoFile(filePath, content);

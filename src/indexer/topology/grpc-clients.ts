@@ -1,4 +1,4 @@
-import { listBranchFiles, readBranchFile } from '../git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from '../git.js';
 import type { ElixirModule } from '../elixir.js';
 import type { TopologyEdge } from './types.js';
 
@@ -100,20 +100,19 @@ function isTestPath(filePath: string): boolean {
  */
 export function extractGrpcClientEdges(
   repoPath: string,
-  branch: string,
   elixirModules: ElixirModule[],
 ): TopologyEdge[] {
   // Map: normalized domain name -> TopologyEdge (for dedup)
   const edgeMap = new Map<string, TopologyEdge>();
 
   // Scan .ex files for patterns 1 and 2
-  const allFiles = listBranchFiles(repoPath, branch);
+  const allFiles = listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)) && !isTestPath(f),
   );
 
   for (const filePath of exFiles) {
-    const content = readBranchFile(repoPath, branch, filePath);
+    const content = readWorkingTreeFile(repoPath, filePath);
     if (!content) continue;
 
     // Pattern 1: MockableRpcClient

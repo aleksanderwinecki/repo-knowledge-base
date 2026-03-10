@@ -1,6 +1,6 @@
 import type { ProtoDefinition } from './proto.js';
 import type { ElixirModule } from './elixir.js';
-import { listBranchFiles, readBranchFile } from './git.js';
+import { listWorkingTreeFiles, readWorkingTreeFile } from './git.js';
 
 /** A detected event relationship (producer or consumer) */
 export interface EventRelationship {
@@ -29,7 +29,6 @@ const LIB_PATH_PATTERNS = [
  */
 export function detectEventRelationships(
   repoPath: string,
-  branch: string,
   protoDefinitions: ProtoDefinition[],
   _elixirModules: ElixirModule[],
 ): EventRelationship[] {
@@ -48,14 +47,14 @@ export function detectEventRelationships(
   }
 
   // Consumer detection: scan .ex files for event handler patterns
-  const consumers = detectConsumers(repoPath, branch);
+  const consumers = detectConsumers(repoPath);
   relationships.push(...consumers);
 
   return relationships;
 }
 
 /**
- * Scan .ex files for event handler patterns using git branch content.
+ * Scan .ex files for event handler patterns from the working tree.
  *
  * Detects:
  * 1. handle_event/handle_message with struct pattern matching
@@ -63,10 +62,10 @@ export function detectEventRelationships(
  * 3. Kafkaesque.Consumer topics_config with topic names
  * 4. Kafkaesque decoder_config schema references
  */
-function detectConsumers(repoPath: string, branch: string): EventRelationship[] {
+function detectConsumers(repoPath: string): EventRelationship[] {
   const consumers: EventRelationship[] = [];
 
-  const allFiles = listBranchFiles(repoPath, branch);
+  const allFiles = listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)),
   );
@@ -93,7 +92,7 @@ function detectConsumers(repoPath: string, branch: string): EventRelationship[] 
 
   for (const filePath of exFiles) {
     try {
-      const content = readBranchFile(repoPath, branch, filePath);
+      const content = readWorkingTreeFile(repoPath, filePath);
       if (!content) continue;
 
       const moduleMatch = content.match(/defmodule\s+([\w.]+)/);
