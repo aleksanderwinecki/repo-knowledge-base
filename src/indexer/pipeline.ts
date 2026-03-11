@@ -181,16 +181,17 @@ async function extractRepoData(
   // Map extractor outputs to FieldData[]
   const ectoFields: FieldData[] = elixirModules
     .filter(mod => mod.tableName)
-    .flatMap(mod =>
-      mod.schemaFields.map(f => ({
+    .flatMap(mod => {
+      const requiredSet = new Set(mod.requiredFields);
+      return mod.schemaFields.map(f => ({
         parentType: 'ecto_schema' as const,
         parentName: mod.name,
         fieldName: f.name,
         fieldType: f.type,
-        nullable: !mod.requiredFields.includes(f.name),
+        nullable: !requiredSet.has(f.name),
         sourceFile: mod.filePath,
-      }))
-    );
+      }));
+    });
 
   const protoFields: FieldData[] = protoDefinitions.flatMap(proto =>
     proto.messages.flatMap(msg =>
