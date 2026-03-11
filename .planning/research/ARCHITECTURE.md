@@ -1,395 +1,397 @@
-# Architecture: v3.0 Graph Intelligence
+# Architecture Research
 
-**Project:** repo-knowledge-base v3.0
-**Researched:** 2026-03-09
-**Key update:** Hybrid SQL+JS architecture replaces pure CTE approach (benchmarked 200-1000x faster)
+**Domain:** Search quality improvements for a SQLite/FTS5 knowledge base
+**Researched:** 2026-03-11
+**Confidence:** HIGH (all findings from direct codebase inspection)
 
-## Executive Summary
+## Standard Architecture
 
-The three new tools integrate into the existing layered architecture: query logic in `src/search/`, MCP tools in `src/mcp/tools/`, CLI commands in `src/cli/commands/`. The key architectural addition is a new **graph module** (`src/search/graph.ts`) that loads all edges via a single SQL query and builds in-memory adjacency lists for sub-millisecond BFS traversal. No schema migration required -- existing edges table with its indexes is sufficient.
+### System Overview
 
-## The Core Decision: SQL Load + JS Traverse
-
-**Why not pure recursive CTEs:** Benchmarked at 150-2700ms on production-scale graph (400 repos, 12K edges). JS BFS on in-memory adjacency list: 0.2-0.6ms. The gap is not marginal -- it's orders of magnitude. SQLite recursive CTEs are append-only, can't prune visited nodes mid-recursion, and have O(n^2) dedup overhead with UNION.
-
-**Why not pure JS (skip SQL entirely):** SQLite remains the storage layer. Edges are persisted, indexed, and filtered there. The graph module loads from SQL, not from raw files.
-
-**Architecture:**
 ```
-SQLite (storage)  -->  Graph Module (in-memory)  -->  Query Functions  -->  MCP/CLI
-     6ms load            0.2-0.6ms queries           format + return
+┌─────────────────────────────────────────────────────────────────┐
+│                     Interface Layer                              │
+│  ┌──────────────────────┐     ┌──────────────────────────────┐  │
+│  │  CLI (commander.js)  │     │  MCP Server (13 tools)       │  │
+│  └──────────┬───────────┘     └──────────────┬───────────────┘  │
+├─────────────┴────────────────────────────────┴──────────────────┤
+│                      Search Layer                                │
+│  ┌────────────┐  ┌─────────────┐  ┌────────────────────────┐   │
+│  │  text.ts   │  │ entity.ts   │  │  field-impact.ts       │   │
+│  │ (kb_search)│  │(kb_entity)  │  │  (kb_field_impact)     │   │
+│  └────────────┘  └─────────────┘  └────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                    Database Layer (db/)                          │
+│  ┌──────────┐  ┌──────────────────┐  ┌─────────────────────┐   │
+│  │  fts.ts  │  │  tokenizer.ts    │  │  database.ts        │   │
+│  │ (indexing │  │ (CamelCase/snake │  │  (pragmas, schema)  │   │
+│  │  + query) │  │  split, lower)  │  │                     │   │
+│  └──────────┘  └──────────────────┘  └─────────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                    Indexing Layer (indexer/)                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
+│  │elixir.ts │  │ proto.ts │  │graphql.ts│  │  pipeline.ts │   │
+│  │(extractor│  │(extractor│  │(extractor│  │  (3-phase    │   │
+│  │+ fields) │  │+ fields) │  │+ fields) │  │  orchestrate)│   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────┬───────┘   │
+│                                                      │           │
+│  ┌───────────────────────────────────────────────────▼──────┐   │
+│  │  writer.ts: persistRepoData / persistSurgicalData         │   │
+│  │  indexEntity() called per entity with (name, description) │   │
+│  └───────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                     Storage Layer                                │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  SQLite: repos, modules, events, services, fields, edges  │   │
+│  │  FTS5: knowledge_fts (name, description, UNINDEXED type)  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Component Map
+### Component Responsibilities
 
-### New Files
+| Component | Responsibility | Notes |
+|-----------|---------------|-------|
+| `src/db/tokenizer.ts` | Text preprocessing for FTS indexing and query time | Shared by both index write path and search query path |
+| `src/db/fts.ts` | FTS5 table DDL, `indexEntity()`, `executeFtsWithFallback()` | Central chokepoint for all FTS operations |
+| `src/search/text.ts` | `searchText()` orchestration: query → FTS → hydrate | Only search entry point for kb_search / CLI search |
+| `src/indexer/writer.ts` | Calls `indexEntity()` with `(name, description)` per entity | FTS description is constructed here, per entity type |
+| `src/indexer/elixir.ts` | Ecto field extraction including `extractRequiredFields()` | Drives nullability and constraint data |
+| `src/indexer/proto.ts` | Proto message field extraction | No event-association metadata surfaced to FTS |
+| `src/indexer/pipeline.ts` | 3-phase extraction orchestrator | Drives all extractors, maps to `FieldData[]` and `ModuleData[]` |
 
-| File | Purpose | Pattern Reference |
-|------|---------|-------------------|
-| `src/search/graph.ts` | In-memory graph: edge loading, adjacency lists, BFS, shortest path | New module, no direct precedent |
-| `src/search/impact.ts` | Downstream BFS, blast radius aggregation | `dependencies.ts` |
-| `src/search/trace.ts` | Shortest path with path reconstruction | `dependencies.ts` |
-| `src/search/explain.ts` | Multi-table SQL aggregation (no graph traversal) | `entity.ts` |
-| `src/mcp/tools/impact.ts` | MCP tool: kb_impact | `deps.ts` |
-| `src/mcp/tools/trace.ts` | MCP tool: kb_trace | `deps.ts` |
-| `src/mcp/tools/explain.ts` | MCP tool: kb_explain | `entity.ts` |
-| `src/cli/commands/impact.ts` | CLI: kb impact | existing CLI pattern |
-| `src/cli/commands/trace.ts` | CLI: kb trace | existing CLI pattern |
-| `src/cli/commands/explain.ts` | CLI: kb explain | existing CLI pattern |
+## Recommended Project Structure
 
-### Modified Files (additive only)
+No new files or folders are needed for v4.2. All changes are surgical modifications to existing files.
 
-| File | Change | Risk |
-|------|--------|------|
-| `src/search/index.ts` | Export new functions + types | Zero breakage |
-| `src/mcp/server.ts` | Register 3 new tools | Additive |
-| `src/cli/index.ts` | Register 3 new commands | Additive |
-| `src/index.ts` | Re-export new search functions | Additive |
+```
+src/
+├── db/
+│   ├── fts.ts          # MODIFY: add OR-default query builder, progressive relaxation
+│   └── tokenizer.ts    # unchanged
+├── search/
+│   ├── text.ts         # MODIFY: wire progressive relaxation from fts.ts
+│   └── field-impact.ts # unchanged
+└── indexer/
+    ├── elixir.ts       # MODIFY: deeper Ecto extraction, null-guard scanning
+    ├── proto.ts        # MODIFY: richer field context (message + event association)
+    ├── graphql.ts      # MODIFY (minor): richer field context if applicable
+    ├── writer.ts       # MODIFY: richer FTS descriptions for fields + events
+    └── pipeline.ts     # unchanged (description construction moved to writer.ts)
+```
 
-### Untouched
+## Architectural Patterns
 
-Everything else. Critically, `dependencies.ts` stays as-is -- it handles kb_deps. The new tools are complementary.
+### Pattern 1: Description Construction in writer.ts
 
-## Graph Module Design: `src/search/graph.ts`
+**What:** Each `insertXxxWithFts()` helper in `writer.ts` assembles the FTS `description` string before calling `indexEntity()`. This is the single place where richness can be added.
 
-This is the only genuinely new architectural component. Everything else follows existing patterns.
+**Current state:**
+- Module: `mod.summary` + optional `table:${tableName}`
+- Event: `evt.schemaDefinition` (raw proto message text)
+- Service: `svc.description` (gRPC RPC list)
+- Field: `${field.parentName} ${field.fieldType}` — minimal
 
-### Data Structures
+**For v4.2, every field's FTS description should become:**
+```typescript
+// Current
+description: `${field.parentName} ${field.fieldType}`
+
+// Richer: repo context + constraints inline
+description: `${repoName} ${field.parentName} ${field.fieldType}${isRequired ? ' required' : ' nullable'}${eventName ? ` event:${eventName}` : ''}`
+```
+
+**When to use:** Whenever an entity type has context that makes it searchable by indirect terms (event names, parent schema name, repo name, nullability constraint).
+
+**Trade-offs:** The `repoName` must be passed into the field insertion loop inside `persistRepoData()`/`persistSurgicalData()`. Currently only `repoId` is available in the insert loop — `metadata.name` (already in scope) satisfies this.
+
+### Pattern 2: Query Transformation in executeFtsWithFallback
+
+**What:** The existing `executeFtsWithFallback` in `fts.ts` wraps a single FTS5 MATCH query with a phrase-fallback on syntax error. The v4.2 change extends this to a multi-tier strategy.
+
+**Current flow:**
+```
+tokenizeForFts(query)
+  → try MATCH tokens (AND-implicit by FTS5 default)
+  → catch syntax error → try as phrase match
+  → return results (possibly empty)
+```
+
+**Target flow:**
+```
+tokenizeForFts(query)
+  → try MATCH tokens with OR operator (NEAR or explicit "tok1 OR tok2 OR tok3")
+  → if results >= threshold → return
+  → if results < threshold → try phrase match
+  → return results (possibly empty)
+```
+
+**Key FTS5 mechanics:** FTS5 default is AND for multi-token queries (`token1 token2` means both required). Explicit OR needs `"token1" OR "token2"` syntax. A helper that joins tokenized tokens with ` OR ` produces higher-recall results.
+
+**When to use:** Default for AI agent consumers. Agents rarely want zero results from partial name matches.
+
+**Trade-offs:** OR means more results, lower precision. BM25 ranking still sorts best matches first. The AI consumer reads top N results and filters semantically — recall > precision is the right trade-off here.
+
+### Pattern 3: Progressive Relaxation as a Wrapper
+
+**What:** A new function wraps the multi-tier query logic so `searchText()` stays clean.
+
+**Current architecture:** `searchText()` calls `executeFtsQuery()` which calls `executeFtsWithFallback()`. The relaxation logic belongs inside `executeFtsQuery()` or in `executeFtsWithFallback()` — not in `searchText()` which handles hydration.
+
+**Proposed:**
+```typescript
+// fts.ts
+export function executeFtsWithRelaxation<T>(
+  db: Database.Database,
+  sql: string,
+  processedQuery: string,
+  buildParams: (query: string) => (string | number)[],
+  minResults = 3,
+): T[] {
+  // Tier 1: OR query
+  const orQuery = buildOrQuery(processedQuery);
+  const results = executeFtsWithFallback<T>(db, sql, orQuery, buildParams);
+  if (results.length >= minResults) return results;
+
+  // Tier 2: phrase match (existing fallback behavior)
+  const phraseQuery = `"${processedQuery.replace(/"/g, '')}"`;
+  return executeFtsWithFallback<T>(db, sql, phraseQuery, buildParams);
+}
+```
+
+**When to use:** Replace `executeFtsWithFallback` call in `text.ts`'s `executeFtsQuery()`.
+
+**Trade-offs:** Two DB queries when OR tier is insufficient. Both are indexed FTS5 queries — sub-millisecond. No meaningful performance concern.
+
+### Pattern 4: Deeper Ecto Extraction in elixir.ts
+
+**What:** `extractElixirFile` already calls `extractRequiredFields()` which parses `validate_required/2`. v4.2 adds extraction of `cast/3` attr lists and `@optional_fields` / `@required_fields` module attributes.
+
+**Current state:** `ElixirModule.requiredFields` is populated from `validate_required`. The pipeline uses `!mod.requiredFields.includes(f.name)` for nullability.
+
+**Target additions to `ElixirModule`:**
+```typescript
+interface ElixirModule {
+  // existing...
+  requiredFields: string[];    // from validate_required
+  optionalFields: string[];    // NEW: from @optional_fields or cast attrs
+  castFields: string[];        // NEW: from cast(attrs, [...fields])
+}
+```
+
+**Integration point:** `extractElixirModules()` → `parseElixirFile()` → new private helpers `extractCastFields()` and `extractOptionalFields()`. These helpers follow the same regex-over-content pattern as `extractRequiredFields()`.
+
+**When to use:** Ecto schemas that use changeset-driven constraints rather than schema-level type enforcement.
+
+### Pattern 5: Null-Guard Heuristic Scanning
+
+**What:** Scan for `is_nil(field_ref)` and `case field_ref` nil-branch patterns near field references in Elixir source to infer nullability where schema declarations are ambiguous.
+
+**Integration point:** This is a new private helper in `elixir.ts` called at the end of `parseElixirFile()` per module. It augments `requiredFields` / `optionalFields` data — it does NOT produce a new data structure.
+
+**Pattern:**
+```typescript
+function detectNullGuardedFields(content: string): Set<string> {
+  const guarded = new Set<string>();
+  // Pattern: is_nil(var.field_name) or is_nil(field_name)
+  const isNilRe = /is_nil\(\w+\.(\w+)\)/g;
+  // Pattern: case something.field_name do ... nil -> ...
+  const caseNilRe = /case\s+\w+\.(\w+)\s+do[\s\S]*?nil\s*->/g;
+  // ...
+  return guarded;
+}
+```
+
+**Feeds into:** `ElixirModule.nullGuardedFields` (new field) → pipeline uses it as additional signal when `requiredFields` is empty for a field.
+
+**When to use:** Fields not in `validate_required` but also not `cast` optional — the "assumed present but nil-checked" category.
+
+## Data Flow
+
+### Indexing Data Flow (write path)
+
+```
+elixir.ts: extractElixirModules()
+  ├── extractSchemaDetails()     → schemaFields: [{name, type}]
+  ├── extractRequiredFields()    → requiredFields: string[]
+  ├── extractCastFields() [NEW]  → castFields: string[]
+  └── detectNullGuardedFields() [NEW] → nullGuardedFields: string[]
+          │
+          ▼
+pipeline.ts: extractRepoData()
+  ├── ectoFields = elixirModules.flatMap(mod =>
+  │     mod.schemaFields.map(f => ({
+  │       ...
+  │       nullable: !mod.requiredFields.includes(f.name)
+  │                && !mod.castFields.includes(f.name) [ENHANCED]
+  │     }))
+  │   )
+  └── protoFields = protoDefinitions.flatMap(proto =>
+        proto.messages.flatMap(msg =>
+          msg.fields.map(f => ({
+            ...
+            // proto adds: eventName association [ENHANCED in proto.ts]
+          }))
+        )
+      )
+          │
+          ▼
+writer.ts: persistRepoData() / persistSurgicalData()
+  └── for each field:
+        description = buildFieldDescription(field, repoName, eventName) [ENHANCED]
+            = `${repoName} ${parentName} ${fieldType} ${constraint} ${eventContext}`
+        indexEntity(db, { type: 'field', description })
+
+knowledge_fts table updated
+```
+
+### Search Query Data Flow (read path)
+
+```
+kb_search / CLI search
+  → searchText(db, query, options)
+       → executeFtsQuery(db, query, limit, typeFilter)
+            → tokenizeForFts(query)           [unchanged]
+            → buildOrQuery(tokens) [NEW]
+            → executeFtsWithRelaxation() [NEW wrapper]
+                 → Tier 1: OR query → MATCH
+                 → Tier 2 (if few results): phrase match
+                 → return FtsMatch[]
+       → hydrate each result
+  → return TextSearchResult[]
+```
+
+### Key Data Flows
+
+1. **Richer field descriptions:** `elixir.ts` (more constraint data) → `pipeline.ts` (same FieldData shape, richer nullable signal) → `writer.ts` (richer description string) → `knowledge_fts` (more searchable tokens)
+
+2. **OR-default search:** `text.ts` → `fts.ts::executeFtsWithRelaxation` (new) → FTS5 OR query → higher recall, same BM25 ranking
+
+3. **Progressive relaxation:** Same path as OR-default, but triggered when OR tier returns fewer than `minResults` (default 3) — adds phrase tier as final fallback
+
+4. **Proto field context:** `proto.ts` (message + event name in ProtoField or ProtoMessage) → `pipeline.ts` (surfaced into FieldData description) → `writer.ts` → FTS description includes event name
+
+## Integration Points
+
+### New vs Modified: Explicit Boundary
+
+| File | Change Type | What Changes | What Stays the Same |
+|------|-------------|--------------|---------------------|
+| `src/db/fts.ts` | MODIFY | Add `buildOrQuery()`, `executeFtsWithRelaxation()` | `indexEntity()`, `executeFtsWithFallback()`, `resolveTypeFilter()`, FTS DDL |
+| `src/search/text.ts` | MODIFY | `executeFtsQuery()` calls `executeFtsWithRelaxation` instead of `executeFtsWithFallback` | Hydration loop, options, return type |
+| `src/indexer/writer.ts` | MODIFY | `insertFieldWithFts()` builds richer description (needs `repoName` in scope); `insertEventWithFts()` may add message context | `insertModuleWithFts()`, `insertServiceWithFts()`, all persist/clear functions |
+| `src/indexer/elixir.ts` | MODIFY | New private helpers: `extractCastFields()`, `detectNullGuardedFields()`; `ElixirModule` interface gets new optional fields | All existing parsing logic, `extractSchemaDetails()`, `extractRequiredFields()` |
+| `src/indexer/proto.ts` | MODIFY | Surface event association in `ProtoMessage` or `ProtoField` if feasible | Message/field extraction logic, file scanning |
+| `src/indexer/pipeline.ts` | MODIFY (minor) | Use new `ElixirModule` fields for nullability signal | 3-phase structure, all extractor calls, surgical/full branching |
+
+### Internal Boundaries
+
+| Boundary | Communication | Constraint |
+|----------|--------------|-----------|
+| `elixir.ts` → `pipeline.ts` | `ElixirModule[]` interface | Adding fields to `ElixirModule` is backward-compatible; pipeline already destructures it |
+| `pipeline.ts` → `writer.ts` | `FieldData[]` interface | `FieldData` shape is the contract — richer descriptions are built in `writer.ts`, not `FieldData` |
+| `writer.ts` → `fts.ts` | `indexEntity()` call with `description` string | `description` is just a string; writer assembles it, fts.ts stores it |
+| `fts.ts` → `text.ts` | `executeFtsWithFallback` (current) / `executeFtsWithRelaxation` (new) | `text.ts` only changes one call site |
+
+### FieldData Contract: Stable
+
+`FieldData` in `writer.ts` does NOT change shape. The richer descriptions are assembled inside `writer.ts`'s insert helpers using data already available at insert time (`repoName` from metadata in scope, `eventId` lookup already performed). This keeps `pipeline.ts`'s mapping logic clean.
 
 ```typescript
-interface GraphEdge {
-  targetId: number;
-  targetName: string;
-  mechanism: string;          // relationship_type
-  confidence: string | null;  // from metadata JSON
-  via?: string;               // event name or topic for mediated edges
+// FieldData stays:
+interface FieldData {
+  parentType: 'ecto_schema' | 'proto_message' | 'graphql_type';
+  parentName: string;
+  fieldName: string;
+  fieldType: string;
+  nullable: boolean;       // enriched by deeper Ecto extraction
+  sourceFile: string;
+  moduleId?: number | null;
+  eventId?: number | null;
 }
-
-interface ServiceGraph {
-  forward: Map<number, GraphEdge[]>;   // source -> targets (for downstream/impact)
-  reverse: Map<number, GraphEdge[]>;   // target -> sources (for upstream)
-  repoNames: Map<number, string>;      // id -> name lookup
-  repoIds: Map<string, number>;        // name -> id lookup
-}
+// eventId already present — writer.ts can look up event name from eventId for FTS description
 ```
 
-### Building the Graph
-
-Single SQL query loads all edges:
-
-```typescript
-function buildGraph(db: Database.Database): ServiceGraph {
-  const graph: ServiceGraph = { forward: new Map(), reverse: new Map(), repoNames: new Map(), repoIds: new Map() };
-
-  // 1. Load repos for name resolution
-  const repos = db.prepare('SELECT id, name FROM repos').all();
-  for (const r of repos) {
-    graph.repoNames.set(r.id, r.name);
-    graph.repoIds.set(r.name, r.id);
-  }
-
-  // 2. Load direct repo-to-repo edges (~6ms for 12K rows)
-  const directEdges = db.prepare(`
-    SELECT e.source_id, e.target_id, e.relationship_type, e.metadata
-    FROM edges e
-    WHERE e.source_type = 'repo' AND e.target_type = 'repo'
-  `).all();
-
-  for (const e of directEdges) {
-    addEdge(graph, e.source_id, e.target_id, e.relationship_type, e.metadata);
-  }
-
-  // 3. Resolve event-mediated edges (repo -> event -> repo)
-  resolveEventEdges(db, graph);
-
-  // 4. Resolve kafka-mediated edges (matched by topic name)
-  resolveKafkaEdges(db, graph);
-
-  return graph;
-}
-```
-
-### Event/Kafka Resolution
-
-Port the logic from `findEventMediatedEdges()` and `findKafkaTopicEdges()` in dependencies.ts, but run it once upfront instead of per-hop:
-
-```typescript
-function resolveEventEdges(db: Database.Database, graph: ServiceGraph): void {
-  // Find pairs: repo A produces_event X, repo B consumes_event X
-  const pairs = db.prepare(`
-    SELECT e1.source_id as producer_id, e2.source_id as consumer_id,
-           ev.name as event_name
-    FROM edges e1
-    JOIN edges e2 ON e1.target_id = e2.target_id
-      AND e1.target_type = 'event' AND e2.target_type = 'event'
-    WHERE e1.relationship_type = 'produces_event'
-      AND e2.relationship_type = 'consumes_event'
-      AND e1.source_type = 'repo' AND e2.source_type = 'repo'
-      AND e1.source_id != e2.source_id
-  `).all();
-
-  for (const p of pairs) {
-    addEdge(graph, p.producer_id, p.consumer_id, 'event', null, p.event_name);
-  }
-}
-
-function resolveKafkaEdges(db: Database.Database, graph: ServiceGraph): void {
-  // Load all kafka edges, group by topic, match producers to consumers
-  const kafkaEdges = db.prepare(`
-    SELECT source_id, relationship_type, metadata
-    FROM edges
-    WHERE source_type = 'repo'
-      AND relationship_type IN ('produces_kafka', 'consumes_kafka')
-  `).all();
-
-  const producers = new Map<string, number[]>();  // topic -> [repo_ids]
-  const consumers = new Map<string, number[]>();  // topic -> [repo_ids]
-
-  for (const e of kafkaEdges) {
-    const topic = extractMetadataField(e.metadata, 'topic');
-    if (!topic) continue;
-    const map = e.relationship_type === 'produces_kafka' ? producers : consumers;
-    if (!map.has(topic)) map.set(topic, []);
-    map.get(topic)!.push(e.source_id);
-  }
-
-  // Create edges: each producer -> each consumer for same topic
-  for (const [topic, producerIds] of producers) {
-    const consumerIds = consumers.get(topic);
-    if (!consumerIds) continue;
-    for (const pid of producerIds) {
-      for (const cid of consumerIds) {
-        if (pid !== cid) {
-          addEdge(graph, pid, cid, 'kafka', null, topic);
-        }
-      }
-    }
-  }
-}
-```
-
-### BFS Primitives
-
-```typescript
-// Downstream impact: what services are affected if this one changes
-function bfsDownstream(graph: ServiceGraph, startId: number, maxDepth: number): ImpactNode[] {
-  const visited = new Set<number>([startId]);
-  const queue: Array<{ id: number; depth: number }> = [{ id: startId, depth: 0 }];
-  const results: ImpactNode[] = [];
-
-  while (queue.length > 0) {
-    const { id, depth } = queue.shift()!;
-    if (depth >= maxDepth) continue;
-
-    // Follow REVERSE edges: who depends on me = who has edges pointing to me
-    for (const edge of (graph.reverse.get(id) ?? [])) {
-      // edge.targetId here is the SOURCE of the original edge (the dependent)
-      if (visited.has(edge.targetId)) continue;
-      visited.add(edge.targetId);
-      results.push({
-        name: edge.targetName,
-        repoName: edge.targetName,
-        mechanism: edge.mechanism,
-        confidence: edge.confidence,
-        depth: depth + 1,
-        via: edge.via,
-      });
-      queue.push({ id: edge.targetId, depth: depth + 1 });
-    }
-  }
-  return results;
-}
-
-// Shortest path: BFS with parent pointers for reconstruction
-function shortestPath(graph: ServiceGraph, startId: number, endId: number, maxDepth: number): TraceHop[] | null {
-  if (startId === endId) return [];
-
-  const parent = new Map<number, { from: number; edge: GraphEdge }>();
-  const queue: Array<{ id: number; depth: number }> = [{ id: startId, depth: 0 }];
-  const visited = new Set<number>([startId]);
-
-  while (queue.length > 0) {
-    const { id, depth } = queue.shift()!;
-    if (depth >= maxDepth) continue;
-
-    // Follow edges in BOTH directions for path finding
-    const neighbors = [
-      ...(graph.forward.get(id) ?? []),
-      ...(graph.reverse.get(id) ?? []),
-    ];
-
-    for (const edge of neighbors) {
-      if (visited.has(edge.targetId)) continue;
-      visited.add(edge.targetId);
-      parent.set(edge.targetId, { from: id, edge });
-
-      if (edge.targetId === endId) {
-        return reconstructPath(parent, startId, endId, graph);
-      }
-      queue.push({ id: edge.targetId, depth: depth + 1 });
-    }
-  }
-  return null; // No path found
-}
-```
-
-### Direction Semantics (Critical)
-
-This is the trickiest part. Document it explicitly:
+## Suggested Build Order (Dependency-Driven)
 
 ```
-Impact analysis: "What breaks if I change service X?"
-  = What services DEPEND ON X
-  = Who has edges pointing TO X
-  = Follow REVERSE adjacency list from X
+Phase A: FTS query layer (no extractor changes needed)
+  1. fts.ts: buildOrQuery() + executeFtsWithRelaxation()
+  2. text.ts: wire executeFtsWithRelaxation
+  3. Tests: confirm OR behavior, progressive relaxation, existing golden tests pass
 
-Flow tracing: "How does a request get from A to B?"
-  = Any path between A and B, regardless of direction
-  = Follow BOTH forward and reverse edges
-  = BFS finds shortest path naturally
+Phase B: Richer FTS descriptions (depends on existing FieldData shape)
+  4. writer.ts: richer field description builder (repoName + constraint + event context)
+  5. writer.ts: richer event description (include proto message context if available)
+  6. Tests: re-index test fixture, verify FTS tokens include new context
+
+Phase C: Deeper Ecto extraction (independent of Phase A/B, feeds Phase B signal)
+  7. elixir.ts: extractCastFields()
+  8. elixir.ts: detectNullGuardedFields()
+  9. elixir.ts: ElixirModule interface additions
+  10. pipeline.ts: use new fields in nullable determination
+  11. Tests: unit tests for new extractors; integration test for improved nullability
+
+Phase D: Proto field context enrichment (independent of all above)
+  12. proto.ts: surface event/message association in extraction output
+  13. pipeline.ts / writer.ts: use in FieldData description
+  14. Tests: proto field FTS tokens include message name
 ```
 
-The existing `dependencies.ts` has the same semantics:
-- `direction: 'downstream'` follows edges WHERE target_id = my_id (things that call me)
-- `direction: 'upstream'` follows edges WHERE source_id = my_id (things I call)
+**Rationale for order:**
+- Phase A is pure query-time and delivers immediate recall improvement with zero re-index required
+- Phase B improves existing index richness — requires re-index to see results but no extractor risk
+- Phase C changes extractor output and nullability signal — isolated risk, good to validate separately
+- Phase D is the smallest scope change and most independent; can ship with any phase or last
 
-Impact analysis = downstream = reverse adjacency.
+## Anti-Patterns
 
-## kb_explain: No Graph Module Needed
+### Anti-Pattern 1: Changing FieldData Shape for Descriptions
 
-kb_explain is pure SQL aggregation -- no traversal, no recursion, no BFS. A CTE is useful here (but non-recursive) for organizing a multi-join query:
+**What people do:** Add a `ftsDescription` field to `FieldData` and assemble the richer string in `pipeline.ts`.
 
-```typescript
-function queryExplain(db: Database.Database, name: string): ExplainResult | null {
-  const repo = db.prepare('SELECT id, name, path, description, default_branch, last_indexed_commit FROM repos WHERE name = ?').get(name);
-  if (!repo) return null;
+**Why it's wrong:** `pipeline.ts` is the extraction orchestrator. Description assembly is a persistence concern. It also pushes `repoName` into every `FieldData` object when it's only needed at write time.
 
-  // Entity counts
-  const counts = db.prepare(`
-    SELECT 'module' as type, COUNT(*) as count FROM modules WHERE repo_id = ?
-    UNION ALL SELECT 'event', COUNT(*) FROM events WHERE repo_id = ?
-    UNION ALL SELECT 'service', COUNT(*) FROM services WHERE repo_id = ?
-  `).all(repo.id, repo.id, repo.id);
+**Do this instead:** Keep `FieldData` stable. Assemble richer descriptions inside `writer.ts`'s insert helpers, where `repoName` is already in scope from the transaction context.
 
-  // Connections (inbound + outbound)
-  const connections = db.prepare(`
-    SELECT 'outbound' as direction, e.relationship_type, e.metadata,
-           COALESCE(r.name, json_extract(e.metadata, '$.targetName'), 'unknown') as peer
-    FROM edges e
-    LEFT JOIN repos r ON e.target_type = 'repo' AND e.target_id = r.id
-    WHERE e.source_type = 'repo' AND e.source_id = ?
-    UNION ALL
-    SELECT 'inbound', e.relationship_type, e.metadata,
-           COALESCE(r.name, 'unknown') as peer
-    FROM edges e
-    LEFT JOIN repos r ON e.source_type = 'repo' AND e.source_id = r.id
-    WHERE e.target_type = 'repo' AND e.target_id = ?
-  `).all(repo.id, repo.id);
+### Anti-Pattern 2: Hard-Coding OR as the FTS5 Query Mode
 
-  // Top modules (limit 10)
-  const topModules = db.prepare(`
-    SELECT name, type FROM modules WHERE repo_id = ? ORDER BY name LIMIT 10
-  `).all(repo.id);
+**What people do:** Change `tokenizeForFts` to always return an OR-joined string.
 
-  // Assemble card...
-}
-```
+**Why it's wrong:** `tokenizeForFts` is used for both index-time tokenization (write path) and query-time tokenization. Injecting `OR` operators into the indexed text would corrupt the FTS index.
 
-## Shared Code Extraction
+**Do this instead:** Keep `tokenizeForFts` as a pure text normalizer. Add a separate `buildOrQuery(processedQuery: string): string` helper that joins tokens with ` OR `. Call it only on the query side in `fts.ts`.
 
-Before building any new module, extract shared utilities from `dependencies.ts`:
+### Anti-Pattern 3: Adding a Progressive Relaxation State Machine in text.ts
 
-| Function/Constant | Current Location | Action |
-|-------------------|-----------------|--------|
-| `MECHANISM_LABELS` | dependencies.ts (exported) | Import from there, or extract to graph-utils.ts |
-| `MECHANISM_FILTER_MAP` | dependencies.ts (exported) | Same |
-| `VALID_MECHANISMS` | dependencies.ts (exported) | Same |
-| `extractConfidence()` | dependencies.ts (private) | Extract to shared module |
-| `extractMetadataField()` | dependencies.ts (private) | Extract to shared module |
-| `formatMechanism()` | dependencies.ts (private) | Extract to shared module |
+**What people do:** Put the multi-tier query logic directly in `searchText()` alongside the hydration loop.
 
-Recommendation: Create `src/search/edge-utils.ts` with the extracted functions. Update `dependencies.ts` to import from there. Run existing tests to confirm zero regressions.
+**Why it's wrong:** `searchText()` owns hydration, repo filtering, and result shaping. Query strategy is a DB-layer concern. Mixing them makes both harder to test.
 
-## MCP Tool Pattern
+**Do this instead:** Keep `executeFtsWithRelaxation()` in `fts.ts`. `text.ts` stays a thin orchestrator: tokenize → query (opaque) → hydrate.
 
-Each tool follows the established pattern from `deps.ts`:
+### Anti-Pattern 4: Running Null-Guard Scan Across Entire File
 
-```typescript
-export function registerImpactTool(server: McpServer, db: Database.Database): void {
-  server.tool(
-    'kb_impact',
-    'Analyze blast radius: what services are affected if this service changes',
-    { name: z.string(), mechanism: z.enum([...]).optional(), depth: z.number().optional() },
-    wrapToolHandler('kb_impact', async ({ name, mechanism, depth }) => {
-      const result = await withAutoSync(db,
-        () => queryImpact(db, name, { mechanism, depth }),
-        (r) => [r.source.repoName, ...r.affected.map(a => a.repoName)],
-      );
-      return formatImpactResponse(result); // Dedicated formatter, NOT generic halving
-    }),
-  );
-}
-```
+**What people do:** Scan the entire `.ex` file content for `is_nil` patterns.
 
-## Module Dependency Diagram
+**Why it's wrong:** `is_nil` appears in non-schema functions. A guard on `opts.timeout` is not field nullability signal.
 
-```
-                 CLI Layer                          MCP Layer
-           +-----------------+              +------------------+
-           | cli/commands/   |              | mcp/tools/       |
-           |   impact.ts     |              |   impact.ts      |
-           |   trace.ts      |              |   trace.ts       |
-           |   explain.ts    |              |   explain.ts     |
-           +-------+---------+              +--------+---------+
-                   |                                 |
-                   v                                 v
-           +-------+---------+              +--------+---------+
-           | cli/db.ts       |              | mcp/handler.ts   |
-           | cli/output.ts   |              | mcp/format.ts    |
-           +-------+---------+              | mcp/sync.ts      |
-                   |                        +--------+---------+
-                   +---------------+-----------------+
-                                   |
-                                   v
-                   +---------------+-----------------+
-                   | search/                         |
-                   |   impact.ts  ----+              |
-                   |   trace.ts   ----|-> graph.ts   |
-                   |   explain.ts     |  (in-memory  |
-                   |   edge-utils.ts  |   adjacency) |
-                   |   types.ts       |              |
-                   |   dependencies.ts (unchanged)   |
-                   +---------------+-----------------+
-                                   |
-                                   v
-                   +---------------+-----------------+
-                   | db/                             |
-                   |   database.ts (better-sqlite3)  |
-                   +---------------+-----------------+
-```
-
-## What NOT to Do
-
-1. **Don't add a graph query abstraction layer.** Design doc says "No abstraction layer." Each query function owns its data access.
-2. **Don't modify dependencies.ts query logic.** Existing BFS serves kb_deps. Leave it working. Only extract shared utilities.
-3. **Don't add schema migrations.** Existing edges table + indexes are sufficient.
-4. **Don't use recursive CTEs for traversal.** Use CTEs only for non-recursive aggregation in kb_explain.
-5. **Don't prepare statements at module load time.** Follow existing pattern of preparing within function scope.
-6. **Don't add a graph caching layer.** 9ms load time. 2-second budget. 200x headroom.
+**Do this instead:** Scope the scan to the per-module content slice (`moduleContent`) that `parseElixirFile` already carves out. The function is already per-module in scope.
 
 ## Sources
 
-All findings from direct codebase inspection:
-- `src/search/dependencies.ts`: BFS traversal, edge resolution, direction semantics, private utilities
-- `src/search/entity.ts`: entity hydration pattern
-- `src/search/types.ts`: existing type definitions
-- `src/mcp/tools/deps.ts`: MCP tool registration pattern
-- `src/mcp/handler.ts`: wrapToolHandler HOF
-- `src/mcp/format.ts`: formatResponse / formatSingleResponse
-- `src/mcp/sync.ts`: withAutoSync pattern
-- `src/db/migrations.ts`: edges table schema (V1 + V7 metadata)
-- `src/db/database.ts`: pragmas, confirms db/ is infrastructure only
-- Local benchmarks: SQL CTE vs JS BFS performance (this research cycle)
+All findings from direct codebase inspection (2026-03-11):
+
+- `src/db/fts.ts` — FTS5 schema, `indexEntity`, `executeFtsWithFallback`, query logic
+- `src/db/tokenizer.ts` — tokenization behavior, dual write/query usage
+- `src/search/text.ts` — `searchText` orchestration, hydration, option handling
+- `src/indexer/elixir.ts` — `ElixirModule` interface, `extractRequiredFields`, per-module content slicing
+- `src/indexer/proto.ts` — `ProtoMessage`/`ProtoField` shapes
+- `src/indexer/writer.ts` — `insertFieldWithFts` description construction, `FieldData` interface
+- `src/indexer/pipeline.ts` — `extractRepoData` field mapping, nullability signal construction
+- `src/search/field-impact.ts` — confirms `fields` table and `nullable` column semantics
+- `.planning/PROJECT.md` — v4.2 target features and milestone context
 
 ---
-*Research completed: 2026-03-09*
+*Architecture research for: v4.2 Search Quality (repo-knowledge-base)*
+*Researched: 2026-03-11*

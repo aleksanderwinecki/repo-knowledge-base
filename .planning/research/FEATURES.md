@@ -1,211 +1,188 @@
-# Feature Landscape: v3.0 Graph Intelligence
+# Feature Research
 
-**Domain:** Code intelligence graph traversal for AI agent consumption via MCP
-**Researched:** 2026-03-09
-**Update:** Adjusted for hybrid SQL+JS architecture (CTE replaced by JS BFS for traversal)
-
-## Context
-
-Three new tools for an existing knowledge base with ~12K topology edges across ~400 repos. All tools use SQL for data loading and JS BFS for graph traversal. Output is JSON over MCP, constrained to 4KB per response.
-
-Existing infrastructure already provides: BFS traversal (`queryDependencies`), mechanism filtering, confidence extraction from edge metadata, `formatResponse` with recursive halving, `wrapToolHandler` HOF, `withAutoSync`.
+**Domain:** AI-optimized code knowledge base search — v4.2 Search Quality milestone
+**Researched:** 2026-03-11
+**Confidence:** HIGH (code analysis of existing system) / MEDIUM (ecosystem patterns)
 
 ---
 
-## Table Stakes
+## Context: What Already Exists
 
-Features users expect. Missing = tool feels broken.
-
-### kb_impact (Blast Radius)
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Downstream traversal from a service | Core purpose -- "what breaks if X changes?" | Low | JS BFS on in-memory adjacency list |
-| Depth-grouped results (direct/indirect/transitive) | Agents need to distinguish severity | Low | Hop count from BFS |
-| Mechanism label per affected service | Agent needs to know HOW impact propagates | Low | Existing `MECHANISM_LABELS` |
-| Confidence level per edge | Already in edge metadata; omitting = regression from kb_deps | Low | Existing `extractConfidence` |
-| Mechanism filter (`--mechanism grpc`) | Parity with kb_deps | Low | Existing `MECHANISM_FILTER_MAP` |
-| Depth limit (`--depth N`, default 3) | Control response size, prevent hub explosion | Low | BFS depth counter |
-| Total affected count in summary | Single number for agent decisions | Low | Array.length |
-| Event/Kafka-mediated paths transparent | Two-hop repo->event->repo must collapse to single logical edge | Medium | Pre-resolve in graph builder |
-| Compact response format | Must fit 300+ service blast radius in 4KB | Medium | Service names + stats, not full paths |
-
-### kb_trace (Flow Tracing)
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Shortest path between two services | Core purpose -- "how does a request get from A to B?" | Low | BFS on unweighted graph = optimal |
-| Ordered hop list with mechanism per hop | Agent needs the chain, not just "path exists" | Low | Parent-pointer backtracking |
-| Event/Kafka transparency in path display | `app-checkout -[kafka: payment.completed]-> app-notifications` | Medium | Same collapsing as impact |
-| "No path found" vs "service not found" | Must distinguish disconnected from nonexistent | Low | Pre-check repos table |
-| Path summary string | One-liner agent can paste into explanations | Low | String join from hop array |
-
-### kb_explain (Service Summary)
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Service name + description | Basic identity | Low | repos.description |
-| Inbound connections grouped by mechanism | "Who calls this service?" | Low | Edges WHERE target = repo |
-| Outbound connections grouped by mechanism | "What does this service call?" | Low | Edges WHERE source = repo |
-| Events produced/consumed | Key for async behavior understanding | Low | Event edges |
-| Entity counts (modules, events, services) | "How big is this?" | Low | COUNT on entities table |
-| Repo metadata (path, branch, last commit) | Agent needs to know where to look | Low | repos table |
+This is a subsequent milestone. The system already has:
+- FTS5 with implicit AND, BM25 ranking, unicode61 tokenizer, prefix=2,3
+- `executeFtsWithFallback` (syntax-error fallback to phrase match — NOT a zero-results OR fallback)
+- `searchText()` returns: entityType, subType, entityId, name, snippet (= description ?? name), repoName, repoPath, filePath, relevance
+- Field FTS description: `"${parentName} ${fieldType}"` (writer.ts line ~430)
+- Module FTS description: summary, or `"Ecto schema table: ${tableName}"` if table present
+- Event FTS description: raw `schema_definition` string (proto field list)
+- Ecto extractor captures: schemaFields, associations, requiredFields (validate_required atoms)
+- Proto extractor captures: field name, type, optional flag — but message name NOT in FTS description
+- No null-guard scanning exists anywhere in the indexer
 
 ---
 
-## Differentiators
+## Feature Landscape
 
-Features that set these tools apart from manually combining kb_deps + kb_entity + kb_search.
+### Table Stakes (Users Expect These)
 
-### kb_impact
+Features that define "search actually works" for an AI agent consumer. Missing any of these produces silence or misleading results.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Severity tiers (direct/indirect/transitive) | Depth 1 = "will break", 2+ = "may break" | Low | Map depth to tier label |
-| Aggregated mechanism summary | "3 via gRPC, 2 via Kafka" in stats block | Low | Group-by before serialization |
-| Blast radius score | Single number for commit messages / PR descriptions | Low | Count distinct services |
-| Sub-millisecond response | 0.6ms JS BFS vs seconds of manual investigation | Low | Already achieved via architecture |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| OR-default search mode | An agent searching "booking created" expects results for either word when both-word entities don't exist. AND-default silently returns nothing — worse than noisy results for AI consumers (recall > precision is the right tradeoff). | LOW | Change query-construction in `executeFtsQuery` in `text.ts` to join tokenized terms with OR. Tokenizer stays pure. One-line change. |
+| Progressive relaxation: AND → OR fallback | When a narrow query returns zero or fewer than N results, automatically retry with OR. Provides graceful degradation without requiring callers to know about it. Distinct from the existing syntax-error fallback in `executeFtsWithFallback`. | LOW | Add zero-result check in `executeFtsQuery`; if result count < 3, retry with terms joined by OR. Pattern already established by `executeFtsWithFallback`. |
+| Richer FTS description: proto field includes message context | An agent searching "BookingCreated scheduled_at" misses proto fields because FTS description is just `"BookingCreated string"` with no event association. Message context is missing from searchable text. | LOW | In `writer.ts` field insertion block: build description as `"${parentName}.${fieldName} ${fieldType} [event: ${eventName}]"` when `eventId !== null`. Event name is resolvable from `lookupEvent` already prepared in the same transaction. |
+| Richer FTS description: repo name inline | BM25 ranks results within FTS content. Repo name is not in the searchable text for modules/services, so cross-repo disambiguation is weaker than it could be. | LOW | Append `repo:${repoName}` to FTS description at write time in `persistRepoData`. Repo name is already available via `metadata.name`. |
+| Deeper Ecto cast/optional field extraction | `requiredFields` from `validate_required` is already extracted. `cast/2` call and `@optional_fields` attribute (Fresha pattern) are not. Without this, nullability metadata for Ecto fields is incomplete — agents can't tell if a field is optional from the index. | MEDIUM | Add regex patterns for `@optional_fields\s*\[...\]` and `cast(changeset, @optional_fields)` in `elixir.ts`. Cross-reference against `schemaFields`: fields not in `requiredFields` and not in explicit `@optional_fields` list are nullable=true by Ecto default. Follows pattern of existing `extractRequiredFields`. |
 
-### kb_trace
+### Differentiators (Competitive Advantage)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Annotated hops with confidence | Each hop shows [high]/[medium]/[low] | Low | Already in edge metadata |
-| Min-path confidence | Weakest link in the chain highlighted | Low | Track min through BFS |
-
-### kb_explain
+Features that make this tool meaningfully better for AI agents than a naive FTS grep tool.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| "Talks to" and "called by" summaries | Quick topology overview | Low | COUNT on edge groups |
-| Top modules by type | Shows what service DOES, not just what it connects to | Low | GROUP BY type on modules |
-| Next-step hints | `"Run kb_impact app-payments to see blast radius"` | Low | Static strings based on result |
+| Result enrichment: `nextAction` hint per result | Each search result includes a structured hint for the next tool call. E.g., a repo result suggests `kb_explain`; a field result suggests `kb_field_impact`; a module with edges suggests `kb_deps`. Reduces agent reasoning from "what do I do with this?" to "execute the hint." | MEDIUM | Add `nextAction?: { tool: string; args: Record<string, string> }` to `TextSearchResult` type. Populate in `searchText()` hydration loop based on `entityType`. No DB changes. Logic is pure branching on entity type and relationship presence. |
+| Null-guard heuristic scanning | Detect `is_nil`, `case x when nil`, `with x when not is_nil(x)`, `Map.get/3` (three-arg = nil-safe), `Access.get` near field references in Elixir source. Index a `has_null_guard` boolean per field. Agents immediately know whether a field is defensively used or dangerously assumed non-nil — without reading source. | HIGH | New extraction function in `elixir.ts`. For each schemaField, scan ±20 lines for nil-guard patterns. Add `has_null_guard` boolean to `FieldData` and `fields` table. Schema version bump required (triggers drop+rebuild, which is the established migration pattern). Regex patterns: `is_nil\(\s*[^)]*fieldName`, `case.*fieldName.*nil\s*->`, `when not is_nil.*fieldName`, `Map\.get\([^,]+,\s*:fieldName\s*,`. |
+| Multi-concept fan-out to parallel entity types | Query "BookingCreated payment_method" spans an event name and a field name. A single BM25 pass deprioritizes one. Fan-out executes one FTS pass per detected concept, merges ranked results — surfaces cross-entity-type results that a single pass misses. | MEDIUM | Detect query as multi-concept if tokenized form has 2+ terms and no explicit OR/AND/NOT operators. Split on natural concept boundaries (CamelCase terms vs snake_case terms), run N sub-queries (N=2 or 3 max), merge with dedup by entityId. SQLite sub-queries are <5ms each; N=3 stays under 20ms total. |
 
----
+### Anti-Features (Commonly Requested, Often Problematic)
 
-## Anti-Features
-
-Features to explicitly NOT build.
-
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Neo4j / external graph DB | 12K edges fits in a JS Map (~12MB). Adding infrastructure for zero performance gain. | JS BFS on SQLite-loaded adjacency list |
-| Visual graph rendering (SVG/ASCII) | Agents consume JSON. 4KB cap makes graphics impractical. | Structured JSON with path_summary strings |
-| All-pairs shortest path precomputation | O(V^2) storage for 400 repos = 160K entries. Called occasionally. | On-demand BFS, 0.2ms per query |
-| Code-level impact (function granularity) | Needs AST parsing (tree-sitter), different graph, larger storage | Service-level blast radius is the right abstraction |
-| Architecture rules engine | "X should not call Y" is a different concern | Defer to future milestone; these are read-only tools |
-| Weighted edges / importance scoring | No reliable signal for weight exists | Use existing confidence levels (high/medium/low) |
-| Historical graph comparison | Requires snapshots, diffing, schema expansion | Out of scope. git log serves indirectly. |
-| Recursive CTEs for traversal | 200-1000x slower than JS BFS (benchmarked) | SQL for loading, JS for traversal |
-| Graph algorithm library | BFS is 20 lines on 400 nodes | Hand-written, zero dependencies |
-| Edge caching layer | 9ms load, 2-second budget = 200x headroom | Add only if profiling shows need |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Semantic / vector search | "Find conceptually related things even without exact name" | Already removed in v2.1: 1hr generation time, OOM on targeted runs. Contradicts SQLite-only constraint. Embeddings add infra complexity with marginal return over well-tuned FTS. | Richer FTS descriptions + OR-default covers the primary motivation. Better descriptions mean better recall without embeddings. |
+| Fuzzy / edit-distance matching | "appointment should match appointments" | FTS5 prefix matching (prefix=2,3 already configured) handles the 90% case. Edit-distance requires custom tokenizer or external lib, adds query latency, and produces noisy results in a code domain where exact naming matters. | Prefix search handles plural/truncated forms. OR-default handles multi-token misses. |
+| Result pagination (cursor-based) | "I want more than 20 results" | MCP responses are capped at 4KB. Stateless MCP server can't hold pagination state between calls. Large result sets cause agent context bloat. | Increase recall via OR-default instead of returning more results. Use type-filtering to scope. Agents should make focused queries, not browse. |
+| Per-query null-guard scan (on-the-fly) | "Show null guard status without reindexing" | Scanning source files per query breaks the <2s response constraint. Source files aren't cached post-indexing — the DB is the cache. On-the-fly regex across 400 repos = minutes, not milliseconds. | Index null-guard status at index time (the differentiator above). Query-time is read-only. |
+| AST-based extraction | "Regex misses edge cases" | tree-sitter or equivalent requires native binary dependency, breaking the zero-infrastructure constraint. Explicitly deferred in PROJECT.md (NOM-03). Fresha's macros are well-structured enough for regex. | Improve regex coverage for specific gaps (cast/@optional_fields) rather than replacing the extraction approach. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Existing edges table (v2.0)
-  |
-  +-- Graph module (src/search/graph.ts)
-  |     +-- Adjacency list builder (SQL load + JS construction)
-  |     +-- Event/Kafka intermediate node resolution
-  |     +-- BFS downstream traversal
-  |     +-- BFS shortest path
-  |
-  +-- kb_impact (uses graph.bfsDownstream)
-  |     +-- mechanism filter
-  |     +-- compact response formatter
-  |
-  +-- kb_trace (uses graph.shortestPath)
-  |     +-- path reconstruction
-  |     +-- mechanism annotations
-  |
-  +-- kb_explain (NO dependency on graph module)
-        +-- Multi-table SQL aggregation
-        +-- repos + entities + edges
+OR-default search mode
+    └──enables──> Progressive relaxation
+                  (relaxation becomes "drop rarest term" rather than "change operator" if OR is default)
+                      └──enhances──> Multi-concept fan-out
+                                     (fan-out sub-queries use single-term queries internally)
 
-kb_impact and kb_trace share the graph module.
-kb_explain is fully independent -- can be built in parallel.
-All three share: wrapToolHandler, formatResponse, withAutoSync, zod schemas.
+Richer FTS descriptions (proto message name, repo name)
+    └──required by──> Multi-concept fan-out
+                      (better per-field descriptions make merged results distinguishable)
+    └──required by──> Result enrichment: nextAction hint
+                      (richer snippets give agent better context to decide follow-up)
+
+Deeper Ecto cast extraction
+    └──feeds into──> Null-guard heuristic scanning
+                     (cast fields are the target population; knowing optional vs required
+                      makes guard detection meaningful)
+
+Null-guard heuristic scanning
+    └──required by──> Field result enrichment showing constraint summary
+                      (guard status to surface in search results)
 ```
+
+### Dependency Notes
+
+- **OR-default before progressive relaxation:** Relaxation logic needs a clear "what is the expanded query" contract. If OR is default, the expansion step is "drop least-informative term" — semantically cleaner than switching operators mid-flight.
+- **Richer descriptions before fan-out:** Fan-out merges results from multiple sub-queries. Sparse descriptions make merged results look indistinguishable. Richer descriptions make rank-merge and dedup meaningful.
+- **Null-guard scan depends on cast extraction:** Without knowing which fields are in the cast set, the guard check has incomplete coverage. Required fields (already extracted) + optional fields (new) = full field surface area.
+- **Null-guard is independent of search mode changes:** Touches only the indexer, not the query path. Can be built in parallel with OR-default/relaxation work.
+- **nextAction hint is independent of all above:** Pure presentation logic in `searchText()`. No indexer changes. Can ship in any order.
 
 ---
 
-## MCP Output Format Design
+## MVP Definition
 
-### kb_impact Response
+### Launch With (v4.2)
 
-```json
-{
-  "summary": "app-payments: 47 downstream services, max depth 4",
-  "services": [
-    { "name": "app-checkout", "mechanism": "grpc", "confidence": "high", "depth": 1, "tier": "direct" }
-  ],
-  "total": 47,
-  "truncated": false,
-  "stats": {
-    "direct": 8, "indirect": 15, "transitive": 24,
-    "by_mechanism": { "grpc": 12, "kafka": 23, "http": 8, "event": 4 }
-  },
-  "hints": ["Use --mechanism grpc to filter to gRPC-only impact"]
-}
-```
+Minimum set to deliver the milestone goal — "optimize search for AI agent consumers."
 
-**Key:** `stats` block survives truncation (in envelope, not in `services` array). Service names are compact. Paths omitted by default.
+- [ ] **OR-default search mode** — highest recall impact, lowest risk, single-function change
+- [ ] **Progressive AND → OR relaxation** — complements OR-default; handles zero-result edge cases
+- [ ] **Richer FTS descriptions: proto message context** — fixes the specific gap where proto fields are unfindable by event name
+- [ ] **Richer FTS descriptions: repo name inline** — improves cross-repo disambiguation without schema changes
+- [ ] **Deeper Ecto cast/optional field extraction** — completes nullability metadata that v4.0 started; prerequisite for null-guard
 
-### kb_trace Response
+### Add After Validation (v4.2.x)
 
-```json
-{
-  "summary": "Path found: app-gateway -> app-checkout -> app-payments (2 hops)",
-  "hops": [
-    { "from": "app-gateway", "to": "app-checkout", "mechanism": "gateway", "confidence": "medium" },
-    { "from": "app-checkout", "to": "app-payments", "mechanism": "grpc", "confidence": "high" }
-  ],
-  "path_summary": "app-gateway -[gateway]-> app-checkout -[grpc]-> app-payments",
-  "total_hops": 2,
-  "min_confidence": "medium"
-}
-```
+- [ ] **Result enrichment: nextAction hint** — trigger: agents are still making unnecessary follow-up calls after search
+- [ ] **Null-guard heuristic scanning** — trigger: agents need to know call-site safety without reading source; requires schema bump
 
-### kb_explain Response
+### Future Consideration (v5+)
 
-```json
-{
-  "summary": "app-payments: Payment processing service. 8 inbound, 5 outbound.",
-  "service": "app-payments",
-  "description": "Handles payment processing...",
-  "connections": {
-    "inbound": [{ "service": "app-checkout", "mechanism": "grpc", "confidence": "high" }],
-    "outbound": [{ "service": "app-notifications", "mechanism": "kafka", "topic": "payment.completed" }]
-  },
-  "entities": { "modules": 45, "schemas": 12, "events_produced": 3, "events_consumed": 2 },
-  "top_modules": ["Payments.Payment", "Payments.ProcessPayment"],
-  "hints": ["Run kb_impact app-payments to see blast radius"]
-}
-```
+- [ ] **Multi-concept fan-out** — trigger: agents fail to find cross-entity concept queries even with OR-default; requires careful latency measurement and query-structure detection
 
 ---
 
-## MVP Recommendation
+## Feature Prioritization Matrix
 
-Prioritize:
-1. **Graph module** -- shared BFS infrastructure, edge loading, adjacency list builder
-2. **kb_impact** -- highest value ("what breaks?"), validates graph module
-3. **kb_trace** -- reuses graph module, adds path reconstruction
-4. **kb_explain** -- independent of graph module, pure SQL aggregation
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| OR-default search mode | HIGH | LOW | P1 |
+| Progressive AND→OR relaxation | HIGH | LOW | P1 |
+| Richer FTS description: proto message name | HIGH | LOW | P1 |
+| Richer FTS description: repo name inline | MEDIUM | LOW | P1 |
+| Deeper Ecto cast/optional extraction | HIGH | MEDIUM | P1 |
+| Result enrichment: nextAction hint | HIGH | MEDIUM | P2 |
+| Null-guard heuristic scanning | MEDIUM | HIGH | P2 |
+| Multi-concept fan-out | MEDIUM | MEDIUM | P3 |
 
-Defer to post-v3.0:
-- Multiple path discovery (top N paths) in kb_trace
-- `--detail` flag for rich path data in kb_impact
-- outputSchema in MCP tool registration (SDK 1.27.1 doesn't require it)
+**Priority key:**
+- P1: Must have for v4.2 launch
+- P2: Should have; add once core is validated
+- P3: Nice to have; defer to v5+
+
+---
+
+## Implementation Notes by Feature
+
+### OR-default search mode
+Current: `tokenizeForFts("booking service")` → `"booking service"` → FTS5 implicit AND (both terms required).
+Proposed: join tokenized terms with ` OR ` in the query-construction layer in `executeFtsQuery` (`text.ts`). The tokenizer stays pure. One-line change in query building.
+
+Caution: OR-default increases result count. BM25 mitigates this — exact phrase matches rank higher than incidental OR matches. Set `limit` default conservatively and let ranking do the filtering.
+
+### Progressive AND → OR relaxation
+Current: `executeFtsWithFallback` retries on syntax error only — not zero results.
+Proposed: in `executeFtsQuery`, after OR-default query, if `results.length < 3`, retry with single-term queries per tokenized term, merge results, dedup by entityId. Stop when `count >= 3`. Log relaxation type internally (not stderr) for future synonym gap analysis.
+
+### Richer FTS descriptions: proto message context
+In `writer.ts`, field insertion block (line ~429-430):
+- Current: `description: \`${field.parentName} ${field.fieldType}\``
+- Proposed: when `eventId !== null`, suffix with ` [event: ${eventName}]`. Event name resolvable from `lookupEvent` already prepared in the same transaction scope. No schema change needed.
+
+### Deeper Ecto cast/optional extraction
+New regex in `elixir.ts` `extractRequiredFields`-adjacent function:
+- `@optional_fields\s*\[([\s\S]*?)\]` — extract optional field atom list
+- `cast\s*\(\s*\w+\s*,\s*@optional_fields\b` — detect pipe-to-optional-cast
+- Cross-reference: fields in `schemaFields` but not in `requiredFields` and not in `@optional_fields` list → nullable=true (Ecto default for non-cast fields varies; be conservative, treat ambiguous as nullable)
+
+### Null-guard heuristic scanning
+Two-pass per Elixir file:
+1. Collect field names from schema fields list for the module
+2. For each field, scan ±20 lines in module content for nil-guard patterns:
+   - `is_nil\(\s*[^)]*\b{fieldName}\b`
+   - `case\s+[^,\n]*\b{fieldName}\b[\s\S]{0,200}nil\s+->`
+   - `when not is_nil\s*\([^)]*\b{fieldName}\b`
+   - `Map\.get\s*\([^,]+,\s*:{fieldName}\s*,` (three-arg form = has default = nil-safe)
+   - `with\s+[^<\n]*\b{fieldName}\b\s+when not is_nil`
+
+Regex-only; no AST. False-positive rate is acceptable for advisory heuristics. Add `has_null_guard: boolean` to `FieldData` interface and `fields` table. Schema version bump triggers drop+rebuild (established pattern since v4.1).
+
+### Multi-concept fan-out
+Detection: tokenized query has 2+ terms, no FTS5 operators (AND/OR/NOT/NEAR), and terms are from different "concept namespaces" (CamelCase = entity/event name, snake_case = field name). Run up to 3 parallel sub-queries, each against a single concept, merge results with Set-based dedup on `entityId`, re-rank by sum of per-query relevance scores. All sub-queries are synchronous SQLite; N=3 stays well under 2s budget.
 
 ---
 
 ## Sources
 
-- Codebase: `src/search/dependencies.ts`, `src/db/migrations.ts`, `src/mcp/tools/deps.ts`, `src/mcp/format.ts`
-- Approved design: `docs/plans/2026-03-09-graph-intelligence-design.md`
-- Local benchmarks: SQL vs JS BFS performance (this research cycle)
-- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- Code analysis: `/src/db/fts.ts`, `/src/search/text.ts`, `/src/search/entity.ts`, `/src/indexer/elixir.ts`, `/src/indexer/proto.ts`, `/src/indexer/writer.ts` (HIGH confidence — direct inspection)
+- FTS5 boolean query syntax and OR operator: [SQLite FTS5 documentation](https://www.sqlite.org/fts5.html) (HIGH confidence)
+- Query relaxation patterns and best practices: [RapidSearch query relaxation glossary](https://www.rapidsearch.app/glossary/query-relaxation) (MEDIUM confidence — single source, conceptually sound)
+- Code search result enrichment for LLM agents: [Context Engineering for Coding Agents — Martin Fowler](https://martinfowler.com/articles/exploring-gen-ai/context-engineering-coding-agents.html), [LLM Agents Improve Semantic Code Search — arXiv 2408.11058](https://arxiv.org/html/2408.11058v1) (MEDIUM confidence)
+- Elixir nil-guard patterns: [Elixir Patterns and Guards — HexDocs](https://hexdocs.pm/elixir/main/patterns-and-guards.html) (HIGH confidence)
+
+---
+*Feature research for: repo-knowledge-base v4.2 Search Quality*
+*Researched: 2026-03-11*

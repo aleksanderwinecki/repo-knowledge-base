@@ -1,196 +1,240 @@
-# Domain Pitfalls: v3.0 Graph Intelligence
+# Pitfalls Research
 
-**Domain:** Graph traversal over microservice topology (~400 repos, ~12K edges)
-**Researched:** 2026-03-09
-**Supersedes:** Earlier pitfalls doc from same date (assumed CTE-only approach)
-**Key update:** Benchmarks prove JS BFS is 200-1000x faster than recursive CTEs. Pitfalls updated accordingly.
+**Domain:** FTS5 search quality improvements — OR default, progressive relaxation, description enrichment, deeper Ecto constraint extraction, null-guard heuristics
+**Researched:** 2026-03-11
+**Confidence:** HIGH (first-party codebase analysis + FTS5 documentation)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Using Recursive CTEs for Graph Traversal Instead of JS BFS
+### Pitfall 1: OR Default Silently Breaks the Existing Golden Test Suite
 
-**What goes wrong:** Response times of 150-2700ms instead of 0.2-0.6ms. The Node.js thread blocks with no way to interrupt (OMIT_PROGRESS_CALLBACK compiled into better-sqlite3's bundled SQLite 3.51.2).
+**What goes wrong:**
+`tests/search/golden.test.ts` has a comment on test #4 that explicitly documents the current behavior: `"OR" is lowercased by tokenizeForFts, so it becomes the literal word "or" and the query becomes an implicit AND of three terms.` If the code switches to OR-by-default at the query builder level, this test still passes (it was already testing an edge case). But tests #2 ("booking creation" phrase) and #3 ("booking AND cancellation") now face a problem: OR default means multi-word queries produce inflated result sets, and test #3's assertion of "hasBothTerms" trivially passes even when the top result only contains one term.
 
-**Why it happens:** The design doc says "recursive CTEs replace BFS loops." Intuitive assumption, but benchmarked wrong by orders of magnitude. Three independent mechanisms conspire:
-- UNION dedup is O(n^2) per CTE iteration (SQLite compares every new row against all existing rows)
-- UNION ALL + instr() cycle detection grows path strings linearly per depth, checked on every row
-- With ~30 edges per node average, the working set explodes exponentially at depth 3+
+**Why it happens:**
+Test assertions check for presence/absence, not ordering or result count bloat. When OR becomes default, `search('booking cancellation')` returns everything with "booking" OR "cancellation" — potentially 50+ entities. The test passes because `hasBothTerms` finds *something* with both terms somewhere in the 50 results. The actual search quality has degraded but tests are green.
 
-**Benchmark data (400 repos, ~12K edges, realistic sparse microservice topology):**
+**How to avoid:**
+Before changing the FTS query builder, add ordering-aware golden tests: for a two-word query, assert that rank #1 contains BOTH terms, not just one. Also add a result count sanity assertion — a two-word AND query returning 3 results should not suddenly return 18 results under OR. The limit is 20 by default; hitting that limit is a warning sign.
 
-| Approach | Impact (hub) | Impact (leaf) | Shortest path |
-|----------|-------------|---------------|---------------|
-| UNION CTE | 287ms | 152ms | 414ms |
-| UNION ALL + instr() | 2726ms | -- | 1456ms |
-| SQL load + JS BFS | **0.6ms** | **0.4ms** | **0.2ms** |
+**Warning signs:**
+- Multi-word queries returning 18-20 results (limit exhausted) where they previously returned 3-5
+- BM25 `rank` values for top results becoming much less negative (weaker matches promoted)
+- Golden test suite entirely green but manual spot-checks return noise
 
-**Consequences:** Every graph query exceeds the <50ms target by 3-50x. For hub nodes (gateway routing to 80+ services), impact analysis via CTE takes 287ms+ vs 0.6ms in JS. better-sqlite3's synchronous API means the event loop is fully blocked during this time.
-
-**Prevention:** Use SQL for data loading only (single bulk query, ~6ms for 12K rows). Build adjacency lists in JS. Do all traversal with `Map<number, Edge[]>` + `Set<number>` visited. This is the existing pattern in `dependencies.ts` but optimized from per-hop SQL to single bulk load.
-
-**Detection:** Any graph query taking >50ms is probably traversing in SQL. Profile with `performance.now()` around the query.
-
-### Pitfall 2: Missing Event/Kafka Intermediate Nodes in Adjacency List
-
-**What goes wrong:** Impact analysis shows services as disconnected when they're actually linked through Kafka topics or events. "Changing app-payments won't affect anything" when app-notifications consumes its payment events.
-
-**Why it happens:** The edges table has two-hop paths for event-mediated connections:
-- `repo A --produces_kafka--> topic X (target_type='service_name')`
-- `repo B --consumes_kafka--> topic X (target_type='service_name')`
-
-A naive graph builder that only loads `WHERE source_type='repo' AND target_type='repo'` misses these entirely.
-
-**Consequences:** Incomplete blast radius. Agents make incorrect change impact assessments. The tool's core value proposition -- "what breaks?" -- gives wrong answers.
-
-**Prevention:** During adjacency list construction, resolve intermediate nodes. Reference implementation already exists:
-1. `findKafkaTopicEdges()` in dependencies.ts: matches producers to consumers by topic name from metadata JSON
-2. `findEventMediatedEdges()`: follows repo->event->repo two-hop paths
-3. Port this logic into the graph builder as a one-time upfront resolution step
-
-**Detection:** Compare kb_impact results against `kb deps --mechanism kafka` for the same service. If kafka edges are missing from impact but present in deps, the builder is incomplete.
-
-### Pitfall 3: Hub Node Response Explosion Past 4KB MCP Cap
-
-**What goes wrong:** The gateway routes to 80+ services. Each connects to more. At depth 3, blast radius hits 300+ services. Each `ImpactNode` with path array is ~200 bytes JSON. At 50 nodes = 10KB, well over the 4KB cap.
-
-The existing `formatResponse()` halving strategy kicks in: 50 -> 25 -> 12 -> 6 -> 3. The agent receives 3 of 50 affected services and concludes the blast radius is small. **This is actively misleading -- worse than returning nothing.**
-
-**Why it happens:** The 4KB self-imposed limit (`MAX_RESPONSE_CHARS = 4000` in format.ts) was designed for search results where truncation is acceptable. For impact analysis, a truncated blast radius gives false safety.
-
-**Prevention:**
-1. **Compact response format:** Return service names as flat list + stats envelope instead of full `DependencyNode` objects with paths:
-   ```json
-   {
-     "summary": "47 downstream services, max depth 4",
-     "services": ["app-checkout", "app-notifications", ...],
-     "byMechanism": {"grpc": 12, "kafka": 23, "http": 8},
-     "byDepth": {"1": 8, "2": 15, "3": 18, "4": 6}
-   }
-   ```
-   Service names alone (~20 chars each) fit ~150 services in 4KB.
-2. **Omit path arrays from default response.** Include paths only when result set is small (<10 services).
-3. **Dedicated `formatImpactResponse()`.** Do NOT reuse formatResponse's halving strategy for impact analysis.
-4. **Default depth limit of 3** with explicit `--depth` override.
-
-**Detection:** Test kb_impact with the most-connected service in the real database.
+**Phase to address:** The phase implementing OR default must add ordering-aware golden tests before changing the query builder, not after. Tests are the regression net — add them while AND behavior is still correct so you can verify the OR implementation ranks correctly.
 
 ---
 
-## Moderate Pitfalls
+### Pitfall 2: `tokenizeForFts` Runs Before OR Joins Are Built — Destroying the `OR` Keyword
 
-### Pitfall 4: Duplicating Logic Between dependencies.ts and Graph Module
+**What goes wrong:**
+The query path is: user query → `tokenizeForFts` → FTS5 MATCH. The tokenizer lowercases everything and replaces non-alphanumeric characters with spaces. This means if the code tries to build an OR query by joining tokens with ` OR `, then running the whole string through `tokenizeForFts` again, `OR` becomes `or` (a literal search term). The FTS5 engine receives `booking or payment` and treats `or` as a third search term, not an operator.
 
-**What goes wrong:** New graph module reimplements edge type constants, mechanism labeling, confidence extraction, and metadata parsing. Two implementations drift. Bug fixes apply to one but not the other.
+This is already documented in the golden test suite comments (tests #4 and #5), but it's a trap waiting to catch the OR-default implementation.
 
-**Prevention:** Extract shared primitives before building graph module:
-- `MECHANISM_LABELS`, `MECHANISM_FILTER_MAP`, `VALID_MECHANISMS` -- already exported from dependencies.ts
-- `extractConfidence()`, `extractMetadataField()`, `formatMechanism()` -- currently private, extract to shared file
-- New `src/search/graph-utils.ts` or similar shared module
+**Why it happens:**
+The `search()` function in `fts.ts` passes `tokenizeForFts(query)` directly to MATCH. If the OR construction happens inside `tokenizeForFts`'s input, the operator gets destroyed. If it happens before the function call on the raw user query, it bypasses the camelCase/snake_case splitting that makes names searchable.
 
-### Pitfall 5: BFS Path Reconstruction Memory Pattern
+**How to avoid:**
+Build OR queries in two steps:
+1. Tokenize each individual term: `const tokens = rawQuery.split(/\s+/).map(tokenizeForFts)`
+2. Join with ` OR `: `const ftsQuery = tokens.join(' OR ')`
+Never pass the joined OR string through `tokenizeForFts` again.
 
-**What goes wrong:** For shortest path, naive BFS copies the full path array at every queued node. With 400 nodes and branching factor ~30, depth-3 queue holds ~27K entries, each with a path array.
+For progressive relaxation specifically, the AND query is `tokens.join(' ')` (FTS5 default AND) and the OR fallback is `tokens.join(' OR ')` — both constructed from pre-tokenized individual terms.
 
-**Prevention:** Use parent-pointer BFS:
-```typescript
-const parent = new Map<number, { from: number; rel: string }>();
-// Reconstruct path only after target found (backtrack from target to source)
-```
-Memory: O(V) parent pointers instead of O(V * D) path arrays. At 400 nodes this isn't critical, but it's the right pattern.
+**Warning signs:**
+- Searching `booking payment` with OR default returns results for the literal word "or"
+- Three-word queries suddenly return fewer results than expected (the middle word becomes "or" and degrades the match)
+- Golden test #4 comment behavior persists even after "implementing" OR support
 
-### Pitfall 6: Unresolved Edges Treated as Traversable
-
-**What goes wrong:** Edges with `target_type='service_name'` and `target_id=0` (unresolved gRPC/HTTP calls) get included as traversable nodes. The graph builder creates phantom connections.
-
-**Prevention:** Filter during load: `WHERE e.target_type = 'repo'` for traversable edges. Include unresolved edges as leaf nodes in kb_explain output, but never traverse through them. The existing BFS already handles this correctly (lines 179-198 of dependencies.ts).
-
-### Pitfall 7: Bidirectional Confusion in Impact vs Trace
-
-**What goes wrong:** kb_impact traverses downstream ("what depends on me" / "what breaks if I change"). kb_trace needs to find any path between A and B, which may involve both directions. Using the wrong edge direction produces wrong results silently.
-
-**Prevention:**
-- Graph module builds BOTH forward and reverse adjacency lists from the same edge load
-- Impact uses forward only (downstream = follow edges from source to target, meaning "who calls me")
-- Trace uses undirected graph (follow edges in either direction)
-- The existing `direction` parameter in `DependencyOptions` is the reference for the semantics
-
-**Tricky part:** For impact analysis, "downstream" means "things that depend on me" which means following edges WHERE target_id = my_id (they point TO me). This is counterintuitive. The current code in dependencies.ts handles it correctly -- study it carefully before reimplementing.
-
-### Pitfall 8: Stale Graph Cache Between Index Runs
-
-**What goes wrong:** If a session-level graph cache is implemented (to avoid re-loading edges for sequential kb_impact, kb_trace, kb_explain calls), the cache becomes stale after `kb index --repo X`. The agent runs impact analysis on outdated topology.
-
-**Prevention:** Don't cache at all initially. The 9ms load time is under the 2-second budget by 200x. If caching is added later, invalidate on any write to the edges table.
+**Phase to address:** The phase implementing OR default and progressive relaxation. This is a structural constraint that must be addressed in the query builder before any search quality changes ship.
 
 ---
 
-## Minor Pitfalls
+### Pitfall 3: FTS Description Enrichment Creates Token Pollution for Common Field Names
 
-### Pitfall 9: Not Handling Disconnected Graphs
+**What goes wrong:**
+The tokenizer splits all separators including underscores, dots, and colons. If enriched descriptions include structured content like `constraints: [:name, :email, :status]` or `cast_fields: name email status`, every common field name (`id`, `name`, `status`, `type`, `email`) gets indexed into every schema module's FTS entry. Searching for `name` returns the entire schema corpus with near-identical BM25 scores.
 
-**What goes wrong:** Some repos have no edges. kb_trace between a connected and disconnected node returns no path -- correct, but the error message should distinguish "no path exists" from "service not found."
+**Why it happens:**
+The current `insertModuleWithFts` already does this at small scale: `table:${tableName}` adds the table name to the description. It works because table names are specific (`bookings`, `payment_transactions`). Constraint field names are not specific — they're the 20 most common words in any application schema.
 
-**Prevention:** Check both services exist in repos table before running trace. Return distinct errors: "Service X not found" vs "No path between X and Y."
+The `fields` table already has its own FTS entries for every field name. Adding field names to the module description creates double-counting: BM25 sees the field name appearing in both `fields` entities and in `modules` entities, inflating both. This is especially bad because the `fields` entities are more precise (they carry parent context) while the module-level duplicates are noise.
 
-### Pitfall 10: Multiple Paths Between Same Service Pair
+**How to avoid:**
+Define a clear boundary: the module FTS description captures module-level semantics (moduledoc, table name, association targets, changeset intent). Field names belong in the `fields` table only. For enrichment, add:
+- Parent schema name in field FTS descriptions (already done: `${field.parentName} ${field.fieldType}`)
+- Constraint *type* in module descriptions (`has_required_fields`, `has_cast_attrs`) — not the field names themselves
+- `validate_required` presence as a boolean annotation, not a field name dump
 
-**What goes wrong:** Service A connects to B via gRPC AND Kafka. BFS visits B once (first mechanism found), skips subsequent connections. Impact shows only one mechanism.
+**Warning signs:**
+- Searching `id` or `name` returns 80%+ of indexed modules
+- `listAvailableTypes` shows module counts unchanged but `searchText('id')` result count has jumped from ~5 to ~200
+- BM25 rank spread collapses (all results have nearly identical relevance scores)
 
-**Prevention:**
-- For kb_impact: one entry per affected service is correct, but include ALL mechanisms as an array
-- For kb_trace: return shortest path; alternative paths at same depth are a post-v3.0 enhancement
-- During adjacency list construction, don't dedup multi-mechanism edges -- let BFS handle node-level dedup
-
-### Pitfall 11: Confidence Lost in Multi-Hop Results
-
-**What goes wrong:** Path goes through `high -> low -> high` confidence edges. If only the last edge's confidence is reported, result shows "high" when the weakest link is "low."
-
-**Prevention:** Track minimum confidence through BFS traversal. `null` (event edges) should not drag down confidence -- treat as "unassessed." Define ordering: `high > medium > low > null(unassessed)`.
-
-### Pitfall 12: kb_explain 4KB Overflow on Content-Heavy Services
-
-**What goes wrong:** A service with 200+ modules, 50 events, and 30 connections overflows the response cap.
-
-**Prevention:** Return counts + top-N, not full lists. `"modules": {"count": 234, "top": ["PaymentContext", "PaymentWorker"]}`. Cap individual lists during query, before formatting.
+**Phase to address:** The description enrichment phase. Write a golden test asserting that searching a common field name (`id`) does not appear in the top 5 module results (unless the module is specifically named after that field).
 
 ---
 
-## Phase-Specific Warnings
+### Pitfall 4: Ecto Constraint Extraction Misses `~w(...)a` Sigil Syntax
 
-| Phase | Likely Pitfall | Mitigation |
-|-------|---------------|------------|
-| Graph infrastructure | Event/Kafka resolution (#2) | Port logic from dependencies.ts, test against known paths |
-| Graph infrastructure | Direction confusion (#7) | Build both fwd/rev adjacency, document semantics |
-| kb_impact | Hub explosion (#3) | Compact response format, default depth 3 |
-| kb_impact | Performance (#1) | Use JS BFS, not recursive CTEs |
-| kb_trace | Path memory (#5) | Parent-pointer BFS |
-| kb_trace | Direction (#7) | Undirected graph for path finding |
-| kb_explain | 4KB overflow (#12) | Counts + top-N, formatSingleResponse |
-| All tools | Code duplication (#4) | Extract shared utils first |
+**What goes wrong:**
+The current `extractRequiredFields` targets `validate_required(..., [:field1, :field2])` — atom list syntax. Elixir developers frequently use the word sigil form: `@required_fields ~w(name email status)a`. The sigil form `~w(...)a` produces the same atom list at compile time but looks completely different as text. A regex written for `[...]` silently produces zero results for the sigil form.
+
+Additionally, `cast(changeset, attrs, @required_fields)` uses a module attribute reference, not an inline list. Extracting required fields correctly requires:
+1. Finding `@required_fields ~w(name email status)a` or `@required_fields [:name, :email, :status]` declarations
+2. Resolving `@required_fields` references inside `cast` or `validate_required` calls
+
+A single-pass regex can't do both. The common shortcut is to only target inline lists, which silently misses 30-50% of real Elixir code patterns.
+
+**How to avoid:**
+Two-pass extraction within `parseElixirFile`:
+1. First pass: scan for module attribute declarations, building a `Map<attrName, string[]>` of resolved field lists. Handle both `[...]` and `~w(...)a` forms.
+2. Second pass: scan `validate_required`, `cast`, `validate_change` calls. For inline lists, extract directly. For `@attribute` references, look up the map.
+
+The `~w(...)a` regex: `/~w\(([\s\S]*?)\)a/` — captures the word list, then split on whitespace.
+
+**Warning signs:**
+- Repos using `@required_fields` module attributes show zero required fields in extraction output
+- `required_fields` array in `ElixirModule` is consistently empty for modules that visibly use `validate_required`
+- Test fixture that uses `~w` syntax produces different output than the `[...]` equivalent
+
+**Phase to address:** The Ecto constraint extraction phase. Add test fixtures covering both syntactic forms before wiring into the indexing pipeline.
+
+---
+
+### Pitfall 5: Null-Guard Heuristics Overwrite Authoritative Schema Nullability
+
+**What goes wrong:**
+The `fields` table has a `nullable` column populated from schema-derived sources: Ecto `null: false` constraints, proto `optional` qualifier, GraphQL `!` non-null marker. These are authoritative. If the null-guard heuristic scanner writes `nullable: true` back to this column when it finds `is_nil(user_id)` in a context function, it corrupts authoritative data with a guess.
+
+The specific failure: a function `def process(user_id)` that defensively checks `if is_nil(user_id), do: :error` will trigger the heuristic. But `user_id` may be `NOT NULL` in the Ecto schema — it's just being defensively guarded against bad callers. The heuristic sees "guard exists = field can be nil" and overwrites `nullable: false` with `nullable: true`.
+
+**Why it happens:**
+The heuristic is implemented as an additional extraction pass that updates the `nullable` column. It feels natural to update the single source of truth. But the single source of truth is wrong here — schema-derived nullability and runtime null-safety patterns are different concepts.
+
+**How to avoid:**
+Null-guard results must go into a separate field: `nullable_in_practice` (or stored as a metadata JSON annotation), never into the `nullable` column. MCP tool output (`kb_field_impact`) must distinguish between the two:
+- `"nullable": false` = schema says NOT NULL
+- `"nullableInPractice": true` = code defensively guards against nil
+
+If both exist and contradict, surface the contradiction as a data quality signal ("schema says NOT NULL but code handles nil — possible missing constraint").
+
+**Warning signs:**
+- `kb_field_impact` shows fields as nullable that the Ecto schema has `null: false`
+- Running heuristic scan twice produces different nullability results (non-idempotent)
+- The `nullable` column in `fields` changes values between indexing runs without schema changes
+
+**Phase to address:** The null-guard scanning phase. Add a test asserting that a field with schema-derived `nullable: false` retains that value after heuristic scanning runs, even when `is_nil(field_name)` appears in the same repo.
+
+---
+
+### Pitfall 6: Null-Guard Heuristic Has O(fields × files) Scan Complexity
+
+**What goes wrong:**
+For each field name, scanning all `.ex` files in a repo to find `is_nil(field_name)` or `case field_name` patterns is O(fields × files). A repo with 150 schema fields and 300 `.ex` files = 45,000 regex matches per repo. Across 400 repos = 18 million regex matches. Full reindex time goes from minutes to tens of minutes.
+
+**Why it happens:**
+The approach feels obvious: "for each field, grep for its name." But field names are short (`id`, `name`, `status`) and appear everywhere in code for reasons unrelated to null-guarding. A file scan for `is_nil(id)` returns hits in every file that checks any ID for nil — not just hits for the specific schema field.
+
+**How to avoid:**
+Invert the scan: one pass over all `.ex` files, collecting all `is_nil(X)` and `case X when nil` patterns into a Set of variable names found in null-guard context. Then intersect with known field names. This is O(total_lines_across_all_files) — one read per file, not one read per field per file.
+
+Also scope the scan to files within the same module namespace as the schema. Cross-file scanning for short field names (`id`) would produce false positives from every file that does any nil-checking, so restrict to files in the same `lib/` subtree as the schema file.
+
+**Warning signs:**
+- Full reindex time increasing from <10 minutes to >20 minutes after adding heuristic scanning
+- CPU profiling shows `extractNullGuards` taking more time than all other extractors combined
+- The scan produces "null-guarded" results for fields like `id` in every schema
+
+**Phase to address:** The null-guard scanning phase, specifically in the design of the scan algorithm before any implementation begins.
+
+---
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Run enriched descriptions through `tokenizeForFts` uniformly | No pipeline changes needed | Common tokens swamp BM25 rankings for all module entities | Never for structured constraint/field lists |
+| Hardcode OR fallback threshold as a magic constant | Simple initial implementation | Threshold becomes wrong as corpus grows; needs tuning | Only if documented with explicit derivation and re-evaluation trigger |
+| Write heuristic nullability to `nullable` column | Single source of truth | Corrupts authoritative schema data with guesses | Never |
+| Single-pass `~w` sigil extraction | Less code | Silently misses 30-50% of real Elixir usage patterns | Only if scope is documented as "atom lists only" |
+| Index constraint field names in module FTS descriptions | Richer module search | Duplicates fields-table FTS entries; pollutes BM25; common terms explode results | Only if field names are simultaneously removed from fields-table FTS (which would break field search) |
+
+---
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| FTS5 MATCH + OR operator | Running `tokenizeForFts` on the joined `"term1 OR term2"` string — `OR` becomes `or` literal | Tokenize each term individually, then join with ` OR ` after tokenization |
+| `executeFtsWithFallback` + OR queries | The phrase fallback wraps the query in `"..."` — an OR query like `booking OR payment` becomes the phrase `"booking or payment"` which matches nothing | Detect whether the primary query uses ` OR ` before applying the phrase fallback; skip phrase fallback for OR queries |
+| Progressive relaxation + `entityTypeFilter` | AND-then-OR relaxation ignores the type filter scope — zero-result AND for `--type schema` may "succeed" with OR using unrelated entity types | Relaxation must re-run with the identical type filter; never relax type boundaries |
+| Description enrichment + drop-rebuild schema | Descriptions are written at index time; old format persists until next reindex — `kb reindex --repo X` only updates the changed files | Bump `SCHEMA_VERSION` when enrichment format changes so the DB auto-rebuilds cleanly |
+
+---
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| OR default with no minimum relevance filtering | `searchText` returns 20 results (limit exhausted) where 15 are single-term weak matches | Add BM25 threshold filtering, or document that OR results require consumer-side ranking judgment | Immediately on first multi-word query after OR becomes default |
+| Double FTS execution for every query (AND then OR fallback) | `kb search` response time doubles; `perf_hooks` shows two sequential MATCH executions per query | Set threshold based on measured AND result rate for the actual corpus, not a gut-feel constant | When >50% of queries trigger fallback (depends on corpus size and query patterns) |
+| Null-guard O(fields × files) scan | Full reindex takes 3x longer; CPU shows extractor as bottleneck | Invert scan direction: one pass per file, intersect results with known field names | At approximately 100 fields × 200 files per repo (20,000 matches), becomes noticeable |
+| FTS index bloat from enriched descriptions | Slower `OPTIMIZE` runs; slightly larger DB file | Measure index size before and after enrichment; run OPTIMIZE after full reindex | Unlikely to matter below 50K entities, but measure |
+
+---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Event/Kafka paths included:** Kafka consumers appear in impact results for producers
-- [ ] **Direction correct:** `kb impact X` shows what breaks if X changes (dependents), not what X depends on
-- [ ] **4KB fits:** Impact for most-connected service still returns ALL service names
-- [ ] **Unresolved edges visible:** External API calls appear as leaf nodes in explain
-- [ ] **Performance <50ms:** All graph queries including edge load complete under 50ms
-- [ ] **Cycles handled:** A->B->C->A cycle in test fixture doesn't cause infinite BFS
-- [ ] **No path handled:** Disconnected services return clear "no path" message
-- [ ] **Existing tests pass:** `queryDependencies()` unchanged, 503 tests still pass
+- [ ] **OR default implementation:** Verify the OR operator survives tokenization — search `booking payment` under OR semantics and confirm exactly 2 OR tokens in the MATCH expression, not 3 tokens including a literal `or`
+- [ ] **Progressive relaxation:** Verify the AND result count threshold is evaluated per-query against the actual result set, not a globally cached constant; verify the same `entityTypeFilter` is applied in both the AND and OR passes
+- [ ] **Description enrichment:** Verify that searching a common field name (`id`, `name`, `status`) does not return all indexed schemas; verify that the existing `table:tableName` suffix format doesn't conflict with new enrichment
+- [ ] **Ecto constraint extraction:** Verify `~w(name email)a` produces the same results as `[:name, :email]`; verify multi-changeset modules accumulate correctly rather than last-write-wins; verify `@required_fields` attribute references are resolved
+- [ ] **Null-guard heuristics:** Verify the `nullable` column in the `fields` table is NOT written by the heuristic scanner; verify results land in a separate column or metadata; verify `kb_field_impact` output distinguishes schema-derived from heuristic-derived nullability
+
+---
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| OR default breaks golden tests | LOW | Revert query builder; add ordering-aware golden tests while AND behavior is confirmed correct; re-implement OR with tests guiding correctness |
+| Token pollution from description enrichment | MEDIUM | Bump `SCHEMA_VERSION` (already the standard upgrade path) to force drop-rebuild; strip structured content from description enrichment; full reindex all repos |
+| Null-guard heuristic corrupts `nullable` column | HIGH | Drop + rebuild schema; re-index all repos; audit `kb_field_impact` output against known schemas |
+| Progressive relaxation doubles query time | LOW | Remove fallback or raise threshold to effectively disable it until properly calibrated |
+| Ecto extraction misses `~w` syntax | LOW | Add the `~w` regex branch; next reindex picks up the missed fields automatically |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| OR operator destroyed by tokenizer | Phase implementing OR default / query builder | Unit test: `tokenizeForFts('booking') + ' OR ' + tokenizeForFts('payment')` = correct MATCH string |
+| OR default breaks existing golden tests | Phase implementing OR default | All existing golden tests pass AND new ordering-aware tests are added and pass |
+| Token pollution from enrichment | Phase implementing description enrichment | Golden test: common field name search does not return all schemas |
+| Ecto `~w` sigil extraction miss | Phase implementing deeper constraint extraction | Fixture test: `~w(name email)a` and `[:name, :email]` produce identical extraction output |
+| Null-guard overwrites schema nullability | Phase implementing null-guard scanning | Integration test: field with schema `null: false` retains `nullable: false` after heuristic scan |
+| Null-guard O(fields × files) complexity | Phase implementing null-guard scanning | Timing assertion: full reindex with heuristic scanning completes under 10 minutes |
+
+---
 
 ## Sources
 
-- Local benchmarks (this research): 400 repos, 9K-12K edges, better-sqlite3 ^12.0.0, SQLite 3.51.2
-- Codebase: `src/search/dependencies.ts` (existing BFS, edge resolution, direction semantics)
-- Codebase: `src/mcp/format.ts` (4KB cap, halving strategy)
-- Codebase: `src/db/database.ts` (pragmas)
-- SQLite compile options: `OMIT_PROGRESS_CALLBACK` confirmed via `PRAGMA compile_options`
-- [SQLite WITH clause](https://sqlite.org/lang_with.html): recursive CTE limitations
-- [SQLite Forum: BFS traversal](https://sqlite.org/forum/info/3b309a9765636b79): performance on cyclic graphs
-- [better-sqlite3 interrupt issue #568](https://github.com/JoshuaWise/better-sqlite3/issues/568): no sqlite3_interrupt() exposed
+- First-party codebase analysis:
+  - `src/db/fts.ts` — FTS query structure, UNINDEXED entity_type decision, `executeFtsWithFallback` phrase fallback
+  - `src/db/tokenizer.ts` — lowercasing behavior that destroys `OR`/`NOT` operators (critical constraint for OR implementation)
+  - `src/search/text.ts` — query pipeline, entity type filter application
+  - `src/indexer/elixir.ts` — `extractRequiredFields` regex, `extractSchemaDetails` structure
+  - `src/indexer/writer.ts` — how FTS descriptions are currently built per entity type
+  - `tests/search/golden.test.ts` — comments on tests #4/#5 explicitly document `OR`/`NOT` tokenizer behavior
+- Key architectural decisions from PROJECT.md: "All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros" and existing `UNINDEXED entity_type` rationale
 
 ---
-*Research completed: 2026-03-09*
+*Pitfalls research for: v4.2 Search Quality improvements*
+*Researched: 2026-03-11*

@@ -1,156 +1,183 @@
 # Project Research Summary
 
-**Project:** repo-knowledge-base v3.0 — Graph Intelligence
-**Domain:** Code intelligence graph traversal for AI agent consumption (MCP)
-**Researched:** 2026-03-09
+**Project:** repo-knowledge-base v4.2 Search Quality
+**Domain:** AI-optimized code knowledge base — FTS5 search quality improvements
+**Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Executive Summary
 
-JS BFS is 200-1000x faster than SQLite recursive CTEs for graph traversal on this topology (400 repos, ~12K edges). This single finding reshapes the entire implementation: SQL loads edges in a bulk query (~6ms), JavaScript builds an in-memory adjacency list (~3ms build), and BFS traverses in 0.2-0.6ms. Total query time under 10ms vs 150-2700ms for pure CTEs. The design doc's original "recursive CTEs replace BFS loops" direction is wrong -- benchmarks proved it conclusively. The correct architecture is the inverse: BFS stays, per-hop SQL queries get replaced by a single bulk load.
+This is a focused, no-new-dependencies milestone targeting four independent improvements to an existing SQLite/FTS5/Node.js knowledge base. The system already works; this milestone makes it work *well* for AI agent consumers specifically. Research confirms that all four features (OR-default queries, richer FTS descriptions, deeper Ecto constraint extraction, and null-guard heuristic scanning) are implementable as surgical modifications to existing files — no new packages, no schema version bump for the P1 work, no architectural changes.
 
-The v3.0 milestone adds three tools (kb_impact, kb_trace, kb_explain) with zero new dependencies. The existing stack (better-sqlite3 ^12.0.0, TypeScript ^5.7.0, vitest ^3.0.0) handles everything. The only new architectural component is a graph module (`src/search/graph.ts`) that builds forward and reverse adjacency lists from one SQL query. kb_impact and kb_trace share this module; kb_explain is independent (pure SQL aggregation, no graph traversal).
+The recommended approach follows a clear dependency order: fix the query layer first (zero re-index needed, immediate recall improvement), then enrich the FTS descriptions (requires re-index, no extractor risk), then extend the Ecto extractor (isolated risk, feeds description enrichment), and finally add null-guard heuristic scanning as an explicitly P2 feature after core quality is validated. The P2 null-guard phase requires a schema version bump and careful algorithm design to avoid O(fields x files) indexing performance regression.
 
-The top risks are: (1) missing event/Kafka intermediate nodes in the adjacency list, which silently produces incomplete blast radii; (2) hub node responses exceeding the 4KB MCP cap, where the existing halving strategy would be actively misleading for impact analysis; and (3) direction confusion between "downstream" (what depends on me) vs "upstream" (what I depend on), which produces wrong results silently. All three have concrete mitigations from existing codebase patterns.
+The two highest-risk areas are the OR-default implementation and the null-guard heuristic. OR-default has a non-obvious tokenizer trap where `OR` gets lowercased to `or` (a literal search term) if the operator is inserted before tokenization runs — the golden test suite even documents this in comments, making it a well-flagged trap. Null-guard has a data integrity trap where heuristic results must never overwrite the authoritative `nullable` column. Both have clear, documented mitigations. The rest of the milestone is low-risk: the codebase is well-understood from direct inspection and all patterns are established.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependencies. This is a pure application-logic milestone.
+This milestone requires no changes to the technology stack. All features are pure logic changes within existing modules using SQLite FTS5, better-sqlite3, and TypeScript regex. The key constraint — zero new npm dependencies — is explicitly established in PROJECT.md and confirmed feasible. FTS5 query syntax for OR, prefix matching, and progressive relaxation is fully verified against official SQLite documentation.
 
-- **better-sqlite3 ^12.0.0** (existing): Bulk edge loading via synchronous `.all()`, single V8/native boundary crossing for 12K rows
-- **TypeScript ^5.7.0** (existing): Graph module, BFS implementations, type-safe results
-- **vitest ^3.0.0** (existing): Graph algorithm tests, cycle detection, path reconstruction
-
-SQLite's role changes from "traversal engine" to "storage + filtering." Recursive CTEs are still useful in kb_explain for non-recursive multi-table aggregation, but never for graph traversal. No graph library needed -- BFS on 400 nodes is ~20 lines of code, and every candidate library (graphlib, ngraph, cytoscape, graphology) brings more weight than value at this scale.
+**Core technologies:**
+- SQLite FTS5 (bundled): full-text search with BM25 ranking — OR queries require explicit TypeScript construction; FTS5 has no configurable default operator (AND is hardcoded in the query parser)
+- better-sqlite3 (existing): synchronous SQLite driver — no change needed
+- TypeScript regex (existing): Ecto/proto field extraction — sufficient for well-structured Fresha macros; AST (tree-sitter) explicitly deferred to post-v4.2
 
 ### Expected Features
 
-**Must have (table stakes):**
-- kb_impact: Downstream BFS with depth-grouped results, mechanism labels, confidence per edge, mechanism filter (`--mechanism grpc`), depth limit (default 3)
-- kb_trace: Shortest path (BFS on unweighted graph), ordered hop list with mechanism per hop, path_summary string, distinct "not found" vs "no path" errors
-- kb_explain: Service identity + description, inbound/outbound connections grouped by mechanism, events produced/consumed, entity counts, repo metadata
-- All tools: Event/Kafka intermediate node transparency (two-hop repo->event->repo collapsed to single logical edge)
-- All tools: 4KB-compliant response formatting
+**Must have (P1 — v4.2 launch):**
+- OR-default search mode — AND-default silently returns nothing when both terms don't coexist; OR is the correct default for AI agent consumers where recall > precision
+- Progressive AND → OR relaxation — graceful degradation when narrow queries return fewer than 3 results; distinct from the existing syntax-error fallback in `executeFtsWithFallback`
+- Richer FTS descriptions: proto field includes message/event context — currently `"BookingCreated string"` with no event association; agents can't find proto fields by event name
+- Richer FTS descriptions: repo name inline — improves cross-repo disambiguation; `repoName` is already in scope in `writer.ts`, zero schema changes needed
+- Deeper Ecto cast/optional field extraction — completes nullability metadata started in v4.0; prerequisite for null-guard; must handle both `[:atom, :list]` and `~w(word sigil)a` syntax forms
 
-**Should have (differentiators):**
-- kb_impact: Severity tiers (direct/indirect/transitive), aggregated mechanism summary in stats block, blast radius score
-- kb_trace: Annotated hops with confidence, min-path confidence (weakest link)
-- kb_explain: "Talks to" / "called by" summaries, top modules by type, next-step hints (`"Run kb_impact app-payments to see blast radius"`)
+**Should have (P2 — after core validation):**
+- Result enrichment with `nextAction` hint per result — pure presentation logic in `searchText()`, no DB changes; reduces agent reasoning overhead
+- Null-guard heuristic scanning — schema version bump required; algorithm must use inverted scan (one pass per file, intersect results) to avoid O(fields x files) complexity
 
-**Defer (post-v3.0):**
-- Multiple path discovery (top N paths) in kb_trace
-- `--detail` flag for rich path data in kb_impact
-- Architecture rules engine ("X should not call Y")
-- Historical graph comparison / snapshots
-- Code-level (function granularity) impact analysis
-- Graph caching layer (9ms load, 2-second budget = 200x headroom)
-- outputSchema in MCP tool registration (SDK 1.27.1 doesn't require it)
+**Defer (v5+):**
+- Multi-concept fan-out — requires latency measurement and query structure detection; deferred until OR-default is proven insufficient for cross-entity-type queries
+
+**Anti-features (confirmed wrong approaches):**
+- Semantic/vector search — already removed in v2.1; contradicts SQLite-only constraint; richer FTS descriptions + OR-default cover the primary motivation
+- Fuzzy/edit-distance matching — FTS5 prefix matching (`prefix=2,3` already configured) handles 90% of the use case
+- Per-query null-guard scanning — would break the <2s response constraint; must be index-time only
 
 ### Architecture Approach
 
-Three layers: CLI commands and MCP tools (presentation) call query functions in `src/search/` (logic), which use `src/db/` (storage). The graph module sits in the search layer, loaded by impact.ts and trace.ts. kb_explain bypasses the graph module entirely. Before building anything new, extract shared utilities (`extractConfidence`, `extractMetadataField`, `formatMechanism`) from the private scope of `dependencies.ts` into a shared `src/search/edge-utils.ts`.
+All changes are surgical modifications to six existing files. The layered architecture (Interface → Search → DB → Indexer → Storage) stays intact. The key architectural principles for this milestone: query transformation belongs in `fts.ts` (not `text.ts`), FTS description assembly belongs in `writer.ts` (not `pipeline.ts`), and null-guard results must go in a new column (not the authoritative `nullable` column). The `FieldData` interface stays stable — richer descriptions are assembled inside `writer.ts` using data already in scope.
 
-**New files:**
-1. **`src/search/graph.ts`** — In-memory adjacency list builder + BFS primitives (downstream, shortest path). The only genuinely new architectural component.
-2. **`src/search/impact.ts`** — Downstream blast radius aggregation using graph.bfsDownstream, with compact response formatting
-3. **`src/search/trace.ts`** — Shortest path with parent-pointer reconstruction using graph.shortestPath
-4. **`src/search/explain.ts`** — Multi-table SQL aggregation (no graph dependency), counts + top-N pattern
-5. **`src/search/edge-utils.ts`** — Shared utilities extracted from dependencies.ts (mechanism maps, confidence extraction, metadata parsing)
-6. **MCP tools** (`src/mcp/tools/impact.ts`, `trace.ts`, `explain.ts`) — Following existing registration pattern from deps.ts
-7. **CLI commands** (`src/cli/commands/impact.ts`, `trace.ts`, `explain.ts`) — Following existing CLI patterns
-
-**Modified files (additive only):** `src/search/index.ts`, `src/mcp/server.ts`, `src/cli/index.ts`, `src/index.ts` -- all re-exports and registrations.
-
-**Untouched:** `dependencies.ts` stays as-is. Existing 503 tests unaffected.
+**Components and changes:**
+1. `src/db/fts.ts` — add `buildOrQuery()` helper and `executeFtsWithRelaxation()` wrapper; keep `tokenizeForFts` pure (shared by write path and query path)
+2. `src/search/text.ts` — wire `executeFtsWithRelaxation` replacing `executeFtsWithFallback`; hydration loop unchanged
+3. `src/indexer/writer.ts` — richer field description builder (repo name + constraint + event context); `repoName` already in scope via `metadata.name`
+4. `src/indexer/elixir.ts` — new `extractCastFields()` and `detectNullGuardedFields()` helpers; extend `ElixirModule` interface with `optionalFields`, `castFields`, `nullGuardedFields`
+5. `src/indexer/proto.ts` — surface event/message association in extraction output for richer field FTS descriptions
+6. `src/indexer/pipeline.ts` — minor: use new `ElixirModule` fields for nullability signal in `FieldData.nullable`
 
 ### Critical Pitfalls
 
-1. **Recursive CTEs for traversal (Critical)** — 200-1000x slower than JS BFS. No progress handler available (OMIT_PROGRESS_CALLBACK compiled into bundled SQLite) so a runaway CTE blocks the Node.js thread with no escape. Use SQL for loading only.
-2. **Missing event/Kafka edges (Critical)** — Naive `WHERE target_type='repo'` misses two-hop event-mediated paths. Port `findKafkaTopicEdges()` and `findEventMediatedEdges()` from dependencies.ts into graph builder as upfront resolution step. Test by comparing kb_impact results against `kb deps --mechanism kafka`.
-3. **Hub node 4KB explosion (Critical)** — Gateway impacts 300+ services. Existing `formatResponse()` halving would show 3 of 300 services -- actively misleading. Use dedicated compact format: flat service name list + stats envelope (~20 chars per service = ~150 services in 4KB). Do NOT reuse the generic halving strategy.
-4. **Direction confusion (Moderate)** — Impact = "what depends on me" = reverse adjacency (follow edges pointing TO me). Trace = any path = both directions. Wrong direction produces silently wrong results. Build both forward and reverse adjacency lists; document semantics explicitly in code.
-5. **Logic duplication (Moderate)** — Graph module must not reimplement mechanism labels, confidence extraction, metadata parsing. Extract shared utils into edge-utils.ts first, update dependencies.ts to import from there, verify existing tests pass.
+1. **OR operator destroyed by tokenizer** — `tokenizeForFts` lowercases everything; `OR` becomes literal `or` if inserted before tokenization. Prevention: tokenize each term individually first, then join with ` OR ` after. Never pass the joined OR string through `tokenizeForFts` again. This is already documented in golden test comments for tests #4 and #5.
+
+2. **OR default silently passes existing tests while degrading quality** — OR inflates result sets; existing `hasBothTerms` assertions pass trivially with 50 results when 5 were expected. Prevention: add ordering-aware golden tests (rank #1 must contain both terms, result count must not hit the 20-result limit) *before* changing the query builder while AND behavior is confirmed correct.
+
+3. **Token pollution from constraint field names in module FTS descriptions** — adding required/optional field name lists to module FTS descriptions indexes `id`, `name`, `status` into every schema module, collapsing BM25 rank spread. Prevention: field names belong in the `fields` table only; module descriptions capture module-level semantics (table name, association targets), not field name dumps. Add constraint *types* as boolean annotations, not field name lists.
+
+4. **Ecto `~w(...)a` sigil syntax missed by single-pass regex** — `@required_fields ~w(name email)a` looks nothing like `[:name, :email]`; single-pass regex silently produces zero results for the sigil form (30-50% of real Elixir code). Prevention: two-pass extraction — first resolve module attribute declarations (`@required_fields` → field list map), then resolve references in `validate_required`/`cast` calls.
+
+5. **Null-guard heuristic overwrites authoritative schema nullability** — writing `nullable: true` to the `nullable` column corrupts data derived from Ecto `null: false` constraints. Prevention: null-guard results go in a separate `nullable_in_practice` column; never touch `nullable`; surface contradictions ("schema says NOT NULL but code handles nil") as data quality signals in `kb_field_impact` output.
+
+6. **Null-guard O(fields x files) scan complexity** — scanning all `.ex` files per field name = 18 million regex matches across 400 repos; full reindex time multiplies. Prevention: invert the scan — one pass per file collecting all null-guard patterns into a Set, then intersect with known field names. Also restrict to the same `lib/` subtree as the schema file.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on research dependencies and risk profile, four phases are recommended:
 
-### Phase 1: Shared Infrastructure & Graph Module
-**Rationale:** Everything else depends on this. The graph module is the shared foundation for kb_impact and kb_trace. Extracting shared utils prevents duplication from day one.
-**Delivers:** `edge-utils.ts` (extracted shared code), `graph.ts` (adjacency list builder + BFS primitives with `ServiceGraph`, `buildGraph()`, `bfsDownstream()`, `shortestPath()`), comprehensive test suite for graph algorithms including cycles, disconnected nodes, event/Kafka resolution
-**Addresses:** Table stakes infrastructure, event/Kafka transparency
-**Avoids:** Pitfalls #2 (missing event edges), #4 (direction confusion), #5 (logic duplication)
+### Phase 1: FTS Query Layer — OR Default and Progressive Relaxation
 
-### Phase 2: kb_impact (Blast Radius)
-**Rationale:** Highest-value tool. Validates the graph module against real data. "What breaks if I change X?" is the primary use case driving v3.0.
-**Delivers:** `impact.ts` query function, MCP tool registration, CLI command, compact response formatter that fits 300+ services in 4KB
-**Addresses:** All kb_impact table stakes + differentiators (severity tiers, mechanism summary, blast radius score)
-**Avoids:** Pitfalls #1 (CTE traversal), #3 (4KB explosion)
+**Rationale:** Pure query-time changes with zero re-index required. Delivers immediate recall improvement with no extractor risk. The most impactful single change for AI agent consumers. Correct foundation before description enrichment — more results from better queries compounds with richer indexed content once re-index runs.
 
-### Phase 3: kb_trace (Flow Tracing)
-**Rationale:** Reuses graph module from Phase 1. Adds parent-pointer path reconstruction on top of existing BFS. Lower implementation risk than impact.
-**Delivers:** `trace.ts` query function, MCP tool registration, CLI command, path_summary string generation, min-confidence tracking
-**Addresses:** All kb_trace table stakes + differentiators (annotated hops, min-confidence)
-**Avoids:** Pitfall #5 (path memory -- use parent pointers, not path copying), #7 (direction -- trace uses undirected graph)
+**Delivers:** OR-default search mode, progressive AND → OR → prefix relaxation, updated golden tests with ordering-aware assertions.
 
-### Phase 4: kb_explain (Service Summary)
-**Rationale:** Fully independent of graph module -- can technically be built in parallel with Phase 2/3, but sequencing it last reduces WIP. Pure SQL aggregation, lowest risk.
-**Delivers:** `explain.ts` query function, MCP tool registration, CLI command, counts + top-N response format
-**Addresses:** All kb_explain table stakes + differentiators (talks-to/called-by summaries, top modules, hints)
-**Avoids:** Pitfall #12 (4KB overflow on content-heavy services -- cap lists during query, before formatting)
+**Addresses:** OR-default search mode (P1), progressive relaxation (P1) from FEATURES.md.
+
+**Avoids:** Pitfall 2 (tokenizer OR-destruction) — must tokenize terms individually first. Must add ordering-aware golden tests before changing query builder (Pitfall 1).
+
+**Research needed:** None — FTS5 OR syntax fully verified, exact code locations identified, tokenizer trap documented with prevention steps.
+
+---
+
+### Phase 2: Richer FTS Descriptions
+
+**Rationale:** Depends on stable `FieldData` interface (unchanged). Requires re-index to see results but carries no extractor risk. Natural second step: once the query layer handles OR, richer indexed content amplifies that improvement on the next reindex.
+
+**Delivers:** Repo name in module/field/event FTS descriptions; proto field FTS entries include event/message context; `repoName` threaded through `insertModuleWithFts` and field insert loop.
+
+**Addresses:** Richer FTS description features (P1 x2) from FEATURES.md.
+
+**Avoids:** Token pollution pitfall (Pitfall 3) — add repo names and constraint types only; do not add field name lists to module descriptions.
+
+**Research needed:** None — change locations confirmed in `writer.ts`; `repoName` already in scope via `metadata.name`; pattern established by existing `table:${tableName}` enrichment.
+
+---
+
+### Phase 3: Deeper Ecto Constraint Extraction
+
+**Rationale:** Independent of query-layer changes. Feeds improved nullability signal into `FieldData.nullable`, which improves the description enrichment from Phase 2 on re-index. Isolated extractor risk validates separately before consumption by other components.
+
+**Delivers:** Populated `optionalFields` and `castFields` on `ElixirModule`; corrected nullability for Ecto schemas using `@optional_fields` or `cast` attr lists; both `[:atom, :list]` and `~w(word sigil)a` syntax forms handled.
+
+**Addresses:** Deeper Ecto cast/optional field extraction (P1) from FEATURES.md.
+
+**Avoids:** `~w` sigil miss (Pitfall 4) — two-pass extraction: first resolve module attribute declarations, then resolve references in `validate_required`/`cast` calls.
+
+**Research needed:** None — regex patterns designed, two-pass extraction approach documented, integration point in `pipeline.ts` identified.
+
+---
+
+### Phase 4: Null-Guard Heuristic Scanning (P2)
+
+**Rationale:** Requires schema version bump (triggers drop+rebuild — established pattern since v4.1). Explicitly P2 — defer until core search quality (Phases 1-3) is validated. Highest complexity and data integrity risk of the milestone.
+
+**Delivers:** `nullGuardedFields` per `ElixirModule`; new `nullable_in_practice` column in `fields` table; `kb_field_impact` output distinguishes schema-derived vs heuristic-derived nullability; contradictions surfaced as data quality signals.
+
+**Addresses:** Null-guard heuristic scanning (P2) from FEATURES.md.
+
+**Avoids:** Nullability column corruption (Pitfall 5) — never write to `nullable`; use new column. O(fields x files) complexity (Pitfall 6) — inverted scan: one pass per file collecting null-guard patterns, then intersect with known field names; scope to same `lib/` subtree.
+
+**Research needed:** None — algorithm design documented, schema upgrade path is the established drop+rebuild pattern. Implementation design review is warranted before coding begins to confirm inverted-scan scope boundaries.
+
+---
 
 ### Phase Ordering Rationale
 
-- **Graph module first** because kb_impact and kb_trace both depend on it. Building tools before their shared infrastructure leads to either duplication or rework.
-- **kb_impact before kb_trace** because impact is the higher-value tool and exercises more of the graph module (full downstream traversal vs single shortest path). Issues caught here save time on trace.
-- **kb_explain last** because it has zero dependency on the graph module and is pure SQL. It's the lowest-risk phase and benefits from all patterns established in prior phases.
-- **Shared utils extracted in Phase 1** to prevent the moderate pitfall of logic duplication between dependencies.ts and the new graph module.
+- **Phase 1 before Phase 2:** Query improvements deliver value immediately without re-index. Description enrichment requires re-index — ship query improvements first, then get compound benefit when re-index runs.
+- **Phases 2 and 3 loosely coupled:** Both are independently buildable. Phase 3 improves the nullability signal that Phase 2's description builder consumes, so running a final re-index after Phase 3 completes gives the richest combined output.
+- **Phase 4 last:** Schema bump, new column, highest complexity and risk. The P2 classification is firm — validate simpler phases first.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1 (Graph Module):** Event/Kafka resolution logic is the trickiest part. The existing code in `dependencies.ts` (`findKafkaTopicEdges()` for Kafka, `findEventMediatedEdges()` for events) must be studied carefully and ported correctly. Direction semantics (forward vs reverse) need explicit documentation in code.
+All four phases have standard patterns — research-phase not needed for any of them:
 
-Phases with standard patterns (skip research-phase):
-- **Phase 2 (kb_impact):** BFS downstream is straightforward once graph module exists. Response formatting is the main design decision (compact format already specified in FEATURES.md).
-- **Phase 3 (kb_trace):** Parent-pointer BFS for shortest path is textbook. Path reconstruction is O(path_length).
-- **Phase 4 (kb_explain):** Standard SQL aggregation following existing entity.ts patterns. No novel decisions.
+- **Phase 1:** FTS5 OR syntax fully documented; exact code locations and test strategy identified; tokenizer trap is documented in golden test comments with prevention steps.
+- **Phase 2:** Change locations and data shapes confirmed via direct inspection; `repoName` threading is a one-argument addition; no external dependencies.
+- **Phase 3:** Regex patterns designed with both sigil and atom-list forms; two-pass extraction approach documented; Ecto `validate_required`/`cast` semantics verified against official docs.
+- **Phase 4:** Algorithm design documented (inverted scan); schema upgrade path is the established drop+rebuild pattern. No external research needed, but a brief pre-implementation design review on scan scope boundaries is worthwhile.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Benchmarked locally on production-scale data. Zero new dependencies. SQLite 3.51.2 compile options verified. |
-| Features | HIGH | Derived from existing codebase capabilities and approved design doc. Response formats specified with JSON examples. |
-| Architecture | HIGH | All patterns derived from direct codebase inspection. File locations, module boundaries, and shared utils mapped to specific source lines. |
-| Pitfalls | HIGH | Performance pitfall quantified via benchmarks. Event/Kafka resolution pattern understood from existing code. Response size constraints from existing 4KB MCP limit with concrete math. |
+| Stack | HIGH | All claims verified against official SQLite FTS5 docs and live source code; zero new dependencies confirmed feasible across all four features |
+| Features | HIGH (P1) / MEDIUM (P2) | P1 features verified via direct code inspection and official docs; P2 null-guard patterns rely partly on community Elixir sources for prevalence estimates |
+| Architecture | HIGH | All findings from direct codebase inspection; component responsibilities, data flows, and integration boundaries fully mapped; `FieldData` stability confirmed |
+| Pitfalls | HIGH | Two critical traps (tokenizer OR-destruction, nullable column corruption) verified against actual code behavior; golden test comments explicitly document the tokenizer issue |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Event/Kafka edge resolution correctness:** The logic exists in dependencies.ts but hasn't been tested in isolation as a bulk upfront operation. Phase 1 tests should include known event-mediated paths from the real database to validate the port. May need topic name dedup if multiple repos produce the same topic.
-- **4KB budget for real hub nodes:** The compact format math (~150 services in 4KB) is estimated from ~20 chars per service name. Validate with actual gateway blast radius during Phase 2 implementation.
-- **Bidirectional trace semantics:** Should kb_trace follow directed edges only (source->target) or treat the graph as undirected? Architecture research says undirected; validate this matches user expectations during Phase 3. An agent asking "how does A connect to B" probably wants any path regardless of call direction.
-- **Multiple mechanisms between same pair:** BFS visits a node once (first mechanism discovered). If A->B has both gRPC and Kafka edges, only one mechanism is recorded. Phase 2 should decide whether to aggregate all mechanisms per affected service during adjacency list iteration.
+- **`~w` sigil prevalence in Fresha codebase:** Research estimates 30-50% of real Elixir code uses `~w(...)a` syntax, but this is a community estimate. A quick grep across indexed repos before Phase 3 begins would confirm whether two-pass extraction is critical or if single-pass with documented scope is acceptable.
+- **OR fallback threshold (3 results):** The `minResults = 3` threshold is a documented recommendation, not empirically measured. Should be validated against real query patterns after Phase 1 ships. The threshold is a named constant — trivial to tune without structural changes.
+- **Null-guard scan scope boundary:** Restricting to the same `lib/` subtree as the schema file may miss guards in sibling context modules. This tradeoff (fewer false positives vs fewer true positives) should be confirmed during Phase 4 design before implementation begins.
+- **nextAction hints (P2, not researched):** Pure presentation logic with no DB changes — no research needed; implement during or after Phase 4 as capacity allows.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Local benchmarks: 400 repos, 9K-12K edges, better-sqlite3 ^12.0.0, SQLite 3.51.2 on darwin arm64
-- Codebase inspection: `src/search/dependencies.ts`, `src/db/migrations.ts`, `src/mcp/tools/deps.ts`, `src/mcp/format.ts`, `src/mcp/handler.ts`, `src/mcp/sync.ts`, `src/db/database.ts`
-- [SQLite WITH clause](https://sqlite.org/lang_with.html) — recursive CTE limitations, UNION vs UNION ALL
-- [SQLite implementation limits](https://sqlite.org/limits.html) — MAX_COMPOUND_SELECT=500
-- [SQLite Forum: BFS traversal](https://sqlite.org/forum/info/3b309a9765636b79) — cycle detection, performance
+- [SQLite FTS5 Extension — sqlite.org/fts5.html](https://www.sqlite.org/fts5.html) — OR syntax, implicit AND behavior, no configurable default operator, prefix match syntax
+- [Ecto.Changeset — hexdocs.pm/ecto](https://hexdocs.pm/ecto/Ecto.Changeset.html) — `validate_required`, `cast` signatures and semantics
+- [Elixir Patterns and Guards — HexDocs](https://hexdocs.pm/elixir/main/patterns-and-guards.html) — nil-guard patterns
+- Live source code: `src/db/fts.ts`, `src/db/tokenizer.ts`, `src/search/text.ts`, `src/indexer/elixir.ts`, `src/indexer/proto.ts`, `src/indexer/writer.ts`, `src/indexer/pipeline.ts`, `tests/search/golden.test.ts` (2026-03-11)
 
 ### Secondary (MEDIUM confidence)
-- [better-sqlite3 API docs](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md) — synchronous API, prepared statements
-- [better-sqlite3 interrupt issue #568](https://github.com/JoshuaWise/better-sqlite3/issues/568) — no sqlite3_interrupt() exposed
-- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
-- Approved design doc: `docs/plans/2026-03-09-graph-intelligence-design.md`
+- [RapidSearch query relaxation glossary](https://www.rapidsearch.app/glossary/query-relaxation) — progressive relaxation patterns and threshold strategies
+- [Context Engineering for Coding Agents — Martin Fowler](https://martinfowler.com/articles/exploring-gen-ai/context-engineering-coding-agents.html) — recall > precision rationale for AI agent consumers
+- [LLM Agents Improve Semantic Code Search — arXiv 2408.11058](https://arxiv.org/html/2408.11058v1) — result enrichment patterns for LLM agent consumers
+- Elixir Forum community — `@required_fields ~w(...)a` module attribute convention (common pattern, not in official Ecto docs)
 
 ---
-*Research completed: 2026-03-09*
+*Research completed: 2026-03-11*
 *Ready for roadmap: yes*
