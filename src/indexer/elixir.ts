@@ -13,6 +13,8 @@ export interface ElixirModule {
   absintheTypes: { kind: string; name: string }[];
   grpcStubs: string[];
   requiredFields: string[];
+  optionalFields: string[];
+  castFields: string[];
 }
 
 /** Max file size to process (500KB) */
@@ -90,7 +92,13 @@ export function parseElixirFile(
     const { schemaFields, associations } = extractSchemaDetails(moduleContent);
     const absintheTypes = extractAbsintheTypes(moduleContent);
     const grpcStubs = extractGrpcStubs(moduleContent);
-    const requiredFields = Array.from(extractRequiredFields(moduleContent));
+    const attrs = resolveModuleAttributes(moduleContent);
+    const requiredSet = extractRequiredFields(moduleContent, attrs);
+    const requiredFields = Array.from(requiredSet);
+    const castSet = extractCastFields(moduleContent, attrs);
+    const castFields = Array.from(castSet);
+    // Optional fields: in cast but not in required
+    const optionalFields = castFields.filter(f => !requiredSet.has(f));
     const type = tableName ? 'schema' : classifyModule(name);
 
     modules.push({
@@ -105,6 +113,8 @@ export function parseElixirFile(
       absintheTypes,
       grpcStubs,
       requiredFields,
+      optionalFields,
+      castFields,
     });
   }
 
@@ -272,14 +282,58 @@ function extractGrpcStubs(moduleContent: string): string[] {
   return Array.from(stubs);
 }
 
+/** Well-known non-field attributes to skip during attribute resolution */
+const SKIP_ATTRIBUTES = new Set([
+  'moduledoc', 'doc', 'derive', 'behaviour', 'behavior', 'impl',
+  'type', 'typep', 'spec', 'callback', 'optional_callbacks',
+  'compile', 'external_resource', 'dialyzer', 'on_definition',
+  'before_compile', 'after_compile', 'on_load', 'vsn',
+]);
+
+/**
+ * Resolve module attribute declarations to field name lists.
+ * Handles both ~w(...)a sigil form and [:atom, :atom] list form.
+ * Skips well-known non-field attributes.
+ */
+export function resolveModuleAttributes(moduleContent: string): Record<string, string[]> {
+  const attrs: Record<string, string[]> = {};
+
+  // Pattern: @attr_name ~w(content)a
+  const sigilRe = /@(\w+)\s+~w\(([\s\S]*?)\)a/g;
+  let match;
+  while ((match = sigilRe.exec(moduleContent)) !== null) {
+    const attrName = match[1]!;
+    if (SKIP_ATTRIBUTES.has(attrName)) continue;
+    const content = match[2]!;
+    attrs[attrName] = content.trim().split(/\s+/).filter(Boolean);
+  }
+
+  // Pattern: @attr_name [:atom1, :atom2]
+  const listRe = /@(\w+)\s+\[([\s\S]*?)\]/g;
+  while ((match = listRe.exec(moduleContent)) !== null) {
+    const attrName = match[1]!;
+    if (SKIP_ATTRIBUTES.has(attrName)) continue;
+    if (attrs[attrName]) continue; // already resolved via sigil
+    const content = match[2]!;
+    attrs[attrName] = [...content.matchAll(/:(\w+)/g)].map(m => m[1]!);
+  }
+
+  return attrs;
+}
+
 /**
  * Extract required field names from all validate_required calls in module content.
  * Handles both explicit changeset arg and pipe form.
+ * When attrs map is provided, resolves @attr references in validate_required calls.
  * Returns the union of all required fields across all changesets.
  */
-export function extractRequiredFields(moduleContent: string): Set<string> {
+export function extractRequiredFields(
+  moduleContent: string,
+  attrs?: Record<string, string[]>,
+): Set<string> {
   const required = new Set<string>();
-  // Match validate_required with optional changeset arg, then atom list
+
+  // Pass 1: Match validate_required with inline atom list (existing logic)
   const re = /validate_required\s*\(\s*(?:\w+\s*,\s*)?\[([\s\S]*?)\]/g;
   let match;
   while ((match = re.exec(moduleContent)) !== null) {
@@ -290,7 +344,58 @@ export function extractRequiredFields(moduleContent: string): Set<string> {
       required.add(atomMatch[1]!);
     }
   }
+
+  // Pass 2: Match validate_required with @attr reference (when attrs provided)
+  if (attrs) {
+    // Direct call: validate_required(changeset, @attr) or validate_required(@attr)
+    const attrDirectRe = /validate_required\s*\(\s*(?:\w+\s*,\s*)?@(\w+)\s*\)/g;
+    while ((match = attrDirectRe.exec(moduleContent)) !== null) {
+      const attrName = match[1]!;
+      const resolved = attrs[attrName];
+      if (resolved) {
+        for (const f of resolved) required.add(f);
+      }
+    }
+  }
+
   return required;
+}
+
+/**
+ * Extract field names from cast/4 calls in module content.
+ * Handles inline atom lists, module attribute references, and concatenation.
+ * Both direct call and pipe forms are supported.
+ */
+export function extractCastFields(
+  moduleContent: string,
+  attrs: Record<string, string[]>,
+): Set<string> {
+  const fields = new Set<string>();
+  let match;
+
+  // Pattern 1: Inline atom list in cast - both direct and pipe forms
+  // cast(x, y, [:f1, :f2]) or |> cast(params, [:f1, :f2])
+  const castInlineRe = /\bcast\s*\(\s*(?:\w+\s*,\s*)?(?:\w+\s*,\s*)?\[([\s\S]*?)\]/g;
+  while ((match = castInlineRe.exec(moduleContent)) !== null) {
+    for (const [, atom] of match[1]!.matchAll(/:(\w+)/g)) {
+      fields.add(atom!);
+    }
+  }
+
+  // Pattern 2: Attribute reference in cast (including concatenation)
+  // cast(x, y, @attr) or cast(x, y, @req ++ @opt) or |> cast(params, @attr)
+  const castAttrRe = /\bcast\s*\(\s*(?:\w+\s*,\s*)?(?:\w+\s*,\s*)?((?:@\w+)(?:\s*\+\+\s*@\w+)*)\s*\)/g;
+  while ((match = castAttrRe.exec(moduleContent)) !== null) {
+    const argStr = match[1]!;
+    for (const [, attrName] of argStr.matchAll(/@(\w+)/g)) {
+      const resolved = attrs[attrName!];
+      if (resolved) {
+        for (const f of resolved) fields.add(f);
+      }
+    }
+  }
+
+  return fields;
 }
 
 /**
