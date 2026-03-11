@@ -171,3 +171,13 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 34. Search Query Layer | 2/2 | Complete    | 2026-03-11 | - |
 | 35. FTS Description Enrichment | 1/1 | Complete    | 2026-03-11 | - |
 | 36. Ecto Constraint Extraction | 1/1 | Complete    | 2026-03-11 | - |
+
+### Phase 37: Unleash feature flag indexing and search
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 36
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 37 to break down)

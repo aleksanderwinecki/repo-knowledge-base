@@ -62,6 +62,10 @@ v4.2 context:
 - [Phase 36]: optionalFields derived as cast-minus-required (simpler than separate @optional_fields extraction)
 - [Phase 36]: Set-based pipeline nullability lookup for O(1) performance
 
+### Roadmap Evolution
+
+- Phase 37 added: Unleash feature flag indexing and search
+
 ### Pending Todos
 
 None.
