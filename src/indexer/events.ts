@@ -31,6 +31,7 @@ export function detectEventRelationships(
   repoPath: string,
   protoDefinitions: ProtoDefinition[],
   _elixirModules: ElixirModule[],
+  fileList?: string[],
 ): EventRelationship[] {
   const relationships: EventRelationship[] = [];
 
@@ -47,7 +48,7 @@ export function detectEventRelationships(
   }
 
   // Consumer detection: scan .ex files for event handler patterns
-  const consumers = detectConsumers(repoPath);
+  const consumers = detectConsumers(repoPath, fileList);
   relationships.push(...consumers);
 
   return relationships;
@@ -62,10 +63,10 @@ export function detectEventRelationships(
  * 3. Kafkaesque.Consumer topics_config with topic names
  * 4. Kafkaesque decoder_config schema references
  */
-function detectConsumers(repoPath: string): EventRelationship[] {
+function detectConsumers(repoPath: string, fileList?: string[]): EventRelationship[] {
   const consumers: EventRelationship[] = [];
 
-  const allFiles = listWorkingTreeFiles(repoPath);
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)),
   );

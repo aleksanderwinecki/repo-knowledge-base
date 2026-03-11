@@ -27,8 +27,8 @@ const MAX_FILE_SIZE = 500 * 1024;
  * Extract all GraphQL definitions from a repo working tree.
  * Scans the entire tree for .graphql files.
  */
-export function extractGraphqlDefinitions(repoPath: string): GraphqlDefinition[] {
-  const allFiles = listWorkingTreeFiles(repoPath);
+export function extractGraphqlDefinitions(repoPath: string, fileList?: string[]): GraphqlDefinition[] {
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const graphqlFiles = allFiles.filter((f) => f.endsWith('.graphql'));
   const definitions: GraphqlDefinition[] = [];
 

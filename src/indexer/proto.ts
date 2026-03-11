@@ -41,8 +41,8 @@ const MAX_FILE_SIZE = 500 * 1024;
  * Extract all proto definitions from a repo working tree.
  * Scans the entire tree for .proto files.
  */
-export function extractProtoDefinitions(repoPath: string): ProtoDefinition[] {
-  const allFiles = listWorkingTreeFiles(repoPath);
+export function extractProtoDefinitions(repoPath: string, fileList?: string[]): ProtoDefinition[] {
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const protoFiles = allFiles.filter((f) => f.endsWith('.proto'));
   const definitions: ProtoDefinition[] = [];
 

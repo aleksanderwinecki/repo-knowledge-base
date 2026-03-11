@@ -114,8 +114,9 @@ function isTestPath(filePath: string): boolean {
  */
 export function extractHttpClientEdges(
   repoPath: string,
+  fileList?: string[],
 ): TopologyEdge[] {
-  const allFiles = listWorkingTreeFiles(repoPath);
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)) && !isTestPath(f),
   );

@@ -298,10 +298,16 @@ describe('indexAllRepos', () => {
     fs.writeFileSync(path.join(repoDir, 'mix.exs'), 'defmodule Dev.MixProject do\nend');
     execSync('git add -A && git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
 
+    // With --force, branch resolution is skipped — repo indexes from working tree
     const results = await indexAllRepos(db, { force: true, rootDir });
     expect(results).toHaveLength(1);
-    expect(results[0].status).toBe('skipped');
-    expect(results[0].skipReason).toContain('no main or master branch');
+    expect(results[0].status).toBe('success');
+
+    // Without --force, repo is skipped (no main/master for incremental check)
+    const results2 = await indexAllRepos(db, { force: false, rootDir });
+    const noDefaultResult = results2.find(r => r.repo === 'no-default-branch');
+    expect(noDefaultResult?.status).toBe('skipped');
+    expect(noDefaultResult?.skipReason).toContain('no main or master branch');
   });
 
   it('indexes from working tree content (includes all files on disk)', async () => {

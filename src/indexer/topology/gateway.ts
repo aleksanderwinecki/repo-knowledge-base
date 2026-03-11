@@ -27,8 +27,9 @@ const DESCRIBE_RE =
  */
 export function extractGatewayEdges(
   repoPath: string,
+  fileList?: string[],
 ): TopologyEdge[] {
-  const allFiles = listWorkingTreeFiles(repoPath);
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const serviceFiles = allFiles.filter((f) => COMPOSE_SERVICE_RE.test(f));
 
   if (serviceFiles.length === 0) {

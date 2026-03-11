@@ -107,6 +107,9 @@ async function extractRepoData(
     dbSnapshot.lastCommit !== metadata.currentCommit &&
     isCommitReachable(repoPath, dbSnapshot.lastCommit);
 
+  // List all files once, share across extractors
+  const allFiles = listWorkingTreeFiles(repoPath);
+
   // Step 3: Determine surgical vs full mode
   let useSurgical = false;
   let changes: { added: string[]; modified: string[]; deleted: string[] } | null = null;
@@ -118,15 +121,14 @@ async function extractRepoData(
       'HEAD',
     );
     const totalChanged = changes.added.length + changes.modified.length + changes.deleted.length;
-    const allFiles = listWorkingTreeFiles(repoPath);
     const changeRatio = totalChanged / Math.max(allFiles.length, 1);
     useSurgical = totalChanged > 0 && totalChanged <= 200 && changeRatio <= 0.5;
   }
 
   // Step 4: Run extractors (all read from working tree)
-  const elixirModules = extractElixirModules(repoPath);
-  const protoDefinitions = extractProtoDefinitions(repoPath);
-  const graphqlDefinitions = extractGraphqlDefinitions(repoPath);
+  const elixirModules = extractElixirModules(repoPath, allFiles);
+  const protoDefinitions = extractProtoDefinitions(repoPath, allFiles);
+  const graphqlDefinitions = extractGraphqlDefinitions(repoPath, allFiles);
 
   // Map gRPC services from proto definitions (EXT-01)
   const services: ServiceData[] = protoDefinitions.flatMap((proto) =>
@@ -171,10 +173,10 @@ async function extractRepoData(
   const allModules: ModuleData[] = [...elixirModuleData, ...graphqlModules, ...absintheModules];
 
   // Detect event relationships
-  const eventRelationships = detectEventRelationships(repoPath, protoDefinitions, elixirModules);
+  const eventRelationships = detectEventRelationships(repoPath, protoDefinitions, elixirModules, allFiles);
 
   // Extract topology edges (gRPC, HTTP, gateway, Kafka)
-  const topologyEdges = extractTopologyEdges(repoPath, elixirModules);
+  const topologyEdges = extractTopologyEdges(repoPath, elixirModules, allFiles);
 
   // Map extractor outputs to FieldData[]
   const ectoFields: FieldData[] = elixirModules
@@ -411,17 +413,15 @@ export async function indexAllRepos(
     const repoName = path.basename(repoPath);
 
     try {
-      // Resolve default branch (main or master)
-      const branch = resolveDefaultBranch(repoPath);
-      if (!branch) {
-        callbacks?.errors?.addNoBranch(repoName);
-        results.push({ repo: repoName, status: 'skipped', mode: 'skipped', skipReason: 'no main or master branch' });
-        continue;
-      }
-
       // Check if we can skip (incremental indexing)
       // Targeted reindex (--repo) implies force — skip the staleness check
       if (!options.force && !options.repos?.length) {
+        const branch = resolveDefaultBranch(repoPath);
+        if (!branch) {
+          callbacks?.errors?.addNoBranch(repoName);
+          results.push({ repo: repoName, status: 'skipped', mode: 'skipped', skipReason: 'no main or master branch' });
+          continue;
+        }
         const skipResult = checkSkip(db, repoPath, repoName, branch);
         if (skipResult) {
           results.push(skipResult);

@@ -101,12 +101,13 @@ function isTestPath(filePath: string): boolean {
 export function extractGrpcClientEdges(
   repoPath: string,
   elixirModules: ElixirModule[],
+  fileList?: string[],
 ): TopologyEdge[] {
   // Map: normalized domain name -> TopologyEdge (for dedup)
   const edgeMap = new Map<string, TopologyEdge>();
 
   // Scan .ex files for patterns 1 and 2
-  const allFiles = listWorkingTreeFiles(repoPath);
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const exFiles = allFiles.filter(
     (f) => f.endsWith('.ex') && LIB_PATH_PATTERNS.some((p) => p.test(f)) && !isTestPath(f),
   );

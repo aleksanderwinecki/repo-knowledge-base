@@ -33,8 +33,8 @@ const LIB_PATH_PATTERNS = [
  * Extract all Elixir modules from a repo working tree.
  * Scans lib/ and apps/star/lib/ for .ex files (umbrella apps).
  */
-export function extractElixirModules(repoPath: string): ElixirModule[] {
-  const allFiles = listWorkingTreeFiles(repoPath);
+export function extractElixirModules(repoPath: string, fileList?: string[]): ElixirModule[] {
+  const allFiles = Array.isArray(fileList) ? fileList : listWorkingTreeFiles(repoPath);
   const modules: ElixirModule[] = [];
 
   // Filter for .ex files under lib paths
