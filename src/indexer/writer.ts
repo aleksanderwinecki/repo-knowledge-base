@@ -4,6 +4,18 @@ import { indexEntity, removeEntity } from '../db/fts.js';
 import type { EntityType } from '../types/entities.js';
 import type { TopologyEdge } from './topology/types.js';
 
+/**
+ * Module-level flag to skip all FTS operations during bulk writes.
+ * When true, persistRepoData/persistSurgicalData skip indexEntity/removeEntity calls.
+ * Use with rebuildAllFts() after bulk operations to rebuild FTS in one pass.
+ */
+let _skipFts = false;
+
+/** Enable or disable FTS skip mode for bulk operations. */
+export function setSkipFts(skip: boolean): void {
+  _skipFts = skip;
+}
+
 /** Service data from proto/gRPC extractors */
 export interface ServiceData {
   name: string;
@@ -140,14 +152,16 @@ export function clearRepoEntities(db: Database.Database, repoId: number): void {
   const deleteServices = db.prepare('DELETE FROM services WHERE repo_id = ?');
   const deleteFields = db.prepare('DELETE FROM fields WHERE repo_id = ?');
 
-  // Remove FTS entries for all entity types
-  clearEntityFts(selectModules, deleteFts, 'module:%', repoId);
-  clearEntityFts(selectEvents, deleteFts, 'event:%', repoId);
-  clearEntityFts(selectServices, deleteFts, 'service:%', repoId);
-  clearEntityFts(selectFields, deleteFts, 'field:%', repoId);
+  // Remove FTS entries for all entity types (skipped in bulk mode — rebuilt at end)
+  if (!_skipFts) {
+    clearEntityFts(selectModules, deleteFts, 'module:%', repoId);
+    clearEntityFts(selectEvents, deleteFts, 'event:%', repoId);
+    clearEntityFts(selectServices, deleteFts, 'service:%', repoId);
+    clearEntityFts(selectFields, deleteFts, 'field:%', repoId);
 
-  // Remove FTS entry for the repo itself
-  deleteFts.run('repo:%', repoId);
+    // Remove FTS entry for the repo itself
+    deleteFts.run('repo:%', repoId);
+  }
 
   // Delete edges (no FK constraint on polymorphic edges)
   deleteEdges.run(repoId, repoId);
@@ -189,21 +203,21 @@ export function clearRepoFiles(
     // Remove modules from this file
     const modules = selectModulesByFile.all(repoId, repoId, filePath) as { id: number }[];
     for (const mod of modules) {
-      deleteFts.run('module:%', mod.id);
+      if (!_skipFts) deleteFts.run('module:%', mod.id);
       deleteModuleById.run(mod.id);
     }
 
     // Remove events from this file via file_id FK join (primary path)
     const eventsViaFileId = selectEventsByFileId.all(repoId, repoId, filePath) as { id: number }[];
     for (const evt of eventsViaFileId) {
-      deleteFts.run('event:%', evt.id);
+      if (!_skipFts) deleteFts.run('event:%', evt.id);
       deleteEventById.run(evt.id);
     }
 
     // Fallback: remove events without file_id via source_file text match (backward compat for pre-v4 data)
     const eventsViaSourceFile = selectEventsBySourceFile.all(repoId, filePath) as { id: number }[];
     for (const evt of eventsViaSourceFile) {
-      deleteFts.run('event:%', evt.id);
+      if (!_skipFts) deleteFts.run('event:%', evt.id);
       deleteEventById.run(evt.id);
     }
 
@@ -211,9 +225,11 @@ export function clearRepoFiles(
     deleteEdgesByFile.run(filePath);
 
     // Remove field FTS entries before deleting field rows
-    const fieldIds = selectFieldsByFile.all(repoId, filePath) as { id: number }[];
-    for (const f of fieldIds) {
-      deleteFts.run('field:%', f.id);
+    if (!_skipFts) {
+      const fieldIds = selectFieldsByFile.all(repoId, filePath) as { id: number }[];
+      for (const f of fieldIds) {
+        deleteFts.run('field:%', f.id);
+      }
     }
 
     // Remove fields from this file
@@ -249,13 +265,15 @@ function insertModuleWithFts(
   if (mod.tableName) parts.push(`table:${mod.tableName}`);
   const ftsDescription = parts.join(' ') || null;
 
-  indexEntity(db, {
-    type: 'module' as EntityType,
-    id: modId,
-    name: mod.name,
-    description: ftsDescription,
-    subType: mod.type ?? 'module',
-  });
+  if (!_skipFts) {
+    indexEntity(db, {
+      type: 'module' as EntityType,
+      id: modId,
+      name: mod.name,
+      description: ftsDescription,
+      subType: mod.type ?? 'module',
+    });
+  }
 }
 
 /**
@@ -275,13 +293,15 @@ function insertEventWithFts(
   const evtInfo = insertEventStmt.run(repoId, evt.name, evt.schemaDefinition, evt.sourceFile, fileId);
   const evtId = Number(evtInfo.lastInsertRowid);
 
-  indexEntity(db, {
-    type: 'event' as EntityType,
-    id: evtId,
-    name: evt.name,
-    description: evt.schemaDefinition ? `${repoName} ${evt.schemaDefinition}` : repoName,
-    subType: 'event',
-  });
+  if (!_skipFts) {
+    indexEntity(db, {
+      type: 'event' as EntityType,
+      id: evtId,
+      name: evt.name,
+      description: evt.schemaDefinition ? `${repoName} ${evt.schemaDefinition}` : repoName,
+      subType: 'event',
+    });
+  }
 }
 
 /**
@@ -304,13 +324,15 @@ function insertServiceWithFts(
   });
   const svcId = Number(svcInfo.lastInsertRowid);
 
-  indexEntity(db, {
-    type: 'service' as EntityType,
-    id: svcId,
-    name: svc.name,
-    description: svc.description ? `${repoName} ${svc.description}` : repoName,
-    subType: svc.serviceType ?? 'service',
-  });
+  if (!_skipFts) {
+    indexEntity(db, {
+      type: 'service' as EntityType,
+      id: svcId,
+      name: svc.name,
+      description: svc.description ? `${repoName} ${svc.description}` : repoName,
+      subType: svc.serviceType ?? 'service',
+    });
+  }
 }
 
 /**
@@ -355,14 +377,16 @@ export function persistRepoData(
     // Clear old entities for full re-index
     clearRepoEntities(db, repoId);
 
-    // Index repo itself in FTS
-    indexEntity(db, {
-      type: 'repo' as EntityType,
-      id: repoId,
-      name: data.metadata.name,
-      description: data.metadata.description,
-      subType: 'repo',
-    });
+    // Index repo itself in FTS (skipped in bulk mode — rebuilt at end)
+    if (!_skipFts) {
+      indexEntity(db, {
+        type: 'repo' as EntityType,
+        id: repoId,
+        name: data.metadata.name,
+        description: data.metadata.description,
+        subType: 'repo',
+      });
+    }
 
     // Capture repo name for FTS description enrichment
     const repoName = data.metadata.name;
@@ -445,13 +469,15 @@ export function persistRepoData(
           eventId,
         );
         const fieldId = Number(fieldInfo.lastInsertRowid);
-        indexEntity(db, {
-          type: 'field' as EntityType,
-          id: fieldId,
-          name: field.fieldName,
-          description: buildFieldDescription(field, repoName),
-          subType: field.parentType,
-        });
+        if (!_skipFts) {
+          indexEntity(db, {
+            type: 'field' as EntityType,
+            id: fieldId,
+            name: field.fieldName,
+            description: buildFieldDescription(field, repoName),
+            subType: field.parentType,
+          });
+        }
       }
     }
 
@@ -510,7 +536,7 @@ export function clearRepoEdges(db: Database.Database, repoId: number): void {
   // Clean up consumer-created events (will be re-created by insertEventEdges if still relevant)
   const consumerEvents = selectConsumerEvents.all(repoId) as { id: number }[];
   for (const evt of consumerEvents) {
-    deleteFts.run('event:%', evt.id);
+    if (!_skipFts) deleteFts.run('event:%', evt.id);
     deleteEventById.run(evt.id);
   }
 }
@@ -598,24 +624,28 @@ export function persistSurgicalData(
           eventId,
         );
         const fieldId = Number(fieldInfo.lastInsertRowid);
-        indexEntity(db, {
-          type: 'field' as EntityType,
-          id: fieldId,
-          name: field.fieldName,
-          description: buildFieldDescription(field, repoName),
-          subType: field.parentType,
-        });
+        if (!_skipFts) {
+          indexEntity(db, {
+            type: 'field' as EntityType,
+            id: fieldId,
+            name: field.fieldName,
+            description: buildFieldDescription(field, repoName),
+            subType: field.parentType,
+          });
+        }
       }
     }
 
     // 6. Wipe and re-insert services if provided (services have no file_id, so full replace)
     if (data.services) {
       // Remove FTS entries for existing services
-      const existingServices = db
-        .prepare('SELECT id FROM services WHERE repo_id = ?')
-        .all(data.repoId) as { id: number }[];
-      for (const svc of existingServices) {
-        removeEntity(db, 'service', svc.id);
+      if (!_skipFts) {
+        const existingServices = db
+          .prepare('SELECT id FROM services WHERE repo_id = ?')
+          .all(data.repoId) as { id: number }[];
+        for (const svc of existingServices) {
+          removeEntity(db, 'service', svc.id);
+        }
       }
 
       // Delete all repo services

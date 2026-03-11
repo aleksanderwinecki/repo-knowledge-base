@@ -170,7 +170,7 @@ src/
 ## Development
 
 ```bash
-npm test          # Run 789 tests
+npm test          # Run 856 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```

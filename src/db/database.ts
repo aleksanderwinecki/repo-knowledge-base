@@ -31,6 +31,24 @@ export function openDatabase(dbPath: string): Database.Database {
 }
 
 /**
+ * Enable bulk-write pragmas for heavy indexing operations.
+ * Disables WAL auto-checkpoint to avoid stalls mid-bulk-insert.
+ * Call restoreNormalPragmas() after bulk operations complete.
+ */
+export function enableBulkWritePragmas(db: Database.Database): void {
+  db.pragma('wal_autocheckpoint = 0');
+}
+
+/**
+ * Restore normal pragmas after bulk-write operations.
+ * Re-enables WAL auto-checkpoint and forces a truncating checkpoint.
+ */
+export function restoreNormalPragmas(db: Database.Database): void {
+  db.pragma('wal_autocheckpoint = 1000');
+  db.pragma('wal_checkpoint(TRUNCATE)');
+}
+
+/**
  * Close the database connection.
  */
 export function closeDatabase(db: Database.Database): void {

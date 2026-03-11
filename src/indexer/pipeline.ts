@@ -13,8 +13,10 @@ import { extractGraphqlDefinitions } from './graphql.js';
 import { parseGraphqlFields } from './graphql.js';
 import { detectEventRelationships } from './events.js';
 import type { EventRelationship } from './events.js';
-import { persistRepoData, persistSurgicalData, insertTopologyEdges } from './writer.js';
+import { persistRepoData, persistSurgicalData, insertTopologyEdges, setSkipFts } from './writer.js';
 import type { ModuleData, EventData, EdgeData, ServiceData, FieldData } from './writer.js';
+import { rebuildAllFts } from '../db/fts.js';
+import { enableBulkWritePragmas, restoreNormalPragmas } from '../db/database.js';
 import { extractTopologyEdges } from './topology/index.js';
 import type { TopologyEdge } from './topology/index.js';
 import { enrichFromEventCatalog } from './catalog.js';
@@ -469,6 +471,10 @@ export async function indexAllRepos(
   const settled = await Promise.allSettled(extractionPromises);
 
   // === Phase 3: Serial persistence (DB writes) ===
+  // Enable bulk write mode: skip per-entity FTS, disable WAL auto-checkpoint
+  enableBulkWritePragmas(db);
+  setSkipFts(true);
+
   for (let i = 0; i < settled.length; i++) {
     const item = workItems[i]!;
     const result = settled[i]!;
@@ -489,6 +495,9 @@ export async function indexAllRepos(
     }
   }
 
+  // Restore FTS mode before any post-processing that might need it
+  setSkipFts(false);
+
   // Finish progress (clears TTY line or writes newline)
   callbacks?.progress?.finish();
 
@@ -505,17 +514,18 @@ export async function indexAllRepos(
     }
   }
 
-  // Post-index optimization: compact FTS and reclaim WAL space
+  // Post-index: rebuild FTS in one bulk pass (replaces per-entity indexEntity calls)
   if (success > 0) {
     try {
-      db.exec("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')");
+      rebuildAllFts(db);
     } catch (error) {
-      // FTS optimize is best-effort; don't fail the pipeline
       const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`FTS optimize failed: ${msg}`);
+      console.warn(`FTS rebuild failed: ${msg}`);
     }
-    db.pragma('wal_checkpoint(TRUNCATE)');
   }
+
+  // Restore normal pragmas and checkpoint WAL
+  restoreNormalPragmas(db);
 
   return results;
 }

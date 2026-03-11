@@ -77,6 +77,137 @@ export function indexEntity(
 }
 
 /**
+ * Rebuild the entire FTS index from entity tables in a single bulk operation.
+ * Far faster than per-entity indexEntity() calls because:
+ * 1. automerge=0 disables segment merge work during inserts
+ * 2. Single transaction = single segment created
+ * 3. optimize at end merges once
+ *
+ * Handles: repos, modules, events, services, fields, learned_facts.
+ */
+export function rebuildAllFts(db: Database.Database): void {
+  // Clear entire FTS table
+  db.exec('DELETE FROM knowledge_fts');
+
+  // Disable merge work during bulk insert
+  db.exec("INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES('automerge', 0)");
+
+  const insertFts = db.prepare(
+    'INSERT INTO knowledge_fts (name, description, entity_type, entity_id) VALUES (?, ?, ?, ?)',
+  );
+
+  const bulkInsert = db.transaction(() => {
+    // Repos
+    const repos = db.prepare('SELECT id, name, description FROM repos').all() as Array<{
+      id: number; name: string; description: string | null;
+    }>;
+    for (const r of repos) {
+      insertFts.run(
+        tokenizeForFts(r.name),
+        r.description ? tokenizeForFts(r.description) : null,
+        'repo:repo',
+        r.id,
+      );
+    }
+
+    // Modules
+    const modules = db.prepare(
+      'SELECT m.id, m.name, m.type, m.summary, m.table_name, r.name as repo_name FROM modules m JOIN repos r ON m.repo_id = r.id',
+    ).all() as Array<{
+      id: number; name: string; type: string | null; summary: string | null;
+      table_name: string | null; repo_name: string;
+    }>;
+    for (const m of modules) {
+      const parts: string[] = [m.repo_name];
+      if (m.summary) parts.push(m.summary);
+      if (m.table_name) parts.push(`table:${m.table_name}`);
+      const desc = parts.join(' ') || null;
+      insertFts.run(
+        tokenizeForFts(m.name),
+        desc ? tokenizeForFts(desc) : null,
+        `module:${m.type ?? 'module'}`,
+        m.id,
+      );
+    }
+
+    // Events
+    const events = db.prepare(
+      'SELECT e.id, e.name, e.schema_definition, r.name as repo_name FROM events e JOIN repos r ON e.repo_id = r.id',
+    ).all() as Array<{
+      id: number; name: string; schema_definition: string | null; repo_name: string;
+    }>;
+    for (const e of events) {
+      const desc = e.schema_definition ? `${e.repo_name} ${e.schema_definition}` : e.repo_name;
+      insertFts.run(
+        tokenizeForFts(e.name),
+        tokenizeForFts(desc),
+        'event:event',
+        e.id,
+      );
+    }
+
+    // Services
+    const services = db.prepare(
+      'SELECT s.id, s.name, s.description, s.service_type, r.name as repo_name FROM services s JOIN repos r ON s.repo_id = r.id',
+    ).all() as Array<{
+      id: number; name: string; description: string | null;
+      service_type: string | null; repo_name: string;
+    }>;
+    for (const s of services) {
+      const desc = s.description ? `${s.repo_name} ${s.description}` : s.repo_name;
+      insertFts.run(
+        tokenizeForFts(s.name),
+        desc ? tokenizeForFts(desc) : null,
+        `service:${s.service_type ?? 'service'}`,
+        s.id,
+      );
+    }
+
+    // Fields
+    const fields = db.prepare(
+      'SELECT f.id, f.field_name, f.parent_type, f.parent_name, f.field_type, r.name as repo_name FROM fields f JOIN repos r ON f.repo_id = r.id',
+    ).all() as Array<{
+      id: number; field_name: string; parent_type: string;
+      parent_name: string; field_type: string; repo_name: string;
+    }>;
+    for (const f of fields) {
+      const parts = [f.repo_name, f.parent_name, f.field_type];
+      if (f.parent_type === 'proto_message') {
+        parts.push(`event:${f.parent_name}`);
+      }
+      insertFts.run(
+        tokenizeForFts(f.field_name),
+        tokenizeForFts(parts.join(' ')),
+        `field:${f.parent_type}`,
+        f.id,
+      );
+    }
+
+    // Learned facts
+    const facts = db.prepare(
+      'SELECT id, content, repo FROM learned_facts',
+    ).all() as Array<{
+      id: number; content: string; repo: string | null;
+    }>;
+    for (const fact of facts) {
+      insertFts.run(
+        tokenizeForFts(fact.content),
+        fact.repo ? tokenizeForFts(fact.repo) : null,
+        'learned_fact:learned_fact',
+        fact.id,
+      );
+    }
+  });
+
+  bulkInsert();
+
+  // Consolidate all segments into one
+  db.exec("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')");
+  // Restore normal automerge for incremental updates
+  db.exec("INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES('automerge', 4)");
+}
+
+/**
  * Remove an entity from the FTS index.
  * Uses LIKE pattern to match any sub-type under the parent type.
  */
