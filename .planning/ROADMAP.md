@@ -133,10 +133,10 @@ Plans:
   1. Searching for a repo name returns modules and fields from that repo (because repo name is embedded in FTS descriptions)
   2. Searching for an event name returns proto fields associated with that event (because proto field descriptions include parent message and event context)
   3. Module FTS descriptions include repo context and structural semantics (table name, associations) without inlining field name lists that would collapse BM25 rank spread
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 35-01: TBD
+- [ ] 35-01-PLAN.md — FTS description enrichment with repo name, event context, and module semantics (TDD)
 
 ### Phase 36: Ecto Constraint Extraction
 **Goal**: Ecto field nullability reflects the full picture from @required_fields, @optional_fields, and cast/2 attributes -- not just validate_required
@@ -169,5 +169,5 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
 | 34. Search Query Layer | 2/2 | Complete    | 2026-03-11 | - |
-| 35. FTS Description Enrichment | v4.2 | 0/? | Not started | - |
+| 35. FTS Description Enrichment | v4.2 | 0/1 | Not started | - |
 | 36. Ecto Constraint Extraction | v4.2 | 0/? | Not started | - |
