@@ -1,34 +1,49 @@
 # Requirements: Repo Knowledge Base
 
-**Defined:** 2026-03-10
+**Defined:** 2026-03-11
 **Core Value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
 
-## v4.1 Requirements
+## v4.2 Requirements
 
-Requirements for Indexing Performance milestone. Each maps to roadmap phases.
+Requirements for Search Quality milestone. Each maps to roadmap phases.
 
-### Filesystem Reads
+### Search Query
 
-- [x] **FS-01**: Extractors read file contents via `fs.readFileSync()` instead of `execSync('git show ...')`
-- [x] **FS-02**: File listing uses filesystem traversal instead of `execSync('git ls-tree ...')`
-- [x] **FS-03**: Branch parameter removed from all extractor function signatures
-- [ ] **FS-04**: Pipeline uses repo working tree path directly — no branch resolution needed for extraction
+- [ ] **SRCH-01**: FTS queries default to OR with BM25 ranking (terms joined with OR after tokenization)
+- [ ] **SRCH-02**: Progressive relaxation retries with broader query when AND returns <3 results
+- [ ] **SRCH-03**: All existing search tests pass with updated behavior; new golden tests cover OR ranking
 
-### Schema Simplification
+### FTS Descriptions
 
-- [x] **SCH-01**: Schema version mismatch triggers full DB recreate (drop + rebuild) instead of incremental migrations
-- [x] **SCH-02**: Migration system removed — single `createSchema()` function creates all tables at current version
-- [x] **SCH-03**: Learned facts preserved across schema rebuilds (exported before drop, re-imported after)
+- [ ] **DESC-01**: All FTS entity descriptions include repo name for cross-repo disambiguation
+- [ ] **DESC-02**: Proto field FTS descriptions include parent message name and associated event name
+- [ ] **DESC-03**: Module FTS descriptions include repo context without duplicating field-level tokens
 
-### Correctness
+### Field Extraction
 
-- [ ] **COR-01**: `--refresh` still fetches and resets to remote default branch before indexing
-- [ ] **COR-02**: Incremental indexing (commit comparison) still works — compares HEAD vs last indexed commit
-- [ ] **COR-03**: All existing tests pass after refactor
+- [ ] **FEXT-01**: Ecto extractor parses `@required_fields` and `@optional_fields` module attributes (both list and `~w()a` sigil forms)
+- [ ] **FEXT-02**: Ecto extractor parses `cast/2` call attributes to identify permitted fields
+- [ ] **FEXT-03**: Pipeline nullability determination uses combined required/optional/cast signals
+
+### Result Enrichment
+
+- [ ] **ENRICH-01**: Search results include `nextAction` hint suggesting appropriate follow-up MCP tool based on entity type
+- [ ] **ENRICH-02**: nextAction hints are included in MCP `kb_search` responses
 
 ## Future Requirements
 
-Deferred to post-v4.1 milestones.
+Deferred to v4.3+. Tracked but not in current roadmap.
+
+### Advanced Search
+
+- **ASRCH-01**: Multi-concept fan-out splits queries by concept type (CamelCase vs snake_case), runs parallel sub-queries, merges ranked results
+- **ASRCH-02**: Configurable relaxation threshold (default <3, tunable per consumer)
+
+### Null-Guard Analysis
+
+- **GUARD-01**: Null-guard heuristic scanning detects `is_nil`, `case nil`, guard clause patterns near field references in Elixir source
+- **GUARD-02**: `has_null_guard` boolean stored per field in fields table (schema bump required)
+- **GUARD-03**: Null-guard status surfaced in `kb_field_impact` results
 
 ### Advanced Data Lineage
 
@@ -36,39 +51,37 @@ Deferred to post-v4.1 milestones.
 - **ALIN-02**: Boundary constraint extraction from Ecto changesets and proto field optionality
 - **ALIN-03**: SQL `structure.sql` column extraction with NOT NULL metadata
 
-### Advanced Output
-
-- **AOUT-01**: Colorized output (green for success, red for errors, yellow for warnings)
-- **AOUT-03**: ETA estimation based on historical indexing times
-
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Branch-aware indexing (read from non-checked-out branch) | Marginal correctness gain not worth 1000x performance cost |
-| `git cat-file --batch` optimization | Filesystem reads eliminate git entirely — no need for batch git |
-| Worker threads for parallelism | SQLite can't share connections across threads; p-limit sufficient |
+| Semantic/vector search | Removed in v2.1: 1hr generation, OOM, contradicts SQLite-only constraint |
+| Fuzzy/edit-distance matching | Prefix search (prefix=2,3) handles 90% case; edit-distance adds noise in code domain |
+| Result pagination | MCP responses capped at 4KB; stateless server can't hold cursor state |
+| AST-based extraction | Requires native binary dependency; regex sufficient for well-structured macros |
+| Per-query null-guard scan | Breaks <2s response constraint; must be indexed at index time |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FS-01 | Phase 33 | Complete |
-| FS-02 | Phase 33 | Complete |
-| FS-03 | Phase 33 | Complete |
-| FS-04 | Phase 33 | Pending |
-| SCH-01 | Phase 32 | Complete |
-| SCH-02 | Phase 32 | Complete |
-| SCH-03 | Phase 32 | Complete |
-| COR-01 | Phase 33 | Pending |
-| COR-02 | Phase 33 | Pending |
-| COR-03 | Phase 33 | Pending |
+| SRCH-01 | Pending | Pending |
+| SRCH-02 | Pending | Pending |
+| SRCH-03 | Pending | Pending |
+| DESC-01 | Pending | Pending |
+| DESC-02 | Pending | Pending |
+| DESC-03 | Pending | Pending |
+| FEXT-01 | Pending | Pending |
+| FEXT-02 | Pending | Pending |
+| FEXT-03 | Pending | Pending |
+| ENRICH-01 | Pending | Pending |
+| ENRICH-02 | Pending | Pending |
 
 **Coverage:**
-- v4.1 requirements: 10 total
-- Mapped to phases: 10
-- Unmapped: 0
+- v4.2 requirements: 11 total
+- Mapped to phases: 0
+- Unmapped: 11 ⚠️
 
 ---
-*Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after roadmap creation*
+*Requirements defined: 2026-03-11*
+*Last updated: 2026-03-11 after initial definition*
