@@ -65,23 +65,23 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRCH-01 | Pending | Pending |
-| SRCH-02 | Pending | Pending |
-| SRCH-03 | Pending | Pending |
-| DESC-01 | Pending | Pending |
-| DESC-02 | Pending | Pending |
-| DESC-03 | Pending | Pending |
-| FEXT-01 | Pending | Pending |
-| FEXT-02 | Pending | Pending |
-| FEXT-03 | Pending | Pending |
-| ENRICH-01 | Pending | Pending |
-| ENRICH-02 | Pending | Pending |
+| SRCH-01 | Phase 34 | Pending |
+| SRCH-02 | Phase 34 | Pending |
+| SRCH-03 | Phase 34 | Pending |
+| DESC-01 | Phase 35 | Pending |
+| DESC-02 | Phase 35 | Pending |
+| DESC-03 | Phase 35 | Pending |
+| FEXT-01 | Phase 36 | Pending |
+| FEXT-02 | Phase 36 | Pending |
+| FEXT-03 | Phase 36 | Pending |
+| ENRICH-01 | Phase 34 | Pending |
+| ENRICH-02 | Phase 34 | Pending |
 
 **Coverage:**
 - v4.2 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after initial definition*
+*Last updated: 2026-03-11 after roadmap creation*

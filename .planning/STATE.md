@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v4.2
 milestone_name: Search Quality
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-11"
-last_activity: 2026-03-11 — Milestone v4.2 started
+last_activity: 2026-03-11 — Roadmap created for v4.2 (3 phases, 11 requirements)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.2 Search Quality — Defining requirements
+**Current focus:** v4.2 Search Quality — Phase 34 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 34 of 36 (Search Query Layer)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-11 — Milestone v4.2 started
+Status: Ready to plan
+Last activity: 2026-03-11 — Roadmap created
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -45,12 +45,12 @@ Progress: [░░░░░░░░░░] 0%
 See PROJECT.md Key Decisions table for full log.
 
 v4.2 context:
-- Primary consumer is AI agents via MCP — recall matters more than precision
-- FTS5 defaults to implicit AND for multi-word queries → complex queries return 0 results
-- Fields ARE indexed but FTS descriptions are thin (just field name + type)
-- Ecto nullability relies on validate_required() heuristic — misses @required_fields, cast attrs
-- Proto fields extracted with optional flag but thin FTS context
-- Progressive relaxation (AND → OR) is the highest-impact, lowest-effort improvement
+- OR-default + progressive relaxation in same phase (share query builder, both need tokenizer-aware OR construction)
+- nextAction merged into query phase (pure presentation in searchText(), no DB changes)
+- FTS descriptions separate from query-time changes (requires reindex, different files)
+- Ecto extraction independent of descriptions (different files: elixir.ts vs writer.ts)
+- Tokenizer destroys OR operators — must join AFTER tokenizing individual terms
+- Description enrichment must not duplicate field names in module descriptions (token pollution)
 
 ### Pending Todos
 
@@ -63,6 +63,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Milestone initialization
+Stopped at: Roadmap created for v4.2
 Resume file: None
-Next: Define requirements → roadmap
+Next: `/gsd:plan-phase 34`

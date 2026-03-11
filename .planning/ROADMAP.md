@@ -10,7 +10,8 @@
 - v3.0 Graph Intelligence -- Phases 23-26 (shipped 2026-03-10)
 - v3.1 Indexing UX -- Phases 27-28 (shipped 2026-03-10)
 - v4.0 Data Contract Intelligence -- Phases 29-31 (shipped 2026-03-10)
-- v4.1 Indexing Performance -- Phases 32-33 (in progress)
+- v4.1 Indexing Performance -- Phases 32-33 (shipped 2026-03-11)
+- v4.2 Search Quality -- Phases 34-36 (in progress)
 
 ## Phases
 
@@ -93,41 +94,68 @@
 
 </details>
 
-### v4.1 Indexing Performance (In Progress)
+<details>
+<summary>v4.1 Indexing Performance (Phases 32-33) -- SHIPPED 2026-03-11</summary>
 
-- [x] **Phase 32: Schema Drop & Rebuild** - Replace incremental migrations with drop+rebuild, preserve learned facts (completed 2026-03-10)
-- [x] **Phase 33: Filesystem Reads** - Replace git child process spawning with direct filesystem reads (completed 2026-03-10)
+- [x] Phase 32: Schema Drop & Rebuild (1/1 plans) -- completed 2026-03-10
+- [x] Phase 33: Filesystem Reads (2/2 plans) -- completed 2026-03-10
+
+</details>
+
+### v4.2 Search Quality (In Progress)
+
+- [ ] **Phase 34: Search Query Layer** - OR-default queries, progressive relaxation, and result enrichment for AI agent recall
+- [ ] **Phase 35: FTS Description Enrichment** - Richer FTS descriptions with repo name, proto context, and module semantics
+- [ ] **Phase 36: Ecto Constraint Extraction** - Deeper Ecto field extraction from @required_fields, @optional_fields, and cast attrs
 
 ## Phase Details
 
-### Phase 32: Schema Drop & Rebuild
-**Goal**: Schema version mismatches handled by clean drop+rebuild instead of incremental migrations
-**Depends on**: Phase 31
-**Requirements**: SCH-01, SCH-02, SCH-03
+### Phase 34: Search Query Layer
+**Goal**: AI agent search queries return relevant results by defaulting to OR with BM25 ranking, falling back progressively when narrow queries underperform, and suggesting next-step actions per result
+**Depends on**: Phase 33
+**Requirements**: SRCH-01, SRCH-02, SRCH-03, ENRICH-01, ENRICH-02
 **Success Criteria** (what must be TRUE):
-  1. When schema version changes, the DB is dropped and recreated with the current schema -- no migration chain to maintain
-  2. A single `createSchema()` function creates all tables at the current version -- no migration functions exist
-  3. User's learned facts survive a schema rebuild (exported before drop, re-imported after)
-**Plans:** 1/1 plans complete
-Plans:
-- [ ] 32-01-PLAN.md -- Replace migration system with createSchema + drop-rebuild
+  1. A multi-term `kb_search` query returns results containing ANY search term, ranked by BM25 relevance (not requiring ALL terms)
+  2. When a strict AND query returns fewer than 3 results, the system automatically retries with broader matching and returns a larger result set
+  3. Each search result includes a `nextAction` field suggesting the appropriate follow-up MCP tool (e.g., `kb_entity` for entities, `kb_field_impact` for fields)
+  4. All existing search golden tests pass; new golden tests verify OR ranking order and relaxation behavior
+**Plans**: TBD
 
-### Phase 33: Filesystem Reads
-**Goal**: Extractors read from the working tree filesystem instead of spawning git child processes
-**Depends on**: Phase 32
-**Requirements**: FS-01, FS-02, FS-03, FS-04, COR-01, COR-02, COR-03
-**Success Criteria** (what must be TRUE):
-  1. Running `kb index` produces identical results with no `execSync('git show')` or `execSync('git ls-tree')` calls anywhere in the codebase
-  2. Extractor functions accept a repo path -- no `branch` parameter in any extractor signature
-  3. `kb index --repo foo --refresh` still fetches and resets to remote default branch before indexing
-  4. Incremental indexing (skip unchanged repos via HEAD comparison) still works correctly
-  5. All existing tests pass after the refactor
-**Plans:** 2/2 plans complete
 Plans:
-- [ ] 33-01-PLAN.md -- Add fs-based file I/O, refactor all extractors to drop branch param
-- [ ] 33-02-PLAN.md -- Wire pipeline, remove dead git functions, update all tests
+- [ ] 34-01: TBD
+- [ ] 34-02: TBD
+
+### Phase 35: FTS Description Enrichment
+**Goal**: FTS indexed descriptions carry enough context for cross-repo disambiguation and proto field discoverability without polluting BM25 rankings
+**Depends on**: Phase 34
+**Requirements**: DESC-01, DESC-02, DESC-03
+**Success Criteria** (what must be TRUE):
+  1. Searching for a repo name returns modules and fields from that repo (because repo name is embedded in FTS descriptions)
+  2. Searching for an event name returns proto fields associated with that event (because proto field descriptions include parent message and event context)
+  3. Module FTS descriptions include repo context and structural semantics (table name, associations) without inlining field name lists that would collapse BM25 rank spread
+**Plans**: TBD
+
+Plans:
+- [ ] 35-01: TBD
+
+### Phase 36: Ecto Constraint Extraction
+**Goal**: Ecto field nullability reflects the full picture from @required_fields, @optional_fields, and cast/2 attributes -- not just validate_required
+**Depends on**: Phase 34
+**Requirements**: FEXT-01, FEXT-02, FEXT-03
+**Success Criteria** (what must be TRUE):
+  1. An Ecto schema using `@required_fields ~w(name email)a` has those fields extracted with correct nullability (not nullable)
+  2. An Ecto schema using `@optional_fields [:phone, :bio]` has those fields extracted as nullable
+  3. Fields listed in `cast/2` calls are identified as permitted fields, contributing to the nullability determination alongside required/optional signals
+  4. `kb_field_impact` results for Ecto fields reflect the combined required/optional/cast nullability signal (not just validate_required)
+**Plans**: TBD
+
+Plans:
+- [ ] 36-01: TBD
 
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 34 -> 35 -> 36
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
@@ -139,5 +167,7 @@ Plans:
 | 23-26 | v3.0 | 9/9 | Complete | 2026-03-10 |
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
-| 32. Schema Drop & Rebuild | 1/1 | Complete    | 2026-03-10 | - |
-| 33. Filesystem Reads | 1/2 | Complete    | 2026-03-10 | - |
+| 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
+| 34. Search Query Layer | v4.2 | 0/? | Not started | - |
+| 35. FTS Description Enrichment | v4.2 | 0/? | Not started | - |
+| 36. Ecto Constraint Extraction | v4.2 | 0/? | Not started | - |
