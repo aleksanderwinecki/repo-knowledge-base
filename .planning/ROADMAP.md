@@ -119,11 +119,11 @@
   2. When a strict AND query returns fewer than 3 results, the system automatically retries with broader matching and returns a larger result set
   3. Each search result includes a `nextAction` field suggesting the appropriate follow-up MCP tool (e.g., `kb_entity` for entities, `kb_field_impact` for fields)
   4. All existing search golden tests pass; new golden tests verify OR ranking order and relaxation behavior
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 34-01: TBD
-- [ ] 34-02: TBD
+- [ ] 34-01-PLAN.md — OR-default queries with progressive relaxation (TDD)
+- [ ] 34-02-PLAN.md — nextAction result enrichment
 
 ### Phase 35: FTS Description Enrichment
 **Goal**: FTS indexed descriptions carry enough context for cross-repo disambiguation and proto field discoverability without polluting BM25 rankings
@@ -168,6 +168,6 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
-| 34. Search Query Layer | v4.2 | 0/? | Not started | - |
+| 34. Search Query Layer | v4.2 | 0/2 | Not started | - |
 | 35. FTS Description Enrichment | v4.2 | 0/? | Not started | - |
 | 36. Ecto Constraint Extraction | v4.2 | 0/? | Not started | - |
