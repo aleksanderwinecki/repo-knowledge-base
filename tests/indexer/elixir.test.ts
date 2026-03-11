@@ -416,6 +416,123 @@ end
   });
 });
 
+describe('parseElixirFile module attribute integration', () => {
+  it('populates optionalFields from @optional_fields attribute', () => {
+    const content = `
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  @required_fields ~w(name email)a
+  @optional_fields ~w(bio phone)a
+
+  schema "users" do
+    field :name, :string
+    field :email, :string
+    field :bio, :string
+    field :phone, :string
+  end
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @required_fields ++ @optional_fields)
+    |> validate_required(@required_fields)
+  end
+end`;
+    const modules = parseElixirFile('lib/my_app/user.ex', content);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].optionalFields).toEqual(expect.arrayContaining(['bio', 'phone']));
+    expect(modules[0].optionalFields).toHaveLength(2);
+  });
+
+  it('populates castFields from cast/4 calls', () => {
+    const content = `
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  @required_fields ~w(name email)a
+  @optional_fields ~w(bio phone)a
+
+  schema "users" do
+    field :name, :string
+    field :email, :string
+    field :bio, :string
+    field :phone, :string
+  end
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @required_fields ++ @optional_fields)
+    |> validate_required(@required_fields)
+  end
+end`;
+    const modules = parseElixirFile('lib/my_app/user.ex', content);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].castFields).toEqual(expect.arrayContaining(['name', 'email', 'bio', 'phone']));
+    expect(modules[0].castFields).toHaveLength(4);
+  });
+
+  it('populates requiredFields including attribute-resolved fields from validate_required(@attr)', () => {
+    const content = `
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  @required_fields ~w(name email)a
+
+  schema "users" do
+    field :name, :string
+    field :email, :string
+    field :bio, :string
+  end
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name, :email, :bio])
+    |> validate_required(@required_fields)
+  end
+end`;
+    const modules = parseElixirFile('lib/my_app/user.ex', content);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].requiredFields).toEqual(expect.arrayContaining(['name', 'email']));
+    expect(modules[0].requiredFields).toHaveLength(2);
+  });
+
+  it('computes optionalFields as cast-only fields (in cast but not required)', () => {
+    const content = `
+defmodule MyApp.Profile do
+  use Ecto.Schema
+
+  schema "profiles" do
+    field :name, :string
+    field :bio, :string
+    field :avatar, :string
+  end
+
+  def changeset(profile, attrs) do
+    profile
+    |> cast(attrs, [:name, :bio, :avatar])
+    |> validate_required([:name])
+  end
+end`;
+    const modules = parseElixirFile('lib/my_app/profile.ex', content);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].requiredFields).toEqual(['name']);
+    expect(modules[0].castFields).toEqual(expect.arrayContaining(['name', 'bio', 'avatar']));
+    expect(modules[0].optionalFields).toEqual(expect.arrayContaining(['bio', 'avatar']));
+    expect(modules[0].optionalFields).not.toContain('name');
+  });
+
+  it('handles module with no changeset - empty optionalFields and castFields', () => {
+    const content = `
+defmodule MyApp.Helper do
+  def format(x), do: x
+end`;
+    const modules = parseElixirFile('lib/helper.ex', content);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].optionalFields).toEqual([]);
+    expect(modules[0].castFields).toEqual([]);
+  });
+});
+
 describe('extractElixirModules (working tree)', () => {
   function setupGitElixirRepo(files: Record<string, string>): string {
     const repoDir = path.join(tmpDir, 'git-elixir-repo');

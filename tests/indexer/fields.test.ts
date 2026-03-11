@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractRequiredFields, parseElixirFile } from '../../src/indexer/elixir.js';
+import { extractRequiredFields, resolveModuleAttributes, extractCastFields, parseElixirFile } from '../../src/indexer/elixir.js';
 import { parseProtoFile } from '../../src/indexer/proto.js';
 import { parseGraphqlFields } from '../../src/indexer/graphql.js';
 import type { GraphqlField } from '../../src/indexer/graphql.js';
@@ -51,16 +51,19 @@ end`;
     expect(result).toEqual(new Set(['name', 'email', 'status', 'role']));
   });
 
-  it('returns empty set for variable references like @required_fields', () => {
+  it('resolves @required_fields attribute reference in validate_required', () => {
     const content = `
 defmodule MyApp.User do
+  @required_fields ~w(name email)a
+
   def changeset(user, attrs) do
     user
     |> validate_required(@required_fields)
   end
 end`;
-    const result = extractRequiredFields(content);
-    expect(result).toEqual(new Set());
+    const attrs = resolveModuleAttributes(content);
+    const result = extractRequiredFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email']));
   });
 
   it('handles pipe form |> validate_required([:name])', () => {
@@ -109,6 +112,250 @@ end`;
     expect(modules).toHaveLength(1);
     expect(modules[0]!.requiredFields).toEqual(expect.arrayContaining(['name', 'email']));
     expect(modules[0]!.requiredFields).toHaveLength(2);
+  });
+});
+
+describe('Module attribute resolution', () => {
+  it('extracts ~w(...)a sigil form into field name list', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields ~w(name email)a
+  @optional_fields ~w(bio phone)a
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['required_fields']).toEqual(['name', 'email']);
+    expect(attrs['optional_fields']).toEqual(['bio', 'phone']);
+  });
+
+  it('extracts [:atom, :atom] list form into field name list', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields [:name, :email]
+  @optional_fields [:bio, :phone]
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['required_fields']).toEqual(['name', 'email']);
+    expect(attrs['optional_fields']).toEqual(['bio', 'phone']);
+  });
+
+  it('handles mixed forms in the same module', () => {
+    const content = `
+defmodule MyApp.User do
+  @required ~w(name email)a
+  @optional [:bio, :phone]
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['required']).toEqual(['name', 'email']);
+    expect(attrs['optional']).toEqual(['bio', 'phone']);
+  });
+
+  it('ignores well-known non-field attributes like @moduledoc, @doc, @derive', () => {
+    const content = `
+defmodule MyApp.User do
+  @moduledoc "A user module"
+  @doc "Creates a user"
+  @derive [Jason.Encoder]
+  @behaviour MyBehaviour
+  @required_fields ~w(name email)a
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['moduledoc']).toBeUndefined();
+    expect(attrs['doc']).toBeUndefined();
+    expect(attrs['derive']).toBeUndefined();
+    expect(attrs['behaviour']).toBeUndefined();
+    expect(attrs['required_fields']).toEqual(['name', 'email']);
+  });
+
+  it('handles multi-line ~w sigil content', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields ~w(
+    name
+    email
+    status
+  )a
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['required_fields']).toEqual(['name', 'email', 'status']);
+  });
+
+  it('handles multi-line atom list content', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields [
+    :name,
+    :email,
+    :status
+  ]
+end`;
+    const attrs = resolveModuleAttributes(content);
+    expect(attrs['required_fields']).toEqual(['name', 'email', 'status']);
+  });
+});
+
+describe('Cast field extraction', () => {
+  it('extracts inline atom list from cast(x, y, [:field1, :field2])', () => {
+    const content = `
+defmodule MyApp.User do
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name, :email, :bio])
+  end
+end`;
+    const result = extractCastFields(content, {});
+    expect(result).toEqual(new Set(['name', 'email', 'bio']));
+  });
+
+  it('extracts pipe form |> cast(params, [:field1, :field2])', () => {
+    const content = `
+defmodule MyApp.User do
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name, :email])
+  end
+end`;
+    const result = extractCastFields(content, {});
+    expect(result).toEqual(new Set(['name', 'email']));
+  });
+
+  it('resolves cast(x, y, @fields) via attribute map', () => {
+    const content = `
+defmodule MyApp.User do
+  @fields ~w(name email bio)a
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @fields)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractCastFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email', 'bio']));
+  });
+
+  it('resolves concatenation cast(x, y, @required ++ @optional)', () => {
+    const content = `
+defmodule MyApp.User do
+  @required ~w(name email)a
+  @optional ~w(bio phone)a
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @required ++ @optional)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractCastFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email', 'bio', 'phone']));
+  });
+
+  it('handles pipe form with attribute reference |> cast(params, @fields)', () => {
+    const content = `
+defmodule MyApp.User do
+  @permitted ~w(name email)a
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @permitted)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractCastFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email']));
+  });
+
+  it('handles pipe form with concatenation |> cast(params, @required ++ @optional)', () => {
+    const content = `
+defmodule MyApp.User do
+  @required ~w(name)a
+  @optional ~w(bio)a
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, @required ++ @optional)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractCastFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'bio']));
+  });
+});
+
+describe('Attribute-aware required fields', () => {
+  it('resolves validate_required(@attr) via attribute map', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields ~w(name email)a
+
+  def changeset(user, attrs) do
+    user
+    |> validate_required(@required_fields)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractRequiredFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email']));
+  });
+
+  it('still handles inline atom lists validate_required([:name, :email])', () => {
+    const content = `
+defmodule MyApp.User do
+  def changeset(user, attrs) do
+    user
+    |> validate_required([:name, :email])
+  end
+end`;
+    const result = extractRequiredFields(content, {});
+    expect(result).toEqual(new Set(['name', 'email']));
+  });
+
+  it('handles pipe form |> validate_required(@attr)', () => {
+    const content = `
+defmodule MyApp.User do
+  @required ~w(name email)a
+
+  def changeset(user, attrs) do
+    user
+    |> validate_required(@required)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractRequiredFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email']));
+  });
+
+  it('unions results across multiple validate_required calls (attribute + inline)', () => {
+    const content = `
+defmodule MyApp.User do
+  @base_required ~w(name email)a
+
+  def create_changeset(user, attrs) do
+    user
+    |> validate_required(@base_required)
+  end
+
+  def update_changeset(user, attrs) do
+    user
+    |> validate_required([:status, :role])
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractRequiredFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email', 'status', 'role']));
+  });
+
+  it('handles direct call form with changeset arg validate_required(changeset, @attr)', () => {
+    const content = `
+defmodule MyApp.User do
+  @required_fields ~w(name email)a
+
+  def changeset(user, attrs) do
+    validate_required(changeset, @required_fields)
+  end
+end`;
+    const attrs = resolveModuleAttributes(content);
+    const result = extractRequiredFields(content, attrs);
+    expect(result).toEqual(new Set(['name', 'email']));
   });
 });
 
