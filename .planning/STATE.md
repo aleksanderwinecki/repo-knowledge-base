@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.2
 milestone_name: Search Quality
 status: completed
-stopped_at: Completed 34-02-PLAN.md
-last_updated: "2026-03-11T13:22:10.390Z"
-last_activity: 2026-03-11 — Completed 34-02 nextAction hints on search results
+stopped_at: Completed 35-01-PLAN.md
+last_updated: "2026-03-11T13:48:17.685Z"
+last_activity: 2026-03-11 — Completed 35-01 FTS description enrichment
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.2 Search Quality — Phase 34 complete (2/2 plans)
+**Current focus:** v4.2 Search Quality — Phase 35 complete (1/1 plans)
 
 ## Current Position
 
-Phase: 34 of 36 (Search Query Layer)
-Plan: 2 of 2
-Status: Phase 34 complete
-Last activity: 2026-03-11 — Completed 34-02 nextAction hints on search results
+Phase: 35 of 36 (FTS Description Enrichment)
+Plan: 1 of 1
+Status: Phase 35 complete
+Last activity: 2026-03-11 — Completed 35-01 FTS description enrichment
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 70 (across v1.0-v4.2)
-- 33 phases across 9 milestones shipped
+- Total plans completed: 71 (across v1.0-v4.2)
+- 34 phases across 9 milestones shipped
 
 ## Accumulated Context
 
@@ -55,6 +55,9 @@ v4.2 context:
 - Golden test #5 updated: NOT-style queries now return results via OR relaxation (tokenizer destroys NOT operator)
 - [Phase 34]: nextAction is non-optional on TextSearchResult -- every result always has a follow-up hint
 - [Phase 34]: nextAction includes both tool name and args.name for immediately actionable hints
+- [Phase 35]: Module FTS descriptions include repo name + summary + table but NOT field names (BM25 rank pollution avoidance)
+- [Phase 35]: Proto field descriptions get event: prefix; ecto/graphql do not
+- [Phase 35]: Shared buildFieldDescription helper ensures dual-path (full/surgical) FTS consistency
 
 ### Pending Todos
 
@@ -66,7 +69,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11T13:16:53.884Z
-Stopped at: Completed 34-02-PLAN.md
+Last session: 2026-03-11T13:48:17.683Z
+Stopped at: Completed 35-01-PLAN.md
 Resume file: None
-Next: Phase 35 or next milestone phase
+Next: Phase 36 or next milestone phase

@@ -15,9 +15,9 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 
 ### FTS Descriptions
 
-- [ ] **DESC-01**: All FTS entity descriptions include repo name for cross-repo disambiguation
-- [ ] **DESC-02**: Proto field FTS descriptions include parent message name and associated event name
-- [ ] **DESC-03**: Module FTS descriptions include repo context without duplicating field-level tokens
+- [x] **DESC-01**: All FTS entity descriptions include repo name for cross-repo disambiguation
+- [x] **DESC-02**: Proto field FTS descriptions include parent message name and associated event name
+- [x] **DESC-03**: Module FTS descriptions include repo context without duplicating field-level tokens
 
 ### Field Extraction
 
@@ -68,9 +68,9 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 | SRCH-01 | Phase 34 | Complete |
 | SRCH-02 | Phase 34 | Complete |
 | SRCH-03 | Phase 34 | Complete |
-| DESC-01 | Phase 35 | Pending |
-| DESC-02 | Phase 35 | Pending |
-| DESC-03 | Phase 35 | Pending |
+| DESC-01 | Phase 35 | Complete |
+| DESC-02 | Phase 35 | Complete |
+| DESC-03 | Phase 35 | Complete |
 | FEXT-01 | Phase 36 | Pending |
 | FEXT-02 | Phase 36 | Pending |
 | FEXT-03 | Phase 36 | Pending |
