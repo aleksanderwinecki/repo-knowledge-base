@@ -106,7 +106,7 @@
 
 - [x] **Phase 34: Search Query Layer** - OR-default queries, progressive relaxation, and result enrichment for AI agent recall (completed 2026-03-11)
 - [x] **Phase 35: FTS Description Enrichment** - Richer FTS descriptions with repo name, proto context, and module semantics (completed 2026-03-11)
-- [ ] **Phase 36: Ecto Constraint Extraction** - Deeper Ecto field extraction from @required_fields, @optional_fields, and cast attrs
+- [x] **Phase 36: Ecto Constraint Extraction** - Deeper Ecto field extraction from @required_fields, @optional_fields, and cast attrs (completed 2026-03-11)
 
 ## Phase Details
 
@@ -170,4 +170,4 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
 | 34. Search Query Layer | 2/2 | Complete    | 2026-03-11 | - |
 | 35. FTS Description Enrichment | 1/1 | Complete    | 2026-03-11 | - |
-| 36. Ecto Constraint Extraction | v4.2 | 0/1 | Not started | - |
+| 36. Ecto Constraint Extraction | 1/1 | Complete   | 2026-03-11 | - |

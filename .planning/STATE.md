@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.2
 milestone_name: Search Quality
 status: completed
-stopped_at: Completed 35-01-PLAN.md
-last_updated: "2026-03-11T13:50:36.476Z"
-last_activity: 2026-03-11 — Completed 35-01 FTS description enrichment
+stopped_at: Completed 36-01-PLAN.md
+last_updated: "2026-03-11T14:13:00.000Z"
+last_activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 4
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.2 Search Quality — Phase 35 complete (1/1 plans)
+**Current focus:** v4.2 Search Quality — Phase 36 complete (1/1 plans)
 
 ## Current Position
 
-Phase: 35 of 36 (FTS Description Enrichment)
+Phase: 36 of 36 (Ecto Constraint Extraction)
 Plan: 1 of 1
-Status: Phase 35 complete
-Last activity: 2026-03-11 — Completed 35-01 FTS description enrichment
+Status: Phase 36 complete
+Last activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 71 (across v1.0-v4.2)
-- 34 phases across 9 milestones shipped
+- Total plans completed: 72 (across v1.0-v4.2)
+- 35 phases across 9 milestones shipped
 
 ## Accumulated Context
 
@@ -58,6 +58,9 @@ v4.2 context:
 - [Phase 35]: Module FTS descriptions include repo name + summary + table but NOT field names (BM25 rank pollution avoidance)
 - [Phase 35]: Proto field descriptions get event: prefix; ecto/graphql do not
 - [Phase 35]: Shared buildFieldDescription helper ensures dual-path (full/surgical) FTS consistency
+- [Phase 36]: Generic attribute resolution by usage not name -- validate_required(@fields) makes them required regardless of attribute name
+- [Phase 36]: optionalFields derived as cast-minus-required (simpler than separate @optional_fields extraction)
+- [Phase 36]: Set-based pipeline nullability lookup for O(1) performance
 
 ### Pending Todos
 
@@ -69,7 +72,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11T13:48:17.683Z
-Stopped at: Completed 35-01-PLAN.md
+Last session: 2026-03-11T14:13:00.000Z
+Stopped at: Completed 36-01-PLAN.md
 Resume file: None
-Next: Phase 36 or next milestone phase
+Next: Next milestone phase

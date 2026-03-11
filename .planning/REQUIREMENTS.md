@@ -21,9 +21,9 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 
 ### Field Extraction
 
-- [ ] **FEXT-01**: Ecto extractor parses `@required_fields` and `@optional_fields` module attributes (both list and `~w()a` sigil forms)
-- [ ] **FEXT-02**: Ecto extractor parses `cast/2` call attributes to identify permitted fields
-- [ ] **FEXT-03**: Pipeline nullability determination uses combined required/optional/cast signals
+- [x] **FEXT-01**: Ecto extractor parses `@required_fields` and `@optional_fields` module attributes (both list and `~w()a` sigil forms)
+- [x] **FEXT-02**: Ecto extractor parses `cast/2` call attributes to identify permitted fields
+- [x] **FEXT-03**: Pipeline nullability determination uses combined required/optional/cast signals
 
 ### Result Enrichment
 
@@ -71,9 +71,9 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 | DESC-01 | Phase 35 | Complete |
 | DESC-02 | Phase 35 | Complete |
 | DESC-03 | Phase 35 | Complete |
-| FEXT-01 | Phase 36 | Pending |
-| FEXT-02 | Phase 36 | Pending |
-| FEXT-03 | Phase 36 | Pending |
+| FEXT-01 | Phase 36 | Complete |
+| FEXT-02 | Phase 36 | Complete |
+| FEXT-03 | Phase 36 | Complete |
 | ENRICH-01 | Phase 34 | Complete |
 | ENRICH-02 | Phase 34 | Complete |
 
