@@ -9,9 +9,9 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 
 ### Search Query
 
-- [ ] **SRCH-01**: FTS queries default to OR with BM25 ranking (terms joined with OR after tokenization)
-- [ ] **SRCH-02**: Progressive relaxation retries with broader query when AND returns <3 results
-- [ ] **SRCH-03**: All existing search tests pass with updated behavior; new golden tests cover OR ranking
+- [x] **SRCH-01**: FTS queries default to OR with BM25 ranking (terms joined with OR after tokenization)
+- [x] **SRCH-02**: Progressive relaxation retries with broader query when AND returns <3 results
+- [x] **SRCH-03**: All existing search tests pass with updated behavior; new golden tests cover OR ranking
 
 ### FTS Descriptions
 
@@ -65,9 +65,9 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRCH-01 | Phase 34 | Pending |
-| SRCH-02 | Phase 34 | Pending |
-| SRCH-03 | Phase 34 | Pending |
+| SRCH-01 | Phase 34 | Complete |
+| SRCH-02 | Phase 34 | Complete |
+| SRCH-03 | Phase 34 | Complete |
 | DESC-01 | Phase 35 | Pending |
 | DESC-02 | Phase 35 | Pending |
 | DESC-03 | Phase 35 | Pending |

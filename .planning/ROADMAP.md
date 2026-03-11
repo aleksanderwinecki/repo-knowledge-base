@@ -168,6 +168,6 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
-| 34. Search Query Layer | v4.2 | 0/2 | Not started | - |
+| 34. Search Query Layer | 1/2 | In Progress|  | - |
 | 35. FTS Description Enrichment | v4.2 | 0/? | Not started | - |
 | 36. Ecto Constraint Extraction | v4.2 | 0/? | Not started | - |
