@@ -4,7 +4,7 @@ milestone: v4.2
 milestone_name: Search Quality
 status: completed
 stopped_at: Completed 36-01-PLAN.md
-last_updated: "2026-03-11T14:16:46.773Z"
+last_updated: "2026-03-11T15:54:33.780Z"
 last_activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
 progress:
   total_phases: 3
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: 36 of 36 (Ecto Constraint Extraction)
+Phase: 36 of 35 (Ecto Constraint Extraction)
 Plan: 1 of 1
 Status: Phase 36 complete
 Last activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
