@@ -198,6 +198,54 @@ describe('analyzeFieldImpact', () => {
   });
 });
 
+describe('attribute-resolved Ecto nullability in field impact', () => {
+  it('reflects attribute-resolved required fields as nullable: false', () => {
+    // Simulate what the pipeline produces after Task 1's enriched requiredFields:
+    // @required_fields ~w(name email)a -> requiredFields: ['name', 'email']
+    // So name/email should be nullable: false, bio should be nullable: true (cast-only)
+    persistRepoData(db, {
+      metadata: makeMetadata({ name: 'ecto-repo' }),
+      modules: [
+        { name: 'MyApp.User', type: 'ecto_schema', filePath: 'lib/user.ex', summary: null },
+      ],
+      fields: [
+        { parentType: 'ecto_schema', parentName: 'MyApp.User', fieldName: 'name', fieldType: 'string', nullable: false, sourceFile: 'lib/user.ex' },
+        { parentType: 'ecto_schema', parentName: 'MyApp.User', fieldName: 'email', fieldType: 'string', nullable: false, sourceFile: 'lib/user.ex' },
+        { parentType: 'ecto_schema', parentName: 'MyApp.User', fieldName: 'bio', fieldType: 'string', nullable: true, sourceFile: 'lib/user.ex' },
+      ],
+    });
+
+    // Required field should be not nullable
+    const nameResult = analyzeFieldImpact(db, 'name');
+    expect(nameResult.origins).toHaveLength(1);
+    expect(nameResult.origins[0].nullable).toBe(false);
+
+    // Optional field (cast-only) should be nullable
+    const bioResult = analyzeFieldImpact(db, 'bio');
+    expect(bioResult.origins).toHaveLength(1);
+    expect(bioResult.origins[0].nullable).toBe(true);
+  });
+
+  it('required field via attribute resolution + optional field both correct in same query', () => {
+    persistRepoData(db, {
+      metadata: makeMetadata({ name: 'attr-repo' }),
+      modules: [
+        { name: 'MyApp.Profile', type: 'ecto_schema', filePath: 'lib/profile.ex', summary: null },
+      ],
+      fields: [
+        { parentType: 'ecto_schema', parentName: 'MyApp.Profile', fieldName: 'user_id', fieldType: 'integer', nullable: false, sourceFile: 'lib/profile.ex' },
+        { parentType: 'ecto_schema', parentName: 'MyApp.Profile', fieldName: 'avatar', fieldType: 'string', nullable: true, sourceFile: 'lib/profile.ex' },
+      ],
+    });
+
+    const requiredResult = analyzeFieldImpact(db, 'user_id');
+    expect(requiredResult.origins[0].nullable).toBe(false);
+
+    const optionalResult = analyzeFieldImpact(db, 'avatar');
+    expect(optionalResult.origins[0].nullable).toBe(true);
+  });
+});
+
 describe('formatFieldImpactCompact', () => {
   it('produces compact output with summary, origins, boundaries, consumers', () => {
     persistRepoData(db, {

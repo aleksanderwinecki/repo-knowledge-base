@@ -500,3 +500,54 @@ describe('GraphQL field parsing', () => {
     expect(field.type).toBe('String!');
   });
 });
+
+describe('Combined nullability in pipeline', () => {
+  // Simulates the pipeline.ts ectoFields mapping logic
+  function computeNullable(
+    fieldName: string,
+    requiredFields: string[],
+  ): boolean {
+    const requiredSet = new Set(requiredFields);
+    return !requiredSet.has(fieldName);
+  }
+
+  it('field in requiredFields from validate_required inline -> not nullable', () => {
+    expect(computeNullable('name', ['name', 'email'])).toBe(false);
+  });
+
+  it('field in requiredFields from @attr resolution -> not nullable', () => {
+    // Simulate: @required_fields ~w(name email)a + validate_required(@required_fields)
+    // After Task 1, requiredFields already contains resolved attr fields
+    expect(computeNullable('email', ['name', 'email'])).toBe(false);
+  });
+
+  it('field in @optional_fields -> nullable', () => {
+    // bio is only in optional/cast, not in required
+    expect(computeNullable('bio', ['name', 'email'])).toBe(true);
+  });
+
+  it('field in cast but NOT in requiredFields -> nullable', () => {
+    expect(computeNullable('phone', ['name'])).toBe(true);
+  });
+
+  it('schema field with no changeset mention -> nullable', () => {
+    expect(computeNullable('legacy_flag', [])).toBe(true);
+  });
+
+  it('module with @required_fields + @optional_fields: correct nullability split', () => {
+    // @required_fields ~w(name email)a
+    // @optional_fields ~w(bio)a
+    // cast(attrs, @required_fields ++ @optional_fields)
+    // validate_required(@required_fields)
+    const required = ['name', 'email'];
+    expect(computeNullable('name', required)).toBe(false);
+    expect(computeNullable('email', required)).toBe(false);
+    expect(computeNullable('bio', required)).toBe(true);
+  });
+
+  it('module with only validate_required([:name]) + cast(attrs, [:name, :email])', () => {
+    const required = ['name'];
+    expect(computeNullable('name', required)).toBe(false);
+    expect(computeNullable('email', required)).toBe(true);
+  });
+});
