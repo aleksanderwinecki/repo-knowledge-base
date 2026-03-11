@@ -1,7 +1,26 @@
 import type Database from 'better-sqlite3';
+import type { EntityType } from '../types/entities.js';
 import type { TextSearchResult, TextSearchOptions } from './types.js';
 import { parseCompositeType, searchWithRelaxation } from '../db/fts.js';
 import { createEntityHydrator } from './entity.js';
+
+/** Map entity type to the most useful follow-up MCP tool */
+const NEXT_ACTION_MAP: Partial<Record<EntityType, string>> = {
+  field: 'kb_field_impact',
+  repo: 'kb_explain',
+  module: 'kb_entity',
+  event: 'kb_entity',
+  service: 'kb_entity',
+  learned_fact: 'kb_search',
+};
+
+/**
+ * Get the recommended follow-up MCP tool for a given entity type.
+ * Returns the tool name that would provide the most useful drill-down.
+ */
+export function getNextAction(entityType: EntityType, _subType: string): string {
+  return NEXT_ACTION_MAP[entityType] ?? 'kb_entity';
+}
 
 /**
  * Full-text search across all indexed content with contextual metadata.
@@ -36,6 +55,7 @@ export function searchText(
     // Apply repo filter after hydration
     if (repoFilter && entity.repoName !== repoFilter) continue;
 
+    const tool = getNextAction(entityType, subType);
     hydrated.push({
       entityType,
       subType,
@@ -46,6 +66,7 @@ export function searchText(
       repoPath: entity.repoPath,
       filePath: entity.filePath,
       relevance: match.relevance,
+      nextAction: { tool, args: { name: entity.name } },
     });
   }
 

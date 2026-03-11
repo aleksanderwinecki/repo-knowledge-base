@@ -1,5 +1,11 @@
 import type { EntityType } from '../types/entities.js';
 
+/** Suggested follow-up MCP tool for a search result */
+export interface NextAction {
+  tool: string;
+  args: { name: string };
+}
+
 /** Result from full-text search with contextual metadata */
 export interface TextSearchResult {
   entityType: EntityType;
@@ -11,6 +17,7 @@ export interface TextSearchResult {
   repoPath: string;
   filePath: string | null;
   relevance: number;
+  nextAction: NextAction;
 }
 
 /** Options for text search */
