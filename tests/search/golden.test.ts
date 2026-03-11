@@ -72,8 +72,9 @@ describe('FTS golden queries', () => {
     expect(hasBothTerms).toBe(true);
   });
 
-  // 4. FTS5 OR — tokenizer lowercases "OR" so it's treated as implicit AND of 3 words.
-  //    Golden test locks this behavior: separate queries return cross-repo results.
+  // 4. FTS5 OR — now handled correctly via programmatic OR construction.
+  //    buildOrQuery tokenizes terms individually then joins with OR operator.
+  //    Golden test: separate queries return cross-repo results.
   it('OR-style query: separate searches return results from both repos', () => {
     const bookingResults = searchText(db, 'booking');
     const paymentResults = searchText(db, 'payment');
@@ -198,5 +199,42 @@ describe('FTS golden queries', () => {
     const serviceResult = results.find((r) => r.entityType === 'service');
     expect(serviceResult).toBeDefined();
     expect(serviceResult!.name).toBe('PaymentGateway');
+  });
+
+  // 16. OR ranking: multi-term query ranks result with both terms highest
+  it('OR ranking: multi-term query ranks result with both terms highest', () => {
+    // "booking cancellation" — BookingContext.Cancellation contains both terms in name + description
+    const results = searchText(db, 'booking cancellation');
+    expect(results.length).toBeGreaterThan(0);
+
+    // Rank #1 should contain both terms (in name or snippet)
+    const top = results[0];
+    const topText = `${top.name} ${top.snippet}`.toLowerCase();
+    expect(topText).toContain('booking');
+    expect(topText).toContain('cancellation');
+  });
+
+  // 17. Relaxation: sparse AND query returns results via OR fallback
+  it('relaxation: sparse AND query returns results via OR fallback', () => {
+    // "gateway transaction" — PaymentGateway is a service, Transaction is a schema
+    // AND would require both terms in same entity; OR returns both
+    const results = searchText(db, 'gateway transaction');
+    expect(results.length).toBeGreaterThan(0);
+
+    const names = results.map((r) => r.name);
+    // At least one of these should appear via OR relaxation
+    const hasGateway = names.some((n) => n.includes('PaymentGateway'));
+    const hasTransaction = names.some((n) => n.includes('Transaction'));
+    expect(hasGateway || hasTransaction).toBe(true);
+  });
+
+  // 18. Relaxation preserves type filter
+  it('relaxation preserves type filter', () => {
+    // "gateway transaction" with module filter — even after OR relaxation,
+    // no service or event types should appear
+    const results = searchText(db, 'gateway transaction', { entityTypeFilter: 'module' });
+    for (const r of results) {
+      expect(r.entityType).toBe('module');
+    }
   });
 });

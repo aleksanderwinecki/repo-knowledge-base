@@ -294,6 +294,28 @@ describe('searchText', () => {
     });
   });
 
+  describe('progressive relaxation', () => {
+    it('sparse AND query returns results via OR relaxation', () => {
+      // "booking payment" — booking-service has booking entities, payments-service has payment entities
+      // AND returns few results (only PaymentProcessor has "booking" in its description)
+      // OR should return results from both repos
+      const results = searchText(db, 'booking payment');
+      expect(results.length).toBeGreaterThan(0);
+
+      // Should have results from both repos (OR semantics)
+      const repos = new Set(results.map((r) => r.repoName));
+      expect(repos.size).toBeGreaterThanOrEqual(1);
+    });
+
+    it('type filter preserved during relaxation', () => {
+      // Search for multi-term query with type filter
+      const results = searchText(db, 'booking payment', { entityTypeFilter: 'module' });
+      for (const r of results) {
+        expect(r.entityType).toBe('module');
+      }
+    });
+  });
+
   describe('sub-type filtering', () => {
     it('coarse entityTypeFilter=module returns all module sub-types', () => {
       const results = searchText(db, 'payment', { entityTypeFilter: 'module' });

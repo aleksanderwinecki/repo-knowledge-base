@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
-import { indexEntity, removeEntity, search, resolveTypeFilter, parseCompositeType, listAvailableTypes, executeFtsWithFallback } from '../../src/db/fts.js';
+import { indexEntity, removeEntity, search, resolveTypeFilter, parseCompositeType, listAvailableTypes, executeFtsWithFallback, buildOrQuery, buildPrefixOrQuery, searchWithRelaxation, MIN_RELAXATION_RESULTS } from '../../src/db/fts.js';
 import type Database from 'better-sqlite3';
 import os from 'os';
 import path from 'path';
@@ -381,6 +381,116 @@ describe('FTS5', () => {
 
       // Service has 1 grpc
       expect(types.service.find(t => t.subType === 'grpc')!.count).toBe(1);
+    });
+  });
+
+  describe('buildOrQuery', () => {
+    it('multi-term input joins tokenized terms with OR', () => {
+      expect(buildOrQuery('booking payment')).toBe('booking OR payment');
+    });
+
+    it('single term passthrough without OR', () => {
+      expect(buildOrQuery('booking')).toBe('booking');
+    });
+
+    it('empty input returns empty string', () => {
+      expect(buildOrQuery('')).toBe('');
+    });
+
+    it('whitespace-only input returns empty string', () => {
+      expect(buildOrQuery('  ')).toBe('');
+    });
+
+    it('CamelCase terms are split per term then joined with OR', () => {
+      expect(buildOrQuery('BookingCreated PaymentProcessor')).toBe('booking created OR payment processor');
+    });
+
+    it('OR operator survives (not lowercased by tokenizer)', () => {
+      // The literal string "OR" must appear uppercase in output
+      const result = buildOrQuery('booking payment');
+      expect(result).toContain(' OR ');
+      expect(result).not.toContain(' or ');
+    });
+  });
+
+  describe('buildPrefixOrQuery', () => {
+    it('appends prefix wildcard to each tokenized term', () => {
+      expect(buildPrefixOrQuery('booking payment')).toBe('booking* OR payment*');
+    });
+
+    it('single term gets prefix wildcard', () => {
+      expect(buildPrefixOrQuery('book')).toBe('book*');
+    });
+  });
+
+  describe('searchWithRelaxation', () => {
+    it('single-term query runs one FTS query', () => {
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService', description: 'Handles bookings' });
+
+      const results = searchWithRelaxation(db, 'booking', 20);
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].entity_id).toBe(1);
+    });
+
+    it('AND sufficient results (>= 3) returns AND results without relaxation', () => {
+      // Index 3+ entities that match BOTH terms via implicit AND
+      indexEntity(db, { type: 'module', id: 1, name: 'BookingPayment', description: 'booking payment module' });
+      indexEntity(db, { type: 'module', id: 2, name: 'BookingPaymentV2', description: 'booking payment v2' });
+      indexEntity(db, { type: 'module', id: 3, name: 'BookingPaymentV3', description: 'booking payment v3' });
+
+      const results = searchWithRelaxation(db, 'booking payment', 20);
+      expect(results.length).toBeGreaterThanOrEqual(MIN_RELAXATION_RESULTS);
+    });
+
+    it('AND insufficient triggers OR relaxation', () => {
+      // Index entities where only ONE term matches each (no entity has both)
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService', description: 'Handles hotel reservations' });
+      indexEntity(db, { type: 'service', id: 2, name: 'PaymentGateway', description: 'Processes charges' });
+      indexEntity(db, { type: 'event', id: 3, name: 'InvoiceSent', description: 'Invoice notification' });
+
+      // AND("booking payment") -> 0 results (no entity has both)
+      // OR("booking OR payment") -> 2 results (one per term)
+      const results = searchWithRelaxation(db, 'booking payment', 20);
+      expect(results.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('OR insufficient triggers prefix OR relaxation', () => {
+      // Index entities where only prefixes match
+      indexEntity(db, { type: 'service', id: 1, name: 'BookSomething', description: 'A book handler' });
+      indexEntity(db, { type: 'service', id: 2, name: 'PayProcessor', description: 'Processes pay stuff' });
+
+      // AND("book pay") -> 0 results
+      // OR("book OR pay") -> 2 results (each matches one term)
+      // If OR returns < 3, prefix OR("book* OR pay*") tries prefix matching
+      const results = searchWithRelaxation(db, 'book pay', 20);
+      expect(results.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('entityTypeFilter preserved across all relaxation steps', () => {
+      // Mix of entity types, but only services should be returned
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService', description: 'Handles bookings' });
+      indexEntity(db, { type: 'module', id: 2, name: 'PaymentModule', description: 'Payment handler module' });
+      indexEntity(db, { type: 'event', id: 3, name: 'BookingCreated', description: 'Booking event' });
+
+      // With service filter, only BookingService matches even after relaxation
+      const results = searchWithRelaxation(db, 'booking payment', 20, 'service');
+      for (const r of results) {
+        expect(r.entity_type).toMatch(/^service:/);
+      }
+    });
+
+    it('empty query returns empty array', () => {
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService' });
+
+      const results = searchWithRelaxation(db, '', 20);
+      expect(results).toEqual([]);
+    });
+
+    it('whitespace-only query returns empty array', () => {
+      indexEntity(db, { type: 'service', id: 1, name: 'BookingService' });
+
+      const results = searchWithRelaxation(db, '   ', 20);
+      expect(results).toEqual([]);
     });
   });
 });
