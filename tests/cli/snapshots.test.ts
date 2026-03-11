@@ -66,6 +66,7 @@ describe('CLI output shape snapshots', () => {
       'entityType',
       'filePath',
       'name',
+      'nextAction',
       'relevance',
       'repoName',
       'repoPath',
