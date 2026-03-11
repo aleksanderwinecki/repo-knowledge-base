@@ -1112,3 +1112,167 @@ describe('field edges', () => {
     expect(edges).toHaveLength(0);
   });
 });
+
+describe('FTS description enrichment', () => {
+  it('repo name in FTS description for modules', () => {
+    const metadata = makeMetadata({ name: 'booking-service' });
+    const modules = [
+      { name: 'BookingContext', type: 'context', filePath: 'lib/booking_context.ex', summary: 'Handles bookings' },
+    ];
+
+    persistRepoData(db, { metadata, modules });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE name LIKE '%booking%context%' AND entity_type LIKE 'module:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).toContain('booking');
+    expect(ftsRow!.description).toContain('service');
+  });
+
+  it('repo name in FTS description for events', () => {
+    const metadata = makeMetadata({ name: 'booking-service' });
+    const events = [
+      { name: 'BookingCreated', schemaDefinition: 'message BookingCreated { string id = 1; }', sourceFile: 'proto/booking.proto' },
+    ];
+
+    persistRepoData(db, { metadata, events });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE name LIKE '%booking%created%' AND entity_type LIKE 'event:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).toContain('booking');
+    expect(ftsRow!.description).toContain('service');
+  });
+
+  it('repo name in FTS description for services', () => {
+    const metadata = makeMetadata({ name: 'payments-service' });
+    const services = [
+      { name: 'PaymentGateway', description: 'gRPC payment gateway', serviceType: 'grpc' },
+    ];
+
+    persistRepoData(db, { metadata, services });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE name LIKE '%payment%gateway%' AND entity_type LIKE 'service:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).toContain('payments');
+    expect(ftsRow!.description).toContain('service');
+  });
+
+  it('repo name in FTS description for fields', () => {
+    const metadata = makeMetadata({ name: 'booking-service' });
+    const events = [
+      { name: 'BookingCreated', schemaDefinition: 'message BookingCreated {}', sourceFile: 'proto/booking.proto' },
+    ];
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'BookingCreated', fieldName: 'booking_id', fieldType: 'string', nullable: false, sourceFile: 'proto/booking.proto' },
+    ];
+
+    persistRepoData(db, { metadata, events, fields });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).toContain('booking');
+    expect(ftsRow!.description).toContain('service');
+  });
+
+  it('proto field FTS description includes event context', () => {
+    const metadata = makeMetadata({ name: 'booking-service' });
+    const events = [
+      { name: 'BookingCreated', schemaDefinition: 'message BookingCreated {}', sourceFile: 'proto/booking.proto' },
+    ];
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'BookingCreated', fieldName: 'booking_id', fieldType: 'string', nullable: false, sourceFile: 'proto/booking.proto' },
+    ];
+
+    persistRepoData(db, { metadata, events, fields });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).toContain('event');
+  });
+
+  it('ecto field FTS description does NOT include event context', () => {
+    const metadata = makeMetadata({ name: 'payments-service' });
+    const modules = [
+      { name: 'Payments.Schema.Transaction', type: 'schema', filePath: 'lib/transaction.ex', summary: null, tableName: 'transactions' },
+    ];
+    const fields = [
+      { parentType: 'ecto_schema' as const, parentName: 'Payments.Schema.Transaction', fieldName: 'amount', fieldType: 'integer', nullable: false, sourceFile: 'lib/transaction.ex' },
+    ];
+
+    persistRepoData(db, { metadata, modules, fields });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    expect(ftsRow!.description).not.toContain('event');
+  });
+
+  it('module FTS description does NOT contain field names', () => {
+    const metadata = makeMetadata({ name: 'payments-service' });
+    const modules = [
+      {
+        name: 'Payments.Schema.Transaction',
+        type: 'schema',
+        filePath: 'lib/transaction.ex',
+        summary: 'Ecto schema for payment transactions',
+        tableName: 'transactions',
+        schemaFields: JSON.stringify([{ name: 'amount', type: 'integer' }, { name: 'currency', type: 'string' }]),
+      },
+    ];
+
+    persistRepoData(db, { metadata, modules });
+
+    const ftsRow = db.prepare("SELECT description FROM knowledge_fts WHERE name LIKE '%payments%schema%transaction%' AND entity_type LIKE 'module:%'").get() as { description: string } | undefined;
+    expect(ftsRow).toBeDefined();
+    // Module description should NOT contain individual field names
+    expect(ftsRow!.description).not.toContain('amount');
+    expect(ftsRow!.description).not.toContain('currency');
+  });
+
+  it('surgical persist produces same FTS descriptions as full persist', () => {
+    const metadata = makeMetadata({ name: 'booking-service' });
+    const modules = [
+      { name: 'BookingContext', type: 'context', filePath: 'lib/booking_context.ex', summary: 'Handles bookings' },
+    ];
+    const events = [
+      { name: 'BookingCreated', schemaDefinition: 'message BookingCreated {}', sourceFile: 'proto/booking.proto' },
+    ];
+    const services = [
+      { name: 'BookingSvc', description: 'gRPC booking svc', serviceType: 'grpc' },
+    ];
+    const fields = [
+      { parentType: 'proto_message' as const, parentName: 'BookingCreated', fieldName: 'booking_id', fieldType: 'string', nullable: false, sourceFile: 'proto/booking.proto' },
+    ];
+
+    // Full persist
+    const { repoId } = persistRepoData(db, { metadata, modules, events, services, fields });
+
+    // Capture FTS descriptions from full persist
+    const fullModuleDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'module:%'").get() as { description: string } | undefined)?.description;
+    const fullEventDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'event:%'").get() as { description: string } | undefined)?.description;
+    const fullServiceDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'service:%'").get() as { description: string } | undefined)?.description;
+    const fullFieldDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { description: string } | undefined)?.description;
+
+    // Clear and do surgical persist with same data
+    clearRepoEntities(db, repoId);
+
+    persistSurgicalData(db, {
+      repoId,
+      metadata,
+      changedFiles: ['lib/booking_context.ex', 'proto/booking.proto'],
+      modules,
+      events,
+      services,
+      fields,
+    });
+
+    // Capture FTS descriptions from surgical persist
+    const surgModuleDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'module:%'").get() as { description: string } | undefined)?.description;
+    const surgEventDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'event:%'").get() as { description: string } | undefined)?.description;
+    const surgServiceDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'service:%'").get() as { description: string } | undefined)?.description;
+    const surgFieldDesc = (db.prepare("SELECT description FROM knowledge_fts WHERE entity_type LIKE 'field:%'").get() as { description: string } | undefined)?.description;
+
+    expect(surgModuleDesc).toBe(fullModuleDesc);
+    expect(surgEventDesc).toBe(fullEventDesc);
+    expect(surgServiceDesc).toBe(fullServiceDesc);
+    expect(surgFieldDesc).toBe(fullFieldDesc);
+  });
+});

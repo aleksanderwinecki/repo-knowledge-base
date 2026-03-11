@@ -241,4 +241,39 @@ describe('FTS golden queries', () => {
       expect(r.entityType).toBe('module');
     }
   });
+
+  // 19. Repo name search returns modules from that repo
+  it('repo name search returns modules from that repo', () => {
+    const results = searchText(db, 'booking-service');
+    expect(results.length).toBeGreaterThan(0);
+
+    const moduleResults = results.filter((r) => r.entityType === 'module');
+    expect(moduleResults.length).toBeGreaterThan(0);
+    const moduleNames = moduleResults.map((r) => r.name);
+    const hasBookingModule = moduleNames.some((n) => n.includes('BookingContext'));
+    expect(hasBookingModule).toBe(true);
+  });
+
+  // 20. Repo name search returns fields from that repo
+  it('repo name search returns fields from that repo', () => {
+    const results = searchText(db, 'booking-service', { entityTypeFilter: 'field' });
+    expect(results.length).toBeGreaterThan(0);
+
+    for (const r of results) {
+      expect(r.entityType).toBe('field');
+      expect(r.repoName).toBe('booking-service');
+    }
+  });
+
+  // 21. Event name search returns associated proto fields
+  it('event name search returns associated proto fields', () => {
+    const results = searchText(db, 'BookingCreated');
+    expect(results.length).toBeGreaterThan(0);
+
+    // Should return both the event AND proto fields from BookingCreated message
+    const eventResults = results.filter((r) => r.entityType === 'event');
+    const fieldResults = results.filter((r) => r.entityType === 'field');
+    expect(eventResults.length).toBeGreaterThan(0);
+    expect(fieldResults.length).toBeGreaterThan(0);
+  });
 });

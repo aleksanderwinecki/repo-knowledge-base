@@ -49,6 +49,24 @@ export function seedTestData(db: Database.Database): void {
         sourceFile: 'proto/booking.proto',
       },
     ],
+    fields: [
+      {
+        parentType: 'proto_message',
+        parentName: 'BookingCreated',
+        fieldName: 'booking_id',
+        fieldType: 'string',
+        nullable: false,
+        sourceFile: 'proto/booking.proto',
+      },
+      {
+        parentType: 'proto_message',
+        parentName: 'BookingCreated',
+        fieldName: 'guest_name',
+        fieldType: 'string',
+        nullable: false,
+        sourceFile: 'proto/booking.proto',
+      },
+    ],
   });
 
   // Repo 2: payments-service
@@ -87,6 +105,32 @@ export function seedTestData(db: Database.Database): void {
         name: 'PaymentGateway',
         description: 'gRPC payment gateway service for processing charges',
         serviceType: 'grpc',
+      },
+    ],
+    fields: [
+      {
+        parentType: 'ecto_schema',
+        parentName: 'Payments.Schema.Transaction',
+        fieldName: 'amount',
+        fieldType: 'integer',
+        nullable: false,
+        sourceFile: 'lib/payments/schema/transaction.ex',
+      },
+      {
+        parentType: 'ecto_schema',
+        parentName: 'Payments.Schema.Transaction',
+        fieldName: 'currency',
+        fieldType: 'string',
+        nullable: false,
+        sourceFile: 'lib/payments/schema/transaction.ex',
+      },
+      {
+        parentType: 'ecto_schema',
+        parentName: 'Payments.Schema.Transaction',
+        fieldName: 'status',
+        fieldType: 'string',
+        nullable: true,
+        sourceFile: 'lib/payments/schema/transaction.ex',
       },
     ],
   });
