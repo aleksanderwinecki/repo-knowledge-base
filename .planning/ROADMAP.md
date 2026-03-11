@@ -147,10 +147,10 @@ Plans:
   2. An Ecto schema using `@optional_fields [:phone, :bio]` has those fields extracted as nullable
   3. Fields listed in `cast/2` calls are identified as permitted fields, contributing to the nullability determination alongside required/optional signals
   4. `kb_field_impact` results for Ecto fields reflect the combined required/optional/cast nullability signal (not just validate_required)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 36-01: TBD
+- [ ] 36-01-PLAN.md — Module attribute resolution, cast extraction, and combined nullability (TDD)
 
 ## Progress
 
@@ -170,4 +170,4 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
 | 34. Search Query Layer | 2/2 | Complete    | 2026-03-11 | - |
 | 35. FTS Description Enrichment | 1/1 | Complete    | 2026-03-11 | - |
-| 36. Ecto Constraint Extraction | v4.2 | 0/? | Not started | - |
+| 36. Ecto Constraint Extraction | v4.2 | 0/1 | Not started | - |
