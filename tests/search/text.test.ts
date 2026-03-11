@@ -6,6 +6,7 @@ import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/db/database.js';
 import { persistRepoData } from '../../src/indexer/writer.js';
 import { searchText } from '../../src/search/text.js';
+import { getNextAction } from '../../src/search/text.js';
 
 let db: Database.Database;
 let dbPath: string;
@@ -369,6 +370,108 @@ describe('searchText', () => {
       expect(results.length).toBeGreaterThan(0);
       for (const r of results) {
         expect(r.entityType).toBe('module');
+      }
+    });
+  });
+
+  describe('nextAction', () => {
+    describe('getNextAction mapping', () => {
+      it('field -> kb_field_impact', () => {
+        expect(getNextAction('field', 'ecto_schema')).toBe('kb_field_impact');
+        expect(getNextAction('field', 'proto_message')).toBe('kb_field_impact');
+      });
+
+      it('repo -> kb_explain', () => {
+        expect(getNextAction('repo', 'repo')).toBe('kb_explain');
+      });
+
+      it('module -> kb_entity', () => {
+        expect(getNextAction('module', 'schema')).toBe('kb_entity');
+        expect(getNextAction('module', 'context')).toBe('kb_entity');
+      });
+
+      it('event -> kb_entity', () => {
+        expect(getNextAction('event', 'event')).toBe('kb_entity');
+      });
+
+      it('service -> kb_entity', () => {
+        expect(getNextAction('service', 'grpc')).toBe('kb_entity');
+      });
+
+      it('learned_fact -> kb_search', () => {
+        expect(getNextAction('learned_fact', 'learned_fact')).toBe('kb_search');
+      });
+
+      it('unknown type defaults to kb_entity', () => {
+        expect(getNextAction('file' as any, 'unknown')).toBe('kb_entity');
+      });
+    });
+
+    it('searchText results all have nextAction populated', () => {
+      const results = searchText(db, 'booking');
+      expect(results.length).toBeGreaterThan(0);
+
+      for (const result of results) {
+        expect(result.nextAction).toBeDefined();
+        expect(result.nextAction.tool).toBeTruthy();
+        expect(result.nextAction.args).toBeDefined();
+        expect(result.nextAction.args.name).toBeTruthy();
+      }
+    });
+
+    it('field results get kb_field_impact nextAction', () => {
+      // Use field data from the 'field search' beforeEach
+      persistRepoData(db, {
+        metadata: {
+          name: 'hr-service',
+          path: '/repos/hr-service',
+          description: 'Human resources management',
+          techStack: ['elixir'],
+          keyFiles: ['mix.exs'],
+          currentCommit: 'ghi789',
+        },
+        fields: [
+          {
+            parentType: 'ecto_schema',
+            parentName: 'HR.Schema.Employee',
+            fieldName: 'employee_id',
+            fieldType: 'integer',
+            nullable: false,
+            sourceFile: 'lib/hr/schema/employee.ex',
+          },
+        ],
+      });
+
+      const results = searchText(db, 'employee_id', { entityTypeFilter: 'field' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.nextAction.tool).toBe('kb_field_impact');
+        expect(r.nextAction.args.name).toBe(r.name);
+      }
+    });
+
+    it('repo results get kb_explain nextAction', () => {
+      const results = searchText(db, 'hotel booking');
+      const repoResult = results.find((r) => r.entityType === 'repo');
+      expect(repoResult).toBeDefined();
+      expect(repoResult!.nextAction.tool).toBe('kb_explain');
+      expect(repoResult!.nextAction.args.name).toBe(repoResult!.name);
+    });
+
+    it('service results get kb_entity nextAction', () => {
+      const results = searchText(db, 'gateway', { entityTypeFilter: 'service' });
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.nextAction.tool).toBe('kb_entity');
+        expect(r.nextAction.args.name).toBe(r.name);
+      }
+    });
+
+    it('nextAction.args.name matches result name', () => {
+      const results = searchText(db, 'booking');
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.nextAction.args.name).toBe(r.name);
       }
     });
   });
