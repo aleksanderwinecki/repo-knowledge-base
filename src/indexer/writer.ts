@@ -61,6 +61,19 @@ export interface EdgeData {
 }
 
 /**
+ * Build FTS description for a field entity.
+ * Includes repo name for cross-repo disambiguation and event: prefix for proto fields.
+ * Shared by both persistRepoData and persistSurgicalData to ensure dual-path consistency.
+ */
+function buildFieldDescription(field: FieldData, repoName: string): string {
+  const parts = [repoName, field.parentName, field.fieldType];
+  if (field.parentType === 'proto_message') {
+    parts.push(`event:${field.parentName}`);
+  }
+  return parts.join(' ');
+}
+
+/**
  * Upsert a repo record. Returns the repo ID.
  */
 function upsertRepo(db: Database.Database, metadata: RepoMetadata): number {
@@ -221,19 +234,20 @@ function insertModuleWithFts(
   db: Database.Database,
   repoId: number,
   mod: ModuleData,
+  repoName: string,
 ): void {
   const fileRow = insertFileStmt.get(repoId, mod.filePath, null) as { id: number } | undefined;
   const fileId = fileRow?.id ?? null;
   const modInfo = insertModuleStmt.run(repoId, fileId, mod.name, mod.type, mod.summary, mod.tableName ?? null, mod.schemaFields ?? null);
   const modId = Number(modInfo.lastInsertRowid);
 
-  // Build FTS description: include table name for Ecto schema searchability
-  let ftsDescription = mod.summary;
-  if (mod.tableName) {
-    ftsDescription = mod.summary
-      ? `${mod.summary} table:${mod.tableName}`
-      : `Ecto schema table: ${mod.tableName}`;
-  }
+  // Build FTS description: repo name + summary + optional table name
+  // CRITICAL: Do NOT add field names (schemaFields) — that would collapse BM25 rank spread
+  const parts: string[] = [];
+  parts.push(repoName);
+  if (mod.summary) parts.push(mod.summary);
+  if (mod.tableName) parts.push(`table:${mod.tableName}`);
+  const ftsDescription = parts.join(' ') || null;
 
   indexEntity(db, {
     type: 'module' as EntityType,
@@ -254,6 +268,7 @@ function insertEventWithFts(
   db: Database.Database,
   repoId: number,
   evt: EventData,
+  repoName: string,
 ): void {
   const fileRow = insertFileStmt.get(repoId, evt.sourceFile, null) as { id: number } | undefined;
   const fileId = fileRow?.id ?? null;
@@ -264,7 +279,7 @@ function insertEventWithFts(
     type: 'event' as EntityType,
     id: evtId,
     name: evt.name,
-    description: evt.schemaDefinition,
+    description: evt.schemaDefinition ? `${repoName} ${evt.schemaDefinition}` : repoName,
     subType: 'event',
   });
 }
@@ -279,6 +294,7 @@ function insertServiceWithFts(
   db: Database.Database,
   repoId: number,
   svc: ServiceData,
+  repoName: string,
 ): void {
   const svcInfo = insertServiceStmt.run({
     repoId,
@@ -292,7 +308,7 @@ function insertServiceWithFts(
     type: 'service' as EntityType,
     id: svcId,
     name: svc.name,
-    description: svc.description,
+    description: svc.description ? `${repoName} ${svc.description}` : repoName,
     subType: svc.serviceType ?? 'service',
   });
 }
@@ -348,6 +364,9 @@ export function persistRepoData(
       subType: 'repo',
     });
 
+    // Capture repo name for FTS description enrichment
+    const repoName = data.metadata.name;
+
     // Insert modules
     if (data.modules) {
       const insertFile = db.prepare(
@@ -358,7 +377,7 @@ export function persistRepoData(
       );
 
       for (const mod of data.modules) {
-        insertModuleWithFts(insertFile, insertModule, db, repoId, mod);
+        insertModuleWithFts(insertFile, insertModule, db, repoId, mod, repoName);
       }
     }
 
@@ -372,7 +391,7 @@ export function persistRepoData(
       );
 
       for (const evt of data.events) {
-        insertEventWithFts(insertEventFile, insertEvent, db, repoId, evt);
+        insertEventWithFts(insertEventFile, insertEvent, db, repoId, evt, repoName);
       }
     }
 
@@ -388,7 +407,7 @@ export function persistRepoData(
       `);
 
       for (const svc of data.services) {
-        insertServiceWithFts(insertService, db, repoId, svc);
+        insertServiceWithFts(insertService, db, repoId, svc, repoName);
       }
     }
 
@@ -430,7 +449,7 @@ export function persistRepoData(
           type: 'field' as EntityType,
           id: fieldId,
           name: field.fieldName,
-          description: `${field.parentName} ${field.fieldType}`,
+          description: buildFieldDescription(field, repoName),
           subType: field.parentType,
         });
       }
@@ -521,6 +540,9 @@ export function persistSurgicalData(
     // 2. Clear entities from changed files only
     clearRepoFiles(db, data.repoId, data.changedFiles);
 
+    // Capture repo name for FTS description enrichment
+    const repoName = data.metadata.name;
+
     // 3. Insert file records + modules for changed files
     const insertFile = db.prepare(
       "INSERT INTO files (repo_id, path, language) VALUES (?, ?, ?) ON CONFLICT(repo_id, path) DO UPDATE SET updated_at = datetime('now') RETURNING id",
@@ -530,7 +552,7 @@ export function persistSurgicalData(
     );
 
     for (const mod of data.modules) {
-      insertModuleWithFts(insertFile, insertModule, db, data.repoId, mod);
+      insertModuleWithFts(insertFile, insertModule, db, data.repoId, mod, repoName);
     }
 
     // 4. Insert events for changed files (with file_id)
@@ -539,7 +561,7 @@ export function persistSurgicalData(
     );
 
     for (const evt of data.events) {
-      insertEventWithFts(insertFile, insertEvent, db, data.repoId, evt);
+      insertEventWithFts(insertFile, insertEvent, db, data.repoId, evt, repoName);
     }
 
     // 5. Insert fields for changed files (after modules and events for parent ID resolution)
@@ -580,7 +602,7 @@ export function persistSurgicalData(
           type: 'field' as EntityType,
           id: fieldId,
           name: field.fieldName,
-          description: `${field.parentName} ${field.fieldType}`,
+          description: buildFieldDescription(field, repoName),
           subType: field.parentType,
         });
       }
@@ -610,7 +632,7 @@ export function persistSurgicalData(
       `);
 
       for (const svc of data.services) {
-        insertServiceWithFts(insertService, db, data.repoId, svc);
+        insertServiceWithFts(insertService, db, data.repoId, svc, repoName);
       }
     }
 
