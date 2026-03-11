@@ -27,8 +27,8 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 
 ### Result Enrichment
 
-- [ ] **ENRICH-01**: Search results include `nextAction` hint suggesting appropriate follow-up MCP tool based on entity type
-- [ ] **ENRICH-02**: nextAction hints are included in MCP `kb_search` responses
+- [x] **ENRICH-01**: Search results include `nextAction` hint suggesting appropriate follow-up MCP tool based on entity type
+- [x] **ENRICH-02**: nextAction hints are included in MCP `kb_search` responses
 
 ## Future Requirements
 
@@ -74,8 +74,8 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 | FEXT-01 | Phase 36 | Pending |
 | FEXT-02 | Phase 36 | Pending |
 | FEXT-03 | Phase 36 | Pending |
-| ENRICH-01 | Phase 34 | Pending |
-| ENRICH-02 | Phase 34 | Pending |
+| ENRICH-01 | Phase 34 | Complete |
+| ENRICH-02 | Phase 34 | Complete |
 
 **Coverage:**
 - v4.2 requirements: 11 total
