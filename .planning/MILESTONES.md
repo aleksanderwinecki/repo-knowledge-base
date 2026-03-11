@@ -1,5 +1,22 @@
 # Milestones
 
+## v4.1 Indexing Performance (Shipped: 2026-03-11)
+
+**Phases completed:** 2 phases (32-33), 3 plans
+**Timeline:** 1 day (2026-03-10 to 2026-03-11)
+**Stats:** 779 tests
+
+**Key accomplishments:**
+- Drop+rebuild schema management: replaced 9 incremental migrations with single `createSchema()` function; SCHEMA_VERSION bump triggers clean rebuild preserving learned facts
+- Filesystem reads: replaced `git show`/`git ls-tree` child process spawning with `fs.readFileSync`/`fs.readdirSync` in all extractors
+- Shared file list: `listWorkingTreeFiles()` called once per repo, shared across 9 extractors (was 9 independent tree walks)
+- Removed `gh repo view` API calls from branch resolution (was 420 sequential API calls with 5s timeouts)
+- Skip branch resolution entirely with `--force` (working tree reads don't need branch)
+
+**Delivered:** Full `--force` index from ~52min to ~37min (29% faster) by eliminating git child process spawning, GitHub API calls, and redundant filesystem walks. Schema management simplified from 9 migrations to drop+rebuild.
+
+---
+
 ## v4.0 Data Contract Intelligence (Shipped: 2026-03-10)
 
 **Phases completed:** 3 phases (29-31), 6 plans, 9 tasks

@@ -6,17 +6,19 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem into a 
 
 ## Current State
 
-**Latest shipped:** v4.0 Data Contract Intelligence (2026-03-10)
+**Latest shipped:** v4.1 Indexing Performance (2026-03-11)
 
-## Current Milestone: v4.1 Indexing Performance
+## Current Milestone: v4.2 Search Quality
 
-**Goal:** Eliminate child process spawning bottleneck — read files from filesystem instead of `git show`/`git ls-tree`
+**Goal:** Optimize search for AI agent consumers — better recall, richer results, deeper field extraction
 
 **Target features:**
-- Replace `readBranchFile()` (execSync git show) with `fs.readFileSync()`
-- Replace `listBranchFiles()` (execSync git ls-tree) with filesystem traversal
-- Remove branch parameter threading from all extractors
-- V9 migration fix for users with stale user_version=8 from vec0 era
+- Default FTS to OR with BM25 ranking (recall > precision for AI consumers)
+- Progressive search relaxation (AND → OR fallback when few results)
+- Richer FTS descriptions (repo name, parent context, constraints inline)
+- Deeper Ecto field constraint extraction (@required_fields, @optional_fields, cast attrs)
+- Better proto field context in FTS (message name + event association)
+- Null-guard heuristic scanning (detect is_nil/case nil patterns near field refs)
 
 ## Core Value
 
@@ -51,7 +53,7 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Active
 
-(Defined in REQUIREMENTS.md for v4.1)
+(Defined in REQUIREMENTS.md for v4.2)
 
 ### Deferred
 
@@ -150,5 +152,10 @@ Known limitations:
 - **Query speed**: Search returns in under 2 seconds
 - **MCP responses**: Under 4KB per response
 
+| Filesystem reads over git child processes | fs.readFileSync eliminates 2-5ms per execSync spawn across thousands of calls | v4.1 Good |
+| Shared file list across extractors | listWorkingTreeFiles called once per repo, shared across 9 extractors | v4.1 Good |
+| Skip branch resolution with --force | Working tree reads don't need branch; only incremental skip-check does | v4.1 Good |
+| Drop+rebuild over incremental migrations | Single createSchema() function; SCHEMA_VERSION bump triggers clean rebuild | v4.1 Good |
+
 ---
-*Last updated: 2026-03-10 after v4.1 milestone start*
+*Last updated: 2026-03-11 after v4.2 milestone start*

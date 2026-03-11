@@ -1,42 +1,42 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.1
-milestone_name: Indexing Performance
-status: completed
-stopped_at: Completed 33-01-PLAN.md
-last_updated: "2026-03-10T18:00:03.663Z"
-last_activity: 2026-03-10 — Completed 33-01 filesystem reads for extractors
+milestone: v4.2
+milestone_name: Search Quality
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-11"
+last_activity: 2026-03-11 — Milestone v4.2 started
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 97
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-10)
+See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.1 Indexing Performance — Phase 33 in progress (plan 01 of 02 complete)
+**Current focus:** v4.2 Search Quality — Defining requirements
 
 ## Current Position
 
-Phase: 33 of 33 (Filesystem Reads)
-Plan: 1 of 2
-Status: Plan 33-01 complete
-Last activity: 2026-03-10 — Completed 33-01 filesystem reads for extractors
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-11 — Milestone v4.2 started
 
-Progress: [██████████] 97%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 66 (across v1.0-v4.0)
-- 31 phases across 8 milestones shipped
+- Total plans completed: 69 (across v1.0-v4.1)
+- 33 phases across 9 milestones shipped
 
 ## Accumulated Context
 
@@ -44,18 +44,13 @@ Progress: [██████████] 97%
 
 See PROJECT.md Key Decisions table for full log.
 
-v4.1 context:
-- Full reindex takes ~52min for ~700 repos due to thousands of execSync child process spawns
-- readBranchFile() spawns `git show branch:path` per file — ~2-5ms overhead per call
-- listBranchFiles() spawns `git ls-tree` per repo
-- Replacing with fs.readFileSync() eliminates process spawning entirely
-- V9 migration fix already written gets replaced by simpler drop+rebuild approach
-- Schema simplification done first so drop+rebuild mechanism is in place before filesystem refactor
-- Drop+rebuild implemented: SCHEMA_VERSION=10, createSchema() creates all 8 tables + 13 indexes, learned facts preserved across rebuilds
-- Fact IDs change after rebuild (content-identified, acceptable)
-- Re-index facts in FTS immediately during rebuild
-- [Phase 32]: Drop+rebuild replaces 9 incremental migrations; learned facts preserved via export/reimport with FTS re-indexing
-- [Phase 33]: Filesystem reads via listWorkingTreeFiles/readWorkingTreeFile replace git child process spawning in all extractors
+v4.2 context:
+- Primary consumer is AI agents via MCP — recall matters more than precision
+- FTS5 defaults to implicit AND for multi-word queries → complex queries return 0 results
+- Fields ARE indexed but FTS descriptions are thin (just field name + type)
+- Ecto nullability relies on validate_required() heuristic — misses @required_fields, cast attrs
+- Proto fields extracted with optional flag but thin FTS context
+- Progressive relaxation (AND → OR) is the highest-impact, lowest-effort improvement
 
 ### Pending Todos
 
@@ -67,7 +62,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-10T16:04:33.285Z
-Stopped at: Completed 33-01-PLAN.md
+Last session: 2026-03-11
+Stopped at: Milestone initialization
 Resume file: None
-Next: `/gsd:plan-phase 33`
+Next: Define requirements → roadmap
