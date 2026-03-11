@@ -1,15 +1,12 @@
 import type Database from 'better-sqlite3';
 import type { TextSearchResult, TextSearchOptions } from './types.js';
-import { tokenizeForFts } from '../db/tokenizer.js';
-import { resolveTypeFilter, parseCompositeType, executeFtsWithFallback } from '../db/fts.js';
+import { parseCompositeType, searchWithRelaxation } from '../db/fts.js';
 import { createEntityHydrator } from './entity.js';
 
 /**
  * Full-text search across all indexed content with contextual metadata.
- * Uses FTS5 MATCH for search, then hydrates results with repo/file context.
- *
- * Accepts FTS5 match syntax (AND, OR, NOT, phrase matching).
- * Invalid syntax falls back to phrase matching.
+ * Uses searchWithRelaxation for progressive AND -> OR -> prefix OR cascade,
+ * then hydrates results with repo/file context.
  */
 export function searchText(
   db: Database.Database,
@@ -22,11 +19,8 @@ export function searchText(
     return [];
   }
 
-  // Try FTS match, falling back on syntax errors
-  const ftsResults = executeFtsQuery(db, query, limit, entityTypeFilter);
-  if (ftsResults === null) {
-    return [];
-  }
+  // Progressive relaxation: AND -> OR -> prefix OR
+  const ftsResults = searchWithRelaxation(db, query, limit, entityTypeFilter);
 
   // Create shared hydrator for entity lookups
   const hydrate = createEntityHydrator(db);
@@ -56,53 +50,5 @@ export function searchText(
   }
 
   return hydrated;
-}
-
-interface FtsMatch {
-  entity_type: string;
-  entity_id: number;
-  name: string;
-  description: string | null;
-  relevance: number;
-}
-
-/**
- * Execute FTS5 query with fallback for syntax errors.
- * Returns null if query produces no results even after fallback.
- */
-function executeFtsQuery(
-  db: Database.Database,
-  query: string,
-  limit: number,
-  entityTypeFilter?: string,
-): FtsMatch[] | null {
-  const processedQuery = tokenizeForFts(query);
-  if (!processedQuery) return null;
-
-  // Build query with optional entity type filter using resolveTypeFilter
-  let typeFilterSql = '';
-  let typeFilterParam: string | undefined;
-  if (entityTypeFilter) {
-    const resolved = resolveTypeFilter(entityTypeFilter);
-    typeFilterSql = ` AND ${resolved.sql}`;
-    typeFilterParam = resolved.param;
-  }
-
-  const sql = `
-    SELECT entity_type, entity_id, name, description, rank as relevance
-    FROM knowledge_fts
-    WHERE knowledge_fts MATCH ?${typeFilterSql}
-    ORDER BY rank
-    LIMIT ?
-  `;
-
-  const buildParams = (query: string): (string | number)[] => {
-    const p: (string | number)[] = [query];
-    if (typeFilterParam) p.push(typeFilterParam);
-    p.push(limit);
-    return p;
-  };
-
-  return executeFtsWithFallback<FtsMatch>(db, sql, processedQuery, buildParams);
 }
 

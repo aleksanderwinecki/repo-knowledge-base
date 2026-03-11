@@ -145,6 +145,119 @@ export function executeFtsWithFallback<T>(
   }
 }
 
+/** Minimum result count before triggering progressive relaxation */
+export const MIN_RELAXATION_RESULTS = 3;
+
+/** Raw FTS match row returned by query execution */
+export interface FtsMatch {
+  entity_type: string;
+  entity_id: number;
+  name: string;
+  description: string | null;
+  relevance: number;
+}
+
+/**
+ * Build an OR query from raw multi-term input.
+ * Tokenizes each term individually through tokenizeForFts, then joins with FTS5 OR operator.
+ * CRITICAL: OR operator is never passed through tokenizeForFts (would become lowercase "or").
+ */
+export function buildOrQuery(rawQuery: string): string {
+  const terms = rawQuery.trim().split(/\s+/)
+    .map(term => tokenizeForFts(term))
+    .filter(Boolean);
+  if (terms.length <= 1) return terms[0] ?? '';
+  return terms.join(' OR ');
+}
+
+/**
+ * Build a prefix OR query from raw multi-term input.
+ * Same as buildOrQuery but appends * wildcard to each tokenized term.
+ */
+export function buildPrefixOrQuery(rawQuery: string): string {
+  const terms = rawQuery.trim().split(/\s+/)
+    .map(term => tokenizeForFts(term))
+    .filter(Boolean);
+  if (terms.length === 0) return '';
+  if (terms.length === 1) return `${terms[0]}*`;
+  return terms.map(t => `${t}*`).join(' OR ');
+}
+
+/**
+ * Execute a single FTS query with optional entity type filter.
+ * Internal helper for searchWithRelaxation.
+ */
+function runFtsQuery(
+  db: Database.Database,
+  processedQuery: string,
+  limit: number,
+  entityTypeFilter?: string,
+): FtsMatch[] {
+  let typeFilterSql = '';
+  let typeFilterParam: string | undefined;
+  if (entityTypeFilter) {
+    const resolved = resolveTypeFilter(entityTypeFilter);
+    typeFilterSql = ` AND ${resolved.sql}`;
+    typeFilterParam = resolved.param;
+  }
+
+  const sql = `
+    SELECT entity_type, entity_id, name, description, rank as relevance
+    FROM knowledge_fts
+    WHERE knowledge_fts MATCH ?${typeFilterSql}
+    ORDER BY rank
+    LIMIT ?
+  `;
+
+  const buildParams = (query: string): (string | number)[] => {
+    const p: (string | number)[] = [query];
+    if (typeFilterParam) p.push(typeFilterParam);
+    p.push(limit);
+    return p;
+  };
+
+  return executeFtsWithFallback<FtsMatch>(db, sql, processedQuery, buildParams);
+}
+
+/**
+ * Search with progressive relaxation: AND -> OR -> prefix OR.
+ * For single-term queries, runs a single FTS query.
+ * For multi-term queries, starts with implicit AND (tightest).
+ * If AND returns fewer than MIN_RELAXATION_RESULTS, retries with OR.
+ * If OR also insufficient, retries with prefix OR.
+ * entityTypeFilter is preserved across ALL relaxation steps.
+ */
+export function searchWithRelaxation(
+  db: Database.Database,
+  rawQuery: string,
+  limit: number,
+  entityTypeFilter?: string,
+): FtsMatch[] {
+  const terms = rawQuery.trim().split(/\s+/)
+    .map(t => tokenizeForFts(t))
+    .filter(Boolean);
+
+  if (terms.length === 0) return [];
+
+  if (terms.length === 1) {
+    return runFtsQuery(db, terms[0]!, limit, entityTypeFilter);
+  }
+
+  // Step 1: AND (implicit — FTS5 default)
+  const andQuery = terms.join(' ');
+  const andResults = runFtsQuery(db, andQuery, limit, entityTypeFilter);
+  if (andResults.length >= MIN_RELAXATION_RESULTS) return andResults;
+
+  // Step 2: OR
+  const orQuery = terms.join(' OR ');
+  const orResults = runFtsQuery(db, orQuery, limit, entityTypeFilter);
+  if (orResults.length >= MIN_RELAXATION_RESULTS) return orResults;
+
+  // Step 3: Prefix OR
+  const prefixOrQuery = terms.map(t => `${t}*`).join(' OR ');
+  return runFtsQuery(db, prefixOrQuery, limit, entityTypeFilter);
+}
+
 /**
  * List available entity types with sub-type counts from the FTS table.
  * Returns grouped structure: { module: [{ subType: 'schema', count: 2 }, ...], ... }
