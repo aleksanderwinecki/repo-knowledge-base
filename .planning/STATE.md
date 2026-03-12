@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.2 Search Quality — Phase 36 complete (1/1 plans)
+**Current focus:** v4.2 Search Quality — Phase 37 in progress (1/2 plans)
 
 ## Current Position
 
-Phase: 36 of 35 (Ecto Constraint Extraction)
-Plan: 1 of 1
-Status: Phase 36 complete
-Last activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
+Phase: 37 of 37 (Event Consumer Tracking)
+Plan: 1 of 2
+Status: Plan 37-01 complete
+Last activity: 2026-03-12 — Completed 37-01 Topic-inferred consumer detection
 
-Progress: [██████████] 100%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 72 (across v1.0-v4.2)
-- 35 phases across 9 milestones shipped
+- Total plans completed: 73 (across v1.0-v4.2)
+- 36 phases across 9 milestones shipped
 
 ## Accumulated Context
 
@@ -61,11 +61,13 @@ v4.2 context:
 - [Phase 36]: Generic attribute resolution by usage not name -- validate_required(@fields) makes them required regardless of attribute name
 - [Phase 36]: optionalFields derived as cast-minus-required (simpler than separate @optional_fields extraction)
 - [Phase 36]: Set-based pipeline nullability lookup for O(1) performance
+- [Phase 37]: Query-time topic-to-event bridging via same-repo co-occurrence (no schema changes)
+- [Phase 37]: Map<repoId, FieldConsumer> for consumer dedup with in-place confidence upgrade
 
 ### Roadmap Evolution
 
 - Phase 37 added: Unleash feature flag indexing and search (removed — not worth maintenance cost)
-- Phase 37 added: Event Consumer Tracking
+- Phase 37 added: Event Consumer Tracking (plan 01 complete: topic-inferred consumers with confidence tiers)
 
 ### Pending Todos
 
@@ -77,7 +79,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T09:59:52.743Z
-Stopped at: Phase 37 context gathered
-Resume file: .planning/phases/37-event-consumer-tracking/37-CONTEXT.md
-Next: Next milestone phase
+Last session: 2026-03-12T10:19:12Z
+Stopped at: Completed 37-01-PLAN.md
+Resume file: .planning/phases/37-event-consumer-tracking/37-01-SUMMARY.md
+Next: 37-02-PLAN.md (compact formatter, MCP, CLI output)

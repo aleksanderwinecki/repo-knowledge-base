@@ -32,10 +32,10 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 
 ### Event Consumer Tracking
 
-- [ ] **ECT-01**: `kb_field_impact` results include a `consumers` section listing services that subscribe to Kafka topics carrying events with the traced field
+- [x] **ECT-01**: `kb_field_impact` results include a `consumers` section listing services that subscribe to Kafka topics carrying events with the traced field
 - [ ] **ECT-02**: Kafka consumer detection uses existing Kafkaesque patterns; new extraction patterns added only if significant gaps found
-- [ ] **ECT-03**: Consumer subscriptions linked to event proto schemas via same-repo co-occurrence, creating publisher->topic->consumer chain with confidence tiers
-- [ ] **ECT-04**: Existing field impact tests continue to pass; new tests verify consumer detection for known event fields
+- [x] **ECT-03**: Consumer subscriptions linked to event proto schemas via same-repo co-occurrence, creating publisher->topic->consumer chain with confidence tiers
+- [x] **ECT-04**: Existing field impact tests continue to pass; new tests verify consumer detection for known event fields
 
 ## Future Requirements
 
@@ -83,10 +83,10 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 | FEXT-03 | Phase 36 | Complete |
 | ENRICH-01 | Phase 34 | Complete |
 | ENRICH-02 | Phase 34 | Complete |
-| ECT-01 | Phase 37 | Planned |
+| ECT-01 | Phase 37 | Complete |
 | ECT-02 | Phase 37 | Planned |
-| ECT-03 | Phase 37 | Planned |
-| ECT-04 | Phase 37 | Planned |
+| ECT-03 | Phase 37 | Complete |
+| ECT-04 | Phase 37 | Complete |
 
 **Coverage:**
 - v4.2 requirements: 15 total
