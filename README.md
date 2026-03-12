@@ -71,23 +71,60 @@ And that's just session one. The second time someone asks about resource capacit
 - **Incremental** — only re-indexes repos with new commits since last scan
 - **Targeted** — reindex specific repos with optional git refresh
 
-## Quick start
+> [!IMPORTANT]
+> kb only indexes repos that exist on your local machine. If you've cloned only the services you work on, cross-service queries will have blind spots — consumers and dependencies in repos you haven't checked out won't appear.
+>
+> To get the full picture, you need all repos checked out locally. The long-term fix is a shared pre-built database refreshed nightly by CI, but that's not built yet. For now: the more repos you have locally, the more complete your results.
+
+## Getting started
+
+### 1. Clone and build
 
 ```bash
-# Build
+git clone https://github.com/aleksanderwinecki/repo-knowledge-base.git
+cd repo-knowledge-base
 npm install && npm run build && npm link
-
-# Index your repos (~8 min for 400+ repos; incremental runs are much faster)
-kb index --root ~/Documents/Repos
-
-# Add to Claude Code as MCP server (recommended)
-claude mcp add kb -- node /path/to/repo-knowledge-base/dist/mcp/server.js
 ```
 
-> **nvm users**: Claude Code doesn't load nvm's PATH, so use absolute paths:
-> `claude mcp add kb -- /path/to/.nvm/versions/node/vX.Y.Z/bin/node /path/to/repo-knowledge-base/dist/mcp/server.js`
+`npm link` makes the `kb` command available globally.
+
+### 2. Index your repos
+
+Point kb at the directory that contains your cloned repos:
+
+```bash
+kb index --root ~/Documents/Repos
+```
+
+The first run scans everything and builds the SQLite database at `~/.kb/knowledge.db`. On a 400+ repo codebase this takes around 8 minutes. Subsequent runs are incremental — only repos with new commits since the last scan are re-indexed.
+
+> [!IMPORTANT]
+> kb only indexes repos that exist on your local machine. If you've cloned only the services you work on, cross-service queries will have blind spots — consumers and dependencies in repos you haven't checked out won't appear.
+>
+> To get the full picture, you need all repos checked out locally. The long-term fix is a shared pre-built database refreshed nightly by CI, but that's not built yet. For now: the more repos you have locally, the more complete your results.
+
+### 3. Add to Claude Code as an MCP server
+
+```bash
+claude mcp add kb -- node /absolute/path/to/repo-knowledge-base/dist/mcp/server.js
+```
+
+> **nvm users**: Claude Code spawns MCP servers outside your shell, so nvm's PATH isn't available. Use the absolute path to node:
+> ```bash
+> claude mcp add kb -- ~/.nvm/versions/node/v22.20.0/bin/node ~/path/to/repo-knowledge-base/dist/mcp/server.js
+> ```
+
+Restart Claude Code after adding. Run `/mcp` inside a session to confirm the server is connected.
 
 Once connected, Claude Code calls `kb_search`, `kb_deps`, `kb_explain`, etc. directly — no CLI piping needed.
+
+### 4. Verify
+
+```bash
+kb status
+```
+
+Should show repo, module, event, and edge counts. If the numbers look right, you're done.
 
 ## Stats
 
@@ -222,29 +259,9 @@ Notice the nullability shift: `integer nullable` in the Ecto schema → `uint32`
 
 Single SQLite file at `~/.kb/knowledge.db` (override with `KB_DB_PATH` env var). WAL mode, FTS5 virtual tables, generic edges table for the topology graph.
 
-## MCP Server (recommended)
+## MCP Server
 
-The MCP server is the primary way to use kb with Claude Code. Tools are called directly — no shell overhead, structured I/O, auto-sync for stale repos.
-
-### Setup
-
-```bash
-# Build (if you haven't already)
-npm install && npm run build && npm link
-
-# Add to Claude Code
-claude mcp add kb -- node /absolute/path/to/repo-knowledge-base/dist/mcp/server.js
-
-# Verify
-claude mcp get kb
-```
-
-> **nvm users**: Claude Code spawns MCP servers outside your shell, so nvm's PATH isn't available. Use the absolute path to node:
-> ```bash
-> claude mcp add kb -- ~/.nvm/versions/node/v22.20.0/bin/node ~/Documents/Repos/repo-knowledge-base/dist/mcp/server.js
-> ```
-
-Restart Claude Code after adding. Use `/mcp` inside a session to verify the server is connected.
+Tools are called directly from Claude Code — no shell overhead, structured I/O, auto-sync for stale repos. See [Getting started](#getting-started) for setup instructions.
 
 ### Scopes
 
