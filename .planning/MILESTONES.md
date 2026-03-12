@@ -1,5 +1,23 @@
 # Milestones
 
+## v4.2 Search Quality (Shipped: 2026-03-12)
+
+**Phases completed:** 4 phases (34-37), 6 plans
+**Timeline:** 2 days (2026-03-11 → 2026-03-12)
+**Stats:** 51 files changed, +6270/-274 LOC, 863 tests
+
+**Key accomplishments:**
+- OR-default FTS queries with BM25 ranking and AND→OR→prefix progressive relaxation — multi-term search now returns results for ANY term, auto-broadening when narrow queries underperform
+- nextAction hints on every search result: entity type → optimal follow-up MCP tool (kb_field_impact, kb_explain, kb_entity)
+- FTS descriptions enriched with repo name for cross-repo disambiguation, plus `event:` context prefix for proto fields enabling event-name → field discoverability
+- Ecto module attribute resolution (~w(...)a and [:atom] forms) with Set-based pipeline nullability — @required_fields/@optional_fields/@cast attrs all resolved generically
+- Event consumer tracking: kb_field_impact now shows which services consume events containing a traced field, with `inferred` (topic subscription) and `confirmed` (topic + ecto match) confidence tiers and `via` chains
+- Fixed Kafka extractor to detect `@topic` (DB-outbox pattern) alongside `@topic_name` (Kafkaesque) — fixed the "0 consumers" blind spot for dozens of repos using the DB-outbox pattern
+
+**Delivered:** Search Quality milestone transforms kb_search from brittle AND-only queries into recall-optimized OR search with agent guidance, enriches FTS with cross-repo context, deepens Ecto field extraction, and closes the "0 consumers" blind spot in kb_field_impact with confidence-tiered consumer detection.
+
+---
+
 ## v4.1 Indexing Performance (Shipped: 2026-03-11)
 
 **Phases completed:** 2 phases (32-33), 3 plans

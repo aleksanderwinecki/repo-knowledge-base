@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v4.2
 milestone_name: Search Quality
-status: completed
-stopped_at: Completed 37-02-PLAN.md
-last_updated: "2026-03-12T10:27:20.310Z"
-last_activity: 2026-03-12 — Completed 37-02 Compact formatter and MCP/CLI output
+status: archived
+stopped_at: Milestone v4.2 archived
+last_updated: "2026-03-12T12:00:00.000Z"
+last_activity: 2026-03-12 — Archived v4.2 Search Quality milestone
 progress:
   total_phases: 4
   completed_phases: 4
@@ -18,17 +18,15 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-11)
+See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Eliminate repeated cost of AI agents re-learning codebase architecture every session
-**Current focus:** v4.2 Search Quality — Phase 37 in progress (1/2 plans)
+**Current focus:** v4.2 complete and archived. Ready to start next milestone.
 
 ## Current Position
 
-Phase: 37 of 37 (Event Consumer Tracking)
-Plan: 2 of 2
-Status: Phase 37 complete
-Last activity: 2026-03-12 — Completed 37-02 Compact formatter and MCP/CLI output
+Milestone v4.2 Search Quality archived.
+All 37 phases across 10 milestones shipped.
 
 Progress: [██████████] 100%
 
@@ -36,7 +34,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 - Total plans completed: 74 (across v1.0-v4.2)
-- 37 phases across 9 milestones shipped
+- 37 phases across 10 milestones shipped
 
 ## Accumulated Context
 
@@ -44,30 +42,10 @@ Progress: [██████████] 100%
 
 See PROJECT.md Key Decisions table for full log.
 
-v4.2 context:
-- OR-default + progressive relaxation in same phase (share query builder, both need tokenizer-aware OR construction)
-- nextAction merged into query phase (pure presentation in searchText(), no DB changes)
-- FTS descriptions separate from query-time changes (requires reindex, different files)
-- Ecto extraction independent of descriptions (different files: elixir.ts vs writer.ts)
-- Tokenizer destroys OR operators — must join AFTER tokenizing individual terms
-- Description enrichment must not duplicate field names in module descriptions (token pollution)
-- MIN_RELAXATION_RESULTS=3 as named constant, not configurable option (v4.3 scope)
-- Golden test #5 updated: NOT-style queries now return results via OR relaxation (tokenizer destroys NOT operator)
-- [Phase 34]: nextAction is non-optional on TextSearchResult -- every result always has a follow-up hint
-- [Phase 34]: nextAction includes both tool name and args.name for immediately actionable hints
-- [Phase 35]: Module FTS descriptions include repo name + summary + table but NOT field names (BM25 rank pollution avoidance)
-- [Phase 35]: Proto field descriptions get event: prefix; ecto/graphql do not
-- [Phase 35]: Shared buildFieldDescription helper ensures dual-path (full/surgical) FTS consistency
-- [Phase 36]: Generic attribute resolution by usage not name -- validate_required(@fields) makes them required regardless of attribute name
-- [Phase 36]: optionalFields derived as cast-minus-required (simpler than separate @optional_fields extraction)
-- [Phase 36]: Set-based pipeline nullability lookup for O(1) performance
-- [Phase 37]: Query-time topic-to-event bridging via same-repo co-occurrence (no schema changes)
-- [Phase 37]: Map<repoId, FieldConsumer> for consumer dedup with in-place confidence upgrade
-
 ### Roadmap Evolution
 
-- Phase 37 added: Unleash feature flag indexing and search (removed — not worth maintenance cost)
-- Phase 37 complete: Event Consumer Tracking (both plans: topic-inferred consumers + compact formatter/MCP/CLI output)
+- v4.2 complete: Search Quality (4 phases: OR-default search, FTS enrichment, Ecto constraint extraction, event consumer tracking)
+- Kafka extractor fix shipped post-execution: @topic (DB-outbox) now detected alongside @topic_name
 
 ### Pending Todos
 
@@ -75,11 +53,10 @@ None.
 
 ### Blockers/Concerns
 
-None.
+None — full reindex recommended to pick up @topic extractor fix across all repos.
 
 ## Session Continuity
 
-Last session: 2026-03-12T10:23:24Z
-Stopped at: Completed 37-02-PLAN.md
-Resume file: .planning/phases/37-event-consumer-tracking/37-02-SUMMARY.md
-Next: Phase 37 complete. v4.2 milestone done.
+Last session: 2026-03-12
+Stopped at: Archived v4.2 milestone
+Next: `/gsd:new-milestone` to start v4.3

@@ -132,6 +132,50 @@
 
 ---
 
+## Milestone: v4.2 — Search Quality
+
+**Shipped:** 2026-03-12
+**Phases:** 4 (34-37) | **Plans:** 6 | **Duration:** 2 days
+
+### What Was Built
+- OR-default FTS queries with BM25 ranking and AND→OR→prefix progressive relaxation
+- nextAction hints on every search result mapping entity types to optimal follow-up MCP tools
+- FTS descriptions enriched with repo name for cross-repo disambiguation, event: context prefix for proto fields
+- Ecto module attribute resolution (~w(...)a and [:atom] forms), cast/4 extraction, Set-based pipeline nullability
+- Event consumer tracking in kb_field_impact: inferred/confirmed confidence tiers with via chains
+- Fixed Kafka extractor: @topic (DB-outbox) + @topic_name (Kafkaesque) both now detected
+- 863 tests, 51 files changed, +6270/-274 LOC
+
+### What Worked
+- TDD discipline: RED→GREEN commits on every task, no skipped test phases
+- Phase scoping: 4 well-bounded phases, each delivering a discrete capability
+- Query-time bridging approach: no schema changes needed for consumer detection, same-repo co-occurrence was sufficient
+- Bug found in real usage (0 consumers for `capacity` field) led to meaningful extractor fix before archiving
+- All plans shipped in <10 minutes each — tight scope, clear deliverables
+
+### What Was Inefficient
+- Kafka extractor gap (missing @topic pattern) was found after execution completed, not during planning
+- ECT-02 ended up checked by fixing the extractor — the requirement was written for a different concern but the fix satisfied the intent
+
+### Patterns Established
+- Tokenize-then-join: always tokenize individual terms before joining with FTS operators (prevents lowercase operator destruction)
+- Consumer confidence tiers: `inferred` (topic subscription only) vs `confirmed` (topic + ecto field match)
+- Via chains on consumers: show WHY a service appears as a consumer (topic + event)
+- FTS description formula: `[repo name] [summary/type context]` — repo name always first for disambiguation
+
+### Key Lessons
+1. Test features against real data before closing a phase — the 0-consumers bug surfaced only when manually testing with `capacity` field
+2. Regex extractor gaps are most valuable to fix right before a milestone archive, when the context is fresh
+3. Small scope wins: 4 phases averaging 2-4 days combined delivery feels sustainable for quality milestones
+4. `Map<repoId, T>` for dedup with in-place upgrades is a cleaner pattern than Set + object patch
+
+### Cost Observations
+- Model mix: quality profile (opus) for all agents
+- Sessions: ~3 sessions across 2 days
+- Notable: Phase 37 was discovered-and-fixed during the archiving session — bug surfaced by real query, fixed same session
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -143,6 +187,7 @@
 | v1.2 | 45 | 5 | Hardening — safety nets, perf tuning, dedup, strict TS |
 | v2.0 | ~30 | 5 | Topology extraction, semantic search, targeted reindex |
 | v2.1 | 11 | 2 | Cleanup — removed embeddings, fixed UX, updated docs |
+| v4.2 | 15 | 4 | Search quality — OR default, consumer tracking, Ecto depth |
 
 ### Cumulative Quality
 
@@ -153,6 +198,7 @@
 | v1.2 | 435 | 14,249 | +991 (mostly dedup savings) |
 | v2.0 | ~560 | ~9,000 | +4,700 (topology + embeddings) |
 | v2.1 | 506 | 6,796 | -2,108 (cleanup milestone) |
+| v4.2 | 863 | ~10,000 | +6,270 (search quality + field depth) |
 
 ### Top Lessons (Verified Across Milestones)
 

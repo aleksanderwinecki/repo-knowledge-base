@@ -6,19 +6,7 @@ A persistent knowledge base that indexes Fresha's microservice ecosystem into a 
 
 ## Current State
 
-**Latest shipped:** v4.1 Indexing Performance (2026-03-11)
-
-## Current Milestone: v4.2 Search Quality
-
-**Goal:** Optimize search for AI agent consumers — better recall, richer results, deeper field extraction
-
-**Target features:**
-- Default FTS to OR with BM25 ranking (recall > precision for AI consumers)
-- Progressive search relaxation (AND → OR fallback when few results)
-- Richer FTS descriptions (repo name, parent context, constraints inline)
-- Deeper Ecto field constraint extraction (@required_fields, @optional_fields, cast attrs)
-- Better proto field context in FTS (message name + event association)
-- Null-guard heuristic scanning (detect is_nil/case nil patterns near field refs)
+**Latest shipped:** v4.2 Search Quality (2026-03-12)
 
 ## Core Value
 
@@ -28,6 +16,11 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 
 ### Validated
 
+- v4.2 SRCH-01..03: OR-default FTS queries with BM25 ranking and AND→OR→prefix progressive relaxation — Phase 34
+- v4.2 ENRICH-01..02: nextAction hints on every search result pointing agents to optimal follow-up MCP tools — Phase 34
+- v4.2 DESC-01..03: FTS descriptions enriched with repo name, event context for proto fields, module semantics without field-name pollution — Phase 35
+- v4.2 FEXT-01..03: Ecto module attribute resolution (~w()a and [:atom] forms), cast extraction, Set-based pipeline nullability — Phase 36
+- v4.2 ECT-01..04: Event consumer tracking in kb_field_impact with inferred/confirmed confidence tiers, via chains, and @topic/@topic_name extractor fix — Phase 37
 - v4.0 FLD-01..04, NULL-01..02: Field extraction from Ecto/proto/GraphQL with nullability metadata — Phase 29
 - v4.0 FSRCH-01..03, SHARED-01..02: Field FTS search, type filtering, shared concept detection — Phase 30
 - v4.0 FEDGE-01..02, FIMPACT-01..03: Field edges (maps_to), field impact analysis via MCP + CLI — Phase 31
@@ -51,10 +44,6 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 - v1.1 IDX2-01..05, EXT-01..06, TF-01..08: Branch-aware indexing, new extractors, type filtering — Phases 6-10
 - v1.0 STOR-01..04, IDX-01..07, SRCH-01..04, INTF-01..04, KNOW-01..03: Foundation — Phases 1-5
 
-### Active
-
-(Defined in REQUIREMENTS.md for v4.2)
-
 ### Deferred
 
 - [ ] Auto-learn patterns from completed tasks (INT-01)
@@ -67,6 +56,10 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 - [ ] Code-level (function granularity) impact analysis (AGRAPH-05)
 - [ ] Graph caching layer for sub-millisecond repeated queries (AGRAPH-06)
 - [ ] Tree-sitter AST parsing for multi-language support (NOM-03)
+- [ ] Configurable relaxation threshold (ASRCH-02, v4.3)
+- [ ] Multi-concept fan-out search splits queries by concept type (ASRCH-01, v4.3)
+- [ ] Null-guard heuristic scanning near field references (GUARD-01..03, v4.3)
+- [ ] Full data lineage between two specific services (ALIN-01..03, v4.3)
 
 ### Out of Scope
 
@@ -78,12 +71,14 @@ Eliminate the repeated cost of AI agents re-learning the same codebase architect
 - Code review or linting — out of domain
 - Neo4j integration — SQLite handles 12K edges in <10ms
 - Graph visualization UI — CLI + MCP only
+- Fuzzy/edit-distance matching — prefix search (prefix=2,3) handles 90% case; edit-distance adds noise in code domain
+- Result pagination — MCP responses capped at 4KB; stateless server can't hold cursor state
 
 ## Context
 
-Shipped v4.0 with 789 tests passing across 45 test files.
+Shipped v4.2 with 863 tests passing across 45+ test files.
 Tech stack: Node.js, TypeScript (strict + noUncheckedIndexedAccess), better-sqlite3, FTS5, @modelcontextprotocol/sdk, commander.js, p-limit, vitest.
-Built across v1.0-v4.0 milestones (31 phases, 66 plans).
+Built across v1.0-v4.2 milestones (37 phases, 74 plans).
 
 13 MCP tools: kb_search, kb_entity, kb_deps, kb_impact, kb_trace, kb_explain, kb_list_types, kb_reindex, kb_learn, kb_forget, kb_status, kb_cleanup, kb_field_impact.
 CLI: kb index (--force, --repo, --refresh, --timing), kb search (--type, --list-types, --entity), kb deps (--direction, --mechanism), kb impact (--mechanism, --depth), kb trace, kb explain, kb field-impact, kb status, kb learn, kb learned, kb forget, kb docs.
@@ -93,6 +88,7 @@ Indexes all repos under configured root. Use `kb status` for current counts.
 Known limitations:
 - All extractors use regex parsing (no AST) — good enough for well-structured Elixir/proto/GraphQL macros
 - Topology extraction catches most patterns but unusual client wrappers may be missed
+- Consumer detection via same-repo co-occurrence (topic-event bridging) — works for Kafkaesque + DB-outbox patterns; Broadway/GenStage consumers deferred
 
 ## Key Decisions
 
@@ -142,6 +138,20 @@ Known limitations:
 | Query-time shared concept detection | No materialized table; GROUP BY HAVING on existing fields table + idx_fields_name index | v4.0 Good |
 | Intra-repo maps_to edges only | Ecto↔proto matching within same repo; inter-repo traversal via existing service graph | v4.0 Good |
 | Field impact stitches fields + service graph | SQL for field occurrences, BFS for inter-repo hops; no new graph infrastructure needed | v4.0 Good |
+| Filesystem reads over git child processes | fs.readFileSync eliminates 2-5ms per execSync spawn across thousands of calls | v4.1 Good |
+| Shared file list across extractors | listWorkingTreeFiles called once per repo, shared across 9 extractors | v4.1 Good |
+| Skip branch resolution with --force | Working tree reads don't need branch; only incremental skip-check does | v4.1 Good |
+| Drop+rebuild over incremental migrations | Single createSchema() function; SCHEMA_VERSION bump triggers clean rebuild | v4.1 Good |
+| Tokenize-then-join for FTS OR construction | Tokenize individual terms first, then join with OR — prevents lowercase operator destruction | v4.2 Good |
+| MIN_RELAXATION_RESULTS=3 as named constant | Not configurable (ASRCH-02 scope); three similar results is good enough threshold | v4.2 Good |
+| nextAction non-optional on TextSearchResult | Every result always has a follow-up hint; no undefined checks for consumers | v4.2 Good |
+| Repo name first token in FTS descriptions | Cross-repo disambiguation: "booking" in FTS finds booking-service modules first | v4.2 Good |
+| event: prefix for proto field descriptions only | Proto fields benefit from event-name discoverability; ecto/graphql fields do not | v4.2 Good |
+| Generic attribute resolution by usage not name | @attr in validate_required → required, regardless of attribute name | v4.2 Good |
+| Set-based pipeline nullability | O(1) Set.has() over linear .includes() for required field check | v4.2 Good |
+| Query-time topic-to-event bridging via same-repo co-occurrence | No schema changes; boundary repos produce both kafka edges and event edges | v4.2 Good |
+| Map<repoId, FieldConsumer> for consumer dedup | In-place confidence upgrade from inferred to confirmed when ecto match found | v4.2 Good |
+| @topic regex expanded to match @topic and @topic_name | DB-outbox uses @topic, Kafkaesque uses @topic_name — both are valid producer patterns | v4.2 Good |
 
 ## Constraints
 
@@ -152,10 +162,5 @@ Known limitations:
 - **Query speed**: Search returns in under 2 seconds
 - **MCP responses**: Under 4KB per response
 
-| Filesystem reads over git child processes | fs.readFileSync eliminates 2-5ms per execSync spawn across thousands of calls | v4.1 Good |
-| Shared file list across extractors | listWorkingTreeFiles called once per repo, shared across 9 extractors | v4.1 Good |
-| Skip branch resolution with --force | Working tree reads don't need branch; only incremental skip-check does | v4.1 Good |
-| Drop+rebuild over incremental migrations | Single createSchema() function; SCHEMA_VERSION bump triggers clean rebuild | v4.1 Good |
-
 ---
-*Last updated: 2026-03-11 after v4.2 milestone start*
+*Last updated: 2026-03-12 after v4.2 milestone*
