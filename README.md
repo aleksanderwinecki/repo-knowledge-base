@@ -2,7 +2,7 @@
 
 ### Stop re-explaining Fresha's architecture to Claude every session.
 
-kb indexes all 423 repos into a single SQLite file. Any Claude Code session — yours, a teammate's, a new joiner's — gets instant answers about service topology, event flows, data contracts, and blast radius. No blind grepping. No re-discovering last week's findings. No starting from zero.
+kb indexes all 423 repos into a single SQLite file. Any Claude Code session — yours, a teammate's, a new joiner's — gets instant answers about service topology, event flows, data contracts, and blast radius. No re-scanning. No re-grepping. No "let me look that up."
 
 ---
 
@@ -12,42 +12,47 @@ Every time you open a new Claude Code session and ask an architectural question,
 
 Here's what that looks like on the Fresha codebase. Same question, two approaches, measured:
 
-> **"We're deprecating `employee_id` in the appointments proto. Which services read it, and are any treating it as non-nullable?"**
+> **"How does resource capacity work? Which services own it, how does it flow, and how does the availability engine use it?"**
 
 <table>
 <tr>
-<th>Blind grep across all repos</th>
-<th>kb triage, then targeted grep</th>
+<th>Without kb</th>
+<th>With kb</th>
 </tr>
 <tr>
 <td>
 
 ```
-→ Find appointments proto definition
-→ Grep employee_id across schemas, protos
-→ Follow Kafka topic subscriptions
-→ Read each consumer's proto handling
-→ Check Ecto schemas per service
-→ Read event handler code
-→ Repeat for every lead found
-... (111 tool calls, ~15 repos visited)
+→ Glob app-resources/lib/**/*.ex
+→ Grep "capacity" across schemas, protos
+→ Read Resources.Schemas.Resource migration
+→ Read proto definitions
+→ Grep for Kafka consumers in app-availability
+→ Read ResourcesTimelinesManager.MessagesHandler
+→ Read ResourceCapacity sweep-line algorithm
+→ Grep app-shedul-umbrella
+→ Check event catalog
+... (40 tool calls across 4 repos)
 ```
 
 | | |
 |---|---|
-| Tool calls | **111** |
-| Tokens | **134,324** |
+| Tool calls | **40** |
+| Tokens | **101,855** |
 | Time | **~10 min** |
+| Repos covered | **4 of 423** |
 
 </td>
 <td>
 
 ```
-kb_field_impact("employee_id")
-→ 7 suspects flagged instantly
-→ grep only those 7 services
-→ find exact bug in app-partners-calendar
+kb_field_impact("capacity")
+kb_explain("app-resources")
+kb_explain("app-availability")
+kb_search("ResourceCapacity")
 ```
+
+&nbsp;
 
 &nbsp;
 
@@ -59,17 +64,18 @@ kb_field_impact("employee_id")
 
 | | |
 |---|---|
-| Tool calls | **~50** |
-| Tokens | **~80,000** |
-| Time | **~5 min** |
+| Tool calls | **17** |
+| Tokens | **34,735** |
+| Time | **95 seconds** |
+| Repos covered | **all 423** |
 
 </td>
 </tr>
 </table>
 
-**kb doesn't replace grep — it tells Claude where to grep.** Without it, the AI searches 423 repos blind. With it, `kb_field_impact` narrows the field to 7 suspects in 2 minutes. Then targeted reads find the actual bug: `app-partners-calendar` sends proto3 `uint32` default `0` for unset employee IDs, which slips past `is_nil` guards and generates bogus `"employees:0"` PubSub keys.
+**2.4× fewer tool calls. 3× fewer tokens. 6× faster. Full codebase coverage vs 4 repos.**
 
-Pure kb (no grep) found the suspects but flagged false positives — services that appear in the blast radius but read from their local DB, not the proto. The right workflow is kb for triage, grep for confirmation.
+And that's just session one. The second time someone asks about resource capacity — a new teammate, a different project, next week — kb answers from the index. The manual approach starts over every time.
 
 ### Why not just write a CLAUDE.md per repo?
 
