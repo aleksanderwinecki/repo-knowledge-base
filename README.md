@@ -35,13 +35,6 @@ Here's what that looks like on the Fresha codebase. Same question, two approache
 ... (40 tool calls across 4 repos)
 ```
 
-| | |
-|---|---|
-| Tool calls | **40** |
-| Tokens | **101,855** |
-| Time | **~10 min** |
-| Repos covered | **4 of 423** |
-
 </td>
 <td>
 
@@ -52,15 +45,20 @@ kb_explain("app-availability")
 kb_search("ResourceCapacity")
 ```
 
-&nbsp;
+</td>
+</tr>
+<tr>
+<td>
 
-&nbsp;
+| | |
+|---|---|
+| Tool calls | **40** |
+| Tokens | **101,855** |
+| Time | **~10 min** |
+| Repos covered | **4 of 423** |
 
-&nbsp;
-
-&nbsp;
-
-&nbsp;
+</td>
+<td>
 
 | | |
 |---|---|
