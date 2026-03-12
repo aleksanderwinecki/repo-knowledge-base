@@ -11,12 +11,12 @@ const LIB_PATH_PATTERNS = [
   /^src\/apps\/[^/]+\/lib\//,
 ];
 
-/** Module attribute holding topic name */
-const TOPIC_ATTR_RE = /@topic_name\s+"([\w.-]+)"/g;
+/** Module attribute holding topic name — matches both @topic and @topic_name */
+const TOPIC_ATTR_RE = /@topic(?:_name)?\s+"([\w.-]+)"/g;
 
-/** Producer confirmation: Kafkaesque.Producer or Outbox.emit usage */
+/** Producer confirmation: Kafkaesque.Producer, Outbox.emit, or DB-outbox pattern (topic_name: field in changeset) */
 const PRODUCER_CONFIRM_RE =
-  /Kafkaesque\.Producer\.produce_batch|Outbox\.emit/;
+  /Kafkaesque\.Producer\.produce_batch|Outbox\.emit|topic_name:/;
 
 /** Consumer via Kafkaesque.Consumer or OneOffConsumer with topics_config map keys */
 const CONSUMER_USE_RE =
@@ -44,7 +44,7 @@ function isTestPath(filePath: string): boolean {
  * Extract Kafka producer/consumer edges from an Elixir repo.
  *
  * Producer patterns:
- *   - @topic_name module attribute + Kafkaesque.Producer or Outbox.emit in same file
+ *   - @topic or @topic_name module attribute + Kafkaesque.Producer, Outbox.emit, or topic_name: (DB outbox) in same file
  *
  * Consumer patterns:
  *   - use Kafkaesque.Consumer/OneOffConsumer with topics_config map keys
@@ -70,7 +70,7 @@ export function extractKafkaEdges(
     if (!content) continue;
 
     // --- Producer detection ---
-    // Find @topic_name attributes and confirm with producer patterns in same file
+    // Find @topic/@topic_name attributes and confirm with producer patterns in same file
     const hasProducerPattern = PRODUCER_CONFIRM_RE.test(content);
 
     if (hasProducerPattern) {
