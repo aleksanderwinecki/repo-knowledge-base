@@ -11,6 +11,16 @@ export interface FieldHop {
   nullable: boolean;
 }
 
+export interface FieldConsumer {
+  repoName: string;
+  confidence: 'inferred' | 'confirmed';
+  via?: { topic: string; event: string };
+  parentType?: string;
+  parentName?: string;
+  fieldType?: string;
+  nullable?: boolean;
+}
+
 export interface FieldBoundary {
   repoName: string;
   parentName: string;
@@ -23,7 +33,7 @@ export interface FieldImpactResult {
   fieldName: string;
   origins: FieldHop[];
   boundaries: FieldBoundary[];
-  consumers: FieldHop[];
+  consumers: FieldConsumer[];
   summary: string;
 }
 
@@ -32,7 +42,14 @@ export interface FieldImpactCompact {
   field: string;
   origins: Array<{ repo: string; schema: string; type: string; nullable: boolean }>;
   boundaries: Array<{ repo: string; proto: string; type: string; nullable: boolean; topics: string[] }>;
-  consumers: Array<{ repo: string; schema: string; type: string; nullable: boolean }>;
+  consumers: Array<{
+    repo: string;
+    confidence: 'inferred' | 'confirmed';
+    via?: { topic: string; event: string };
+    schema?: string;
+    type?: string;
+    nullable?: boolean;
+  }>;
 }
 
 // ─── Core function ───────────────────────────────────────────────────────
@@ -40,6 +57,12 @@ export interface FieldImpactCompact {
 /**
  * Trace a field name from ecto origins through proto/event boundaries
  * to consuming services, with nullability at each hop.
+ *
+ * Consumer detection uses topic-inferred bridging: services subscribing to
+ * Kafka topics carrying events with the traced field appear as consumers
+ * even without a local ecto field match. Two confidence tiers:
+ * - 'inferred': topic subscription only (no local field match)
+ * - 'confirmed': topic subscription + local ecto/graphql field match
  */
 export function analyzeFieldImpact(
   db: Database.Database,
@@ -126,21 +149,45 @@ export function analyzeFieldImpact(
   // Step 3: Build service graph and find downstream consumers
   const graph = buildGraph(db);
 
-  // Step 4: For each boundary repo, find Kafka topics and downstream repo IDs
+  // Step 4: For each boundary repo, find Kafka topics, downstream repo IDs,
+  // and build topic-inferred consumer map
   const boundaries: FieldBoundary[] = [];
-  const consumerRepoIds = new Set<number>();
+  const consumerMap = new Map<number, FieldConsumer>();
+
+  // Collect proto message names per boundary repo ID for topic->event bridging
+  const protosByBoundaryRepo = new Map<number, string[]>();
+  for (const boundary of boundaryMap.values()) {
+    let protos = protosByBoundaryRepo.get(boundary.repoId);
+    if (!protos) {
+      protos = [];
+      protosByBoundaryRepo.set(boundary.repoId, protos);
+    }
+    protos.push(boundary.parentName);
+  }
 
   for (const boundary of boundaryMap.values()) {
     const topics: string[] = [];
     const forwardEdges = graph.forward.get(boundary.repoId) ?? [];
+    const protoNames = protosByBoundaryRepo.get(boundary.repoId) ?? [];
 
     for (const edge of forwardEdges) {
       if (edge.mechanism === 'kafka' || edge.mechanism === 'event') {
         if (edge.via) {
           topics.push(edge.via);
         }
-        if (edge.targetRepoId !== 0) {
-          consumerRepoIds.add(edge.targetRepoId);
+        // Topic-inferred consumer detection: each target repo subscribing to
+        // a topic from this boundary becomes an inferred consumer
+        if (edge.targetRepoId !== 0 && !boundaryRepoIds.has(edge.targetRepoId)) {
+          if (!consumerMap.has(edge.targetRepoId)) {
+            const repoName = graph.repoNames.get(edge.targetRepoId) ?? `unknown-${edge.targetRepoId}`;
+            consumerMap.set(edge.targetRepoId, {
+              repoName,
+              confidence: 'inferred',
+              via: edge.via && protoNames.length > 0 && protoNames[0] !== undefined
+                ? { topic: edge.via, event: protoNames[0] }
+                : undefined,
+            });
+          }
         }
       }
     }
@@ -154,18 +201,12 @@ export function analyzeFieldImpact(
     });
   }
 
-  // Remove boundary repos from consumer set (they are boundaries, not consumers)
-  for (const bId of boundaryRepoIds) {
-    consumerRepoIds.delete(bId);
-  }
-
   // Step 5: Classify ecto fields — origins vs consumers
   // Origins: ecto fields in repos that are NOT downstream consumers
-  // Consumers: ecto fields in repos that ARE downstream consumers
+  // Consumers: ecto fields in repos that ARE downstream consumers (upgrade to confirmed)
   const origins: FieldHop[] = [];
-  const consumers: FieldHop[] = [];
 
-  // Build repo_id -> repo_name map from ecto occurrences
+  // Build repo_id -> ecto fields map
   const ectoByRepo = new Map<number, typeof ectoFields>();
   for (const occ of ectoFields) {
     let list = ectoByRepo.get(occ.repo_id);
@@ -177,22 +218,31 @@ export function analyzeFieldImpact(
   }
 
   for (const [repoId, fields] of ectoByRepo) {
-    const isConsumer = consumerRepoIds.has(repoId);
-    for (const occ of fields) {
-      const hop: FieldHop = {
-        repoName: occ.repo_name,
-        parentType: occ.parent_type,
-        parentName: occ.parent_name,
-        fieldType: occ.field_type,
-        nullable: occ.nullable === 1,
-      };
-      if (isConsumer) {
-        consumers.push(hop);
-      } else {
-        origins.push(hop);
+    const existing = consumerMap.get(repoId);
+    if (existing) {
+      // Upgrade to 'confirmed': this repo is both a topic subscriber AND has an ecto field match
+      const occ = fields[0]!;
+      existing.confidence = 'confirmed';
+      existing.parentType = occ.parent_type;
+      existing.parentName = occ.parent_name;
+      existing.fieldType = occ.field_type;
+      existing.nullable = occ.nullable === 1;
+    } else {
+      // Not in consumerMap -- classify as origins
+      for (const occ of fields) {
+        origins.push({
+          repoName: occ.repo_name,
+          parentType: occ.parent_type,
+          parentName: occ.parent_name,
+          fieldType: occ.field_type,
+          nullable: occ.nullable === 1,
+        });
       }
     }
   }
+
+  // Convert consumer map to array
+  const consumers = [...consumerMap.values()];
 
   // Step 6: Build summary
   const allRepos = new Set([
@@ -230,12 +280,17 @@ export function formatFieldImpactCompact(result: FieldImpactResult): FieldImpact
     topics: b.topics,
   }));
 
-  const consumersCompact = result.consumers.map(c => ({
-    repo: c.repoName,
-    schema: c.parentName,
-    type: c.fieldType,
-    nullable: c.nullable,
-  }));
+  const consumersCompact = result.consumers.map(c => {
+    const entry: FieldImpactCompact['consumers'][number] = {
+      repo: c.repoName,
+      confidence: c.confidence,
+    };
+    if (c.via) entry.via = c.via;
+    if (c.parentName) entry.schema = c.parentName;
+    if (c.fieldType) entry.type = c.fieldType;
+    if (c.nullable !== undefined) entry.nullable = c.nullable;
+    return entry;
+  });
 
   const compact: FieldImpactCompact = {
     summary: result.summary,
