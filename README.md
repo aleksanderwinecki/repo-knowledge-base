@@ -71,11 +71,6 @@ And that's just session one. The second time someone asks about resource capacit
 - **Incremental** — only re-indexes repos with new commits since last scan
 - **Targeted** — reindex specific repos with optional git refresh
 
-> [!IMPORTANT]
-> kb only indexes repos that exist on your local machine. If you've cloned only the services you work on, cross-service queries will have blind spots — consumers and dependencies in repos you haven't checked out won't appear.
->
-> To get the full picture, you need all repos checked out locally. The long-term fix is a shared pre-built database refreshed nightly by CI, but that's not built yet. For now: the more repos you have locally, the more complete your results.
-
 ## Getting started
 
 ### 1. Clone and build
@@ -125,10 +120,6 @@ kb status
 ```
 
 Should show repo, module, event, and edge counts. If the numbers look right, you're done.
-
-## Stats
-
-Run `kb status` to see current counts (repos, modules, events, services, topology edges, fields, learned facts). Counts depend on what's checked out under your repos root.
 
 ## Commands
 
