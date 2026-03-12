@@ -479,7 +479,97 @@ describe('formatFieldImpactCompact', () => {
     expect(compact.consumers).toHaveLength(0);
   });
 
-  it('respects 4000 char budget', () => {
+  it('maps inferred consumer to compact shape with only repo, confidence, and via', () => {
+    // repo-a produces proto field, repo-c subscribes but has no ecto field
+    const { repoId: repoAId } = persistRepoData(db, {
+      metadata: makeMetadata({ name: 'repo-a', path: '/tmp/repo-a' }),
+      modules: [
+        { name: 'MyApp.Widget', type: 'ecto_schema', filePath: 'lib/widget.ex', summary: null },
+      ],
+      events: [
+        { name: 'WidgetCreated', schemaDefinition: 'message WidgetCreated {}', sourceFile: 'proto/widget.proto' },
+      ],
+      fields: [
+        { parentType: 'ecto_schema', parentName: 'MyApp.Widget', fieldName: 'widget_name', fieldType: 'string', nullable: false, sourceFile: 'lib/widget.ex' },
+        { parentType: 'proto_message', parentName: 'WidgetCreated', fieldName: 'widget_name', fieldType: 'string', nullable: false, sourceFile: 'proto/widget.proto' },
+      ],
+    });
+
+    const { repoId: repoCId } = persistRepoData(db, {
+      metadata: makeMetadata({ name: 'repo-c', path: '/tmp/repo-c' }),
+      modules: [
+        { name: 'Notifier.Handler', type: 'module', filePath: 'lib/handler.ex', summary: null },
+      ],
+    });
+
+    db.prepare(
+      "INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, metadata) VALUES ('repo', ?, 'service_name', 0, 'produces_kafka', ?)",
+    ).run(repoAId, JSON.stringify({ topic: 'widget-events', role: 'producer' }));
+    db.prepare(
+      "INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, metadata) VALUES ('repo', ?, 'service_name', 0, 'consumes_kafka', ?)",
+    ).run(repoCId, JSON.stringify({ topic: 'widget-events', role: 'consumer' }));
+
+    const result = analyzeFieldImpact(db, 'widget_name');
+    const compact = formatFieldImpactCompact(result);
+
+    expect(compact.consumers).toHaveLength(1);
+    const consumer = compact.consumers[0];
+    expect(consumer.repo).toBe('repo-c');
+    expect(consumer.confidence).toBe('inferred');
+    expect(consumer.via).toEqual({ topic: 'widget-events', event: 'WidgetCreated' });
+    // Inferred consumers should NOT have schema/type/nullable
+    expect(consumer.schema).toBeUndefined();
+    expect(consumer.type).toBeUndefined();
+    expect(consumer.nullable).toBeUndefined();
+  });
+
+  it('maps confirmed consumer to compact shape with repo, confidence, via, schema, type, nullable', () => {
+    // repo-a produces proto field, repo-b subscribes AND has ecto field match
+    const { repoId: repoAId } = persistRepoData(db, {
+      metadata: makeMetadata({ name: 'repo-a', path: '/tmp/repo-a' }),
+      modules: [
+        { name: 'MyApp.Ticket', type: 'ecto_schema', filePath: 'lib/ticket.ex', summary: null },
+      ],
+      events: [
+        { name: 'TicketCreated', schemaDefinition: 'message TicketCreated {}', sourceFile: 'proto/ticket.proto' },
+      ],
+      fields: [
+        { parentType: 'ecto_schema', parentName: 'MyApp.Ticket', fieldName: 'ticket_ref', fieldType: 'string', nullable: false, sourceFile: 'lib/ticket.ex' },
+        { parentType: 'proto_message', parentName: 'TicketCreated', fieldName: 'ticket_ref', fieldType: 'string', nullable: false, sourceFile: 'proto/ticket.proto' },
+      ],
+    });
+
+    const { repoId: repoBId } = persistRepoData(db, {
+      metadata: makeMetadata({ name: 'repo-b', path: '/tmp/repo-b' }),
+      modules: [
+        { name: 'Consumer.Ticket', type: 'ecto_schema', filePath: 'lib/consumer_ticket.ex', summary: null },
+      ],
+      fields: [
+        { parentType: 'ecto_schema', parentName: 'Consumer.Ticket', fieldName: 'ticket_ref', fieldType: 'varchar', nullable: true, sourceFile: 'lib/consumer_ticket.ex' },
+      ],
+    });
+
+    db.prepare(
+      "INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, metadata) VALUES ('repo', ?, 'service_name', 0, 'produces_kafka', ?)",
+    ).run(repoAId, JSON.stringify({ topic: 'ticket-events', role: 'producer' }));
+    db.prepare(
+      "INSERT INTO edges (source_type, source_id, target_type, target_id, relationship_type, metadata) VALUES ('repo', ?, 'service_name', 0, 'consumes_kafka', ?)",
+    ).run(repoBId, JSON.stringify({ topic: 'ticket-events', role: 'consumer' }));
+
+    const result = analyzeFieldImpact(db, 'ticket_ref');
+    const compact = formatFieldImpactCompact(result);
+
+    expect(compact.consumers).toHaveLength(1);
+    const consumer = compact.consumers[0];
+    expect(consumer.repo).toBe('repo-b');
+    expect(consumer.confidence).toBe('confirmed');
+    expect(consumer.via).toEqual({ topic: 'ticket-events', event: 'TicketCreated' });
+    expect(consumer.schema).toBe('Consumer.Ticket');
+    expect(consumer.type).toBe('varchar');
+    expect(consumer.nullable).toBe(true);
+  });
+
+  it('respects 4000 char budget with new consumer shape', () => {
     // Create many origins to test budget
     const fields = [];
     const modules = [];
