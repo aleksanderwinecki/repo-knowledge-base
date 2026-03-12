@@ -4,13 +4,13 @@ milestone: v4.2
 milestone_name: Search Quality
 status: completed
 stopped_at: Completed 37-02-PLAN.md
-last_updated: "2026-03-12T09:59:52.745Z"
-last_activity: 2026-03-11 — Completed 36-01 Ecto constraint extraction
+last_updated: "2026-03-12T10:27:20.310Z"
+last_activity: 2026-03-12 — Completed 37-02 Compact formatter and MCP/CLI output
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 5
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
