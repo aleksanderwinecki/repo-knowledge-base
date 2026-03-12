@@ -13,7 +13,7 @@ import { withAutoSync } from '../sync.js';
 export function registerFieldImpactTool(server: McpServer, db: Database.Database): void {
   server.tool(
     'kb_field_impact',
-    'Trace a field name from origin schemas through proto/event boundaries to consuming services with nullability',
+    'Trace a field name from origin schemas through proto/event boundaries to consuming services with nullability and consumer confidence',
     {
       name: z.string().describe('Field name to trace (e.g., "employee_id")'),
     },
