@@ -45,7 +45,7 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 | `kb impact <name>` | Blast radius analysis — what breaks if this service changes. `--mechanism`, `--depth` |
 | `kb trace <from> <to>` | Shortest path between two services with per-hop mechanism labels |
 | `kb explain <name>` | Structured service overview card — identity, connections, events, modules, next-step hints |
-| `kb field-impact <field>` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers, nullability |
+| `kb field-impact <field>` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers with confidence tiers, nullability |
 | `kb learn <text>` | Store a fact. `--repo` to associate with a service |
 | `kb learned` | List learned facts. `--repo` to filter |
 | `kb forget <id>` | Delete a learned fact |
@@ -76,7 +76,7 @@ All output is JSON. Designed for AI agent consumption, not human reading.
 - **Impact analysis**: Blast radius — what breaks if a service changes, with depth-grouped severity tiers
 - **Flow tracing**: Shortest path between any two services with per-hop mechanism labels
 - **Service explanation**: Structured overview cards with connections, events, modules, and agent hints
-- **Field impact**: Trace a field name from origin schemas through proto/event boundaries to all consuming services with nullability at each hop
+- **Field impact**: Trace a field name from origin schemas through proto/event boundaries to consuming services with nullability and consumer confidence (inferred via topic subscription, confirmed via local field match)
 
 ### Storage
 
@@ -134,7 +134,7 @@ claude mcp add kb --env KB_DB_PATH=/path/to/knowledge.db -- node /path/to/dist/m
 | `kb_impact` | Blast radius analysis: what services break if this service changes |
 | `kb_trace` | Shortest path between two services with mechanism labels per hop |
 | `kb_explain` | Structured service overview card with connections, events, modules, and hints |
-| `kb_field_impact` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers, nullability |
+| `kb_field_impact` | Trace a field across service boundaries — origins, proto/Kafka boundaries, consumers with confidence tiers, nullability |
 
 Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`, `kb_field_impact`) auto-sync stale repos before returning results. Responses are capped at 4KB per MCP protocol limits.
 
@@ -170,7 +170,7 @@ src/
 ## Development
 
 ```bash
-npm test          # Run 856 tests
+npm test          # Run 863 tests
 npm run build     # Compile TypeScript
 npm test -- --watch  # Watch mode
 ```

@@ -1,6 +1,6 @@
 /**
  * CLI command: kb field-impact
- * Trace a field across service boundaries with nullability at each hop.
+ * Trace a field across service boundaries with nullability and consumer confidence.
  */
 
 import type { Command } from '@commander-js/extra-typings';
@@ -12,7 +12,7 @@ import { withTiming, reportTimings } from '../timing.js';
 export function registerFieldImpact(program: Command) {
   program
     .command('field-impact')
-    .description('Trace a field across service boundaries with nullability at each hop')
+    .description('Trace a field across service boundaries with nullability and consumer confidence')
     .argument('<field>', 'field name to trace')
     .option('--timing', 'report timing to stderr', false)
     .action((field, opts) => {

@@ -37,7 +37,7 @@ Use `/mcp` inside a session to check server status. Available MCP tools:
 - `kb_list_types` — List available entity types with counts
 - `kb_reindex` — Reindex specific repos with optional git refresh
 - `kb_cleanup` — Detect deleted repos and stale facts
-- `kb_field_impact` — Trace a field name across service boundaries with nullability at each hop
+- `kb_field_impact` — Trace a field name across service boundaries with nullability and consumer confidence (inferred/confirmed via topic subscription chains)
 
 Read tools (`kb_search`, `kb_entity`, `kb_deps`, `kb_impact`, `kb_trace`, `kb_explain`, `kb_field_impact`) auto-sync stale repos before returning results.
 
