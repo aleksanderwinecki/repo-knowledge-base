@@ -30,6 +30,13 @@ Requirements for Search Quality milestone. Each maps to roadmap phases.
 - [x] **ENRICH-01**: Search results include `nextAction` hint suggesting appropriate follow-up MCP tool based on entity type
 - [x] **ENRICH-02**: nextAction hints are included in MCP `kb_search` responses
 
+### Event Consumer Tracking
+
+- [ ] **ECT-01**: `kb_field_impact` results include a `consumers` section listing services that subscribe to Kafka topics carrying events with the traced field
+- [ ] **ECT-02**: Kafka consumer detection uses existing Kafkaesque patterns; new extraction patterns added only if significant gaps found
+- [ ] **ECT-03**: Consumer subscriptions linked to event proto schemas via same-repo co-occurrence, creating publisher->topic->consumer chain with confidence tiers
+- [ ] **ECT-04**: Existing field impact tests continue to pass; new tests verify consumer detection for known event fields
+
 ## Future Requirements
 
 Deferred to v4.3+. Tracked but not in current roadmap.
@@ -76,12 +83,16 @@ Deferred to v4.3+. Tracked but not in current roadmap.
 | FEXT-03 | Phase 36 | Complete |
 | ENRICH-01 | Phase 34 | Complete |
 | ENRICH-02 | Phase 34 | Complete |
+| ECT-01 | Phase 37 | Planned |
+| ECT-02 | Phase 37 | Planned |
+| ECT-03 | Phase 37 | Planned |
+| ECT-04 | Phase 37 | Planned |
 
 **Coverage:**
-- v4.2 requirements: 11 total
-- Mapped to phases: 11
+- v4.2 requirements: 15 total
+- Mapped to phases: 15
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after roadmap creation*
+*Last updated: 2026-03-12 after Phase 37 planning*

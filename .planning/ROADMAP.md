@@ -11,7 +11,7 @@
 - v3.1 Indexing UX -- Phases 27-28 (shipped 2026-03-10)
 - v4.0 Data Contract Intelligence -- Phases 29-31 (shipped 2026-03-10)
 - v4.1 Indexing Performance -- Phases 32-33 (shipped 2026-03-11)
-- v4.2 Search Quality -- Phases 34-36 (in progress)
+- v4.2 Search Quality -- Phases 34-37 (in progress)
 
 ## Phases
 
@@ -107,6 +107,7 @@
 - [x] **Phase 34: Search Query Layer** - OR-default queries, progressive relaxation, and result enrichment for AI agent recall (completed 2026-03-11)
 - [x] **Phase 35: FTS Description Enrichment** - Richer FTS descriptions with repo name, proto context, and module semantics (completed 2026-03-11)
 - [x] **Phase 36: Ecto Constraint Extraction** - Deeper Ecto field extraction from @required_fields, @optional_fields, and cast attrs (completed 2026-03-11)
+- [ ] **Phase 37: Event Consumer Tracking** - Detect which services consume events containing a given field via Kafka topic subscriptions
 
 ## Phase Details
 
@@ -152,10 +153,25 @@ Plans:
 Plans:
 - [ ] 36-01-PLAN.md — Module attribute resolution, cast extraction, and combined nullability (TDD)
 
+### Phase 37: Event Consumer Tracking
+**Goal**: kb_field_impact shows which services consume events containing a traced field -- closing the "0 consumers" blind spot by extracting Kafka topic subscriptions and linking them to published event schemas
+**Depends on**: Phase 36
+**Requirements**: ECT-01, ECT-02, ECT-03, ECT-04
+**Success Criteria** (what must be TRUE):
+  1. `kb_field_impact` results include a `consumers` section listing services that subscribe to Kafka topics carrying events with the traced field
+  2. The indexer extracts Kafka consumer group/topic subscriptions from Broadway, GenStage, and direct KafkaEx/brod consumer configurations
+  3. Consumer subscriptions are linked to the event proto schemas published on those topics, creating a complete publisher->topic->consumer chain
+  4. Existing field impact tests continue to pass; new tests verify consumer detection for known event fields
+**Plans**: 2 plans
+
+Plans:
+- [ ] 37-01-PLAN.md — Topic-inferred consumer detection with confidence tiers (TDD)
+- [ ] 37-02-PLAN.md — Compact formatter, MCP, and CLI output for consumer confidence/via
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 34 -> 35 -> 36
+Phases execute in numeric order: 34 -> 35 -> 36 -> 37
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
@@ -168,6 +184,7 @@ Phases execute in numeric order: 34 -> 35 -> 36
 | 27-28 | v3.1 | 4/4 | Complete | 2026-03-10 |
 | 29-31 | v4.0 | 6/6 | Complete | 2026-03-10 |
 | 32-33 | v4.1 | 3/3 | Complete | 2026-03-11 |
-| 34. Search Query Layer | 2/2 | Complete    | 2026-03-11 | - |
-| 35. FTS Description Enrichment | 1/1 | Complete    | 2026-03-11 | - |
-| 36. Ecto Constraint Extraction | 1/1 | Complete    | 2026-03-11 | - |
+| 34. Search Query Layer | 2/2 | Complete | 2026-03-11 | - |
+| 35. FTS Description Enrichment | 1/1 | Complete | 2026-03-11 | - |
+| 36. Ecto Constraint Extraction | 1/1 | Complete | 2026-03-11 | - |
+| 37. Event Consumer Tracking | 0/2 | Planned | - | - |
