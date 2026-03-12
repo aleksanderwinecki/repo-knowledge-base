@@ -112,6 +112,86 @@ All output is JSON.
 | `kb status` | Database statistics |
 | `kb docs` | Full command documentation |
 
+## Examples
+
+All commands below work via CLI (`kb <command>`) or as MCP tools in Claude Code (`kb_<tool>`).
+
+### Service overview
+
+```bash
+$ kb explain app-resources
+```
+```json
+{
+  "name": "app-resources",
+  "summary": "Talks to 6 services (4 via grpc, 2 via kafka). Called by 3 services.",
+  "talks_to": {
+    "grpc": ["app-appointments", "app-resources-review", "app-shedul-umbrella", "app-waitlists"],
+    "kafka": ["app-availability", "app-availability-review"]
+  },
+  "called_by": {
+    "gateway": ["app-partners-api-gateway"],
+    "grpc": ["app-receptionist", "app-referrals"]
+  },
+  "events": {
+    "produces": ["ResourceCreated", "ResourceUpdated", "ResourceDeleted", "..."]
+  },
+  "hints": [
+    "Run kb_impact app-resources to see blast radius",
+    "Run kb_deps app-resources to see direct dependencies"
+  ]
+}
+```
+
+### Service dependencies
+
+```bash
+$ kb deps app-appointments-manager --mechanism grpc
+```
+```json
+{
+  "entity": { "name": "app-appointments-manager" },
+  "dependencies": [
+    { "name": "app-shedul-umbrella",  "mechanism": "gRPC [high]", "depth": 1 },
+    { "name": "app-auth",             "mechanism": "gRPC [high]", "depth": 1 },
+    { "name": "app-waitlists",        "mechanism": "gRPC [high]", "depth": 1 },
+    { "name": "app-appointments",     "mechanism": "gRPC [high]", "depth": 1 }
+  ]
+}
+```
+
+### Field impact — trace a field across service boundaries
+
+```bash
+$ kb field-impact capacity
+```
+```json
+{
+  "fieldName": "capacity",
+  "origins": [
+    { "repoName": "app-resources",             "parentName": "Resources.Schemas.Resource", "fieldType": "integer",  "nullable": true  },
+    { "repoName": "app-partners-api-gateway",  "parentName": "Resource",                  "fieldType": "Int!",     "nullable": false }
+  ],
+  "boundaries": [
+    { "repoName": "app-resources", "parentName": "ResourceCreated", "fieldType": "uint32", "nullable": false,
+      "topics": ["resources.resource-events-v1"] },
+    { "repoName": "app-resources", "parentName": "ResourceUpdated", "fieldType": "uint32", "nullable": false,
+      "topics": ["resources.resource-events-v1"] }
+  ],
+  "consumers": [
+    { "repoName": "app-availability",        "confidence": "confirmed",
+      "via": { "topic": "resources.resource-events-v1", "event": "CreateResourceRequest" },
+      "parentName": "Availability.Schemas.ResourceProjection", "fieldType": "integer", "nullable": true },
+    { "repoName": "app-availability-review", "confidence": "confirmed",
+      "via": { "topic": "resources.resource-events-v1", "event": "CreateResourceRequest" },
+      "parentName": "Availability.Schemas.ResourceProjection", "fieldType": "integer", "nullable": true }
+  ],
+  "summary": "capacity: 11 origins, 8 boundaries, 2 consumers across 5 repos"
+}
+```
+
+Notice the nullability shift: `integer nullable` in the Ecto schema → `uint32` (non-null) at the proto boundary → `integer nullable` again in the consumer's projection. That discrepancy is exactly what `kb field-impact` is designed to surface.
+
 ## How it works
 
 ### Indexing pipeline
