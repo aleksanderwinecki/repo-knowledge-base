@@ -107,7 +107,7 @@
 - [x] **Phase 34: Search Query Layer** - OR-default queries, progressive relaxation, and result enrichment for AI agent recall (completed 2026-03-11)
 - [x] **Phase 35: FTS Description Enrichment** - Richer FTS descriptions with repo name, proto context, and module semantics (completed 2026-03-11)
 - [x] **Phase 36: Ecto Constraint Extraction** - Deeper Ecto field extraction from @required_fields, @optional_fields, and cast attrs (completed 2026-03-11)
-- [ ] **Phase 37: Event Consumer Tracking** - Detect which services consume events containing a given field via Kafka topic subscriptions
+- [x] **Phase 37: Event Consumer Tracking** - Detect which services consume events containing a given field via Kafka topic subscriptions (completed 2026-03-12)
 
 ## Phase Details
 
@@ -187,4 +187,4 @@ Phases execute in numeric order: 34 -> 35 -> 36 -> 37
 | 34. Search Query Layer | 2/2 | Complete | 2026-03-11 | - |
 | 35. FTS Description Enrichment | 1/1 | Complete | 2026-03-11 | - |
 | 36. Ecto Constraint Extraction | 1/1 | Complete | 2026-03-11 | - |
-| 37. Event Consumer Tracking | 1/2 | In Progress | - | - |
+| 37. Event Consumer Tracking | 2/2 | Complete   | 2026-03-12 | - |
